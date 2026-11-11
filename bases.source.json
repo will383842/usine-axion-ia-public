@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "source": "axion-plans-prive/usine/bases/pour-la-machine",
-  "commit": "1b69111b68335b2954191ebc99332b758cc570bc",
+  "source": "bases-source",
+  "commit": "non-publie",
   "fichiers": {
     "1-cibles.md": "0179ce7b75ff4a825485898388092da6462dc50dcb7af6139407e193e96944ba",
     "2-tailles.md": "da182f7e96c6b2fad0943c13ac9e1b07298144d1d7af030428f147e3801b1617",

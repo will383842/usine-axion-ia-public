@@ -8,7 +8,7 @@ const NOM = ["axion", "plans", "prive"].join("-");
 describe("traces du dépôt privé", () => {
   it("refuse un fichier factice qui contient le nom, quel que soit le type de fichier", () => {
     for (const f of ["src/lib/a.ts", "README.md", "scripts/a.sh", "bases.source.json", "pnpm-lock.yaml"]) {
-      expect(fautesTracesPrivees(f, `ligne 1\nvoir will383842/${NOM}/usine\n`).length, f).toBe(1);
+      expect(fautesTracesPrivees(f, `ligne 1\nvoir ${NOM}/usine\n`).length, f).toBe(1);
     }
   });
 
