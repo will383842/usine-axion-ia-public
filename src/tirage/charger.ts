@@ -33,19 +33,19 @@ function nombre(v: string | null | undefined, defaut: number): number {
 export async function chargerBases(metiersVoulus?: string[]): Promise<BasesTirage> {
   const metiers = metiersVoulus
     ? await requete<{ code: string; tailles_typiques: string | null }>(
-        "SELECT code, tailles_typiques FROM metier WHERE code = ANY($1) AND etat <> 'retire' ORDER BY code",
+        "SELECT code, tailles_typiques FROM metier WHERE code = ANY($1) AND etat = 'valide' ORDER BY code",
         [metiersVoulus],
       )
     : await requete<{ code: string; tailles_typiques: string | null }>(
-        "SELECT code, tailles_typiques FROM metier WHERE allume AND etat <> 'retire' ORDER BY code",
+        "SELECT code, tailles_typiques FROM metier WHERE allume AND etat = 'valide' ORDER BY code",
       );
   const codes = metiers.map((m) => m.code);
   const [tailles, services, douleurs, cas, accroches, appels, videos, autres, actualites, comptes] = await Promise.all([
     depots.taille.lister(),
     depots.service.lister({ ordre: "ordre" }),
-    requete<BasesTirage["douleurs"][number]>("SELECT code, cible, services, tailles, type_contenu FROM douleur WHERE etat <> 'retire' AND cible = ANY($1) ORDER BY code", [codes]),
+    requete<BasesTirage["douleurs"][number]>("SELECT code, cible, services, tailles, type_contenu FROM douleur WHERE etat = 'valide' AND cible = ANY($1) ORDER BY code", [codes]),
     requete<BasesTirage["cas"][number]>(
-      "SELECT code, cible, service, douleurs, phare, sujet, formats_conseilles FROM cas_usage WHERE etat <> 'retire' AND cible = ANY($1) ORDER BY code",
+      "SELECT code, cible, service, douleurs, phare, sujet, formats_conseilles FROM cas_usage WHERE etat = 'valide' AND cible = ANY($1) ORDER BY code",
       [codes],
     ),
     depots.accroche.lister(),
