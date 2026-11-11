@@ -8,8 +8,8 @@ vi.mock("next/server", () => ({ connection: async () => {} }));
 
 const racine = join(__dirname, "..");
 // Les bases et leur témoin ne sont pas dans le dépôt public : sans eux, ces essais sont sautés.
-const basesDisponibles = existsSync(join(racine, "bases")) && existsSync(join(racine, "bases.source.json"));
-const temoin = (basesDisponibles ? JSON.parse(readFileSync(join(racine, "bases.source.json"), "utf8")) : {}) as TemoinBases;
+const basesDisponibles = existsSync(join(racine, "bases"));
+const temoin = JSON.parse(readFileSync(join(racine, "bases.source.json"), "utf8")) as TemoinBases;
 
 function copie() {
   const dossier = mkdtempSync(join(process.env.TMPDIR ?? "/tmp", "bases-"));

@@ -3,6 +3,7 @@
  * combinaisons épuisées signalées ; poids respectés ; métier éteint jamais tiré ; chacune des règles de fin ;
  * variété ; refus pris en compte. Données fictives ; les fins reprennent la forme de la base 7.
  */
+import { existsSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -427,7 +428,7 @@ describe.skipIf(!url)("tirage · depuis la base", () => {
   });
 });
 
-describe("tirage · base 5 réelle (L2-05)", () => {
+describe.skipIf(!existsSync("bases"))("tirage · base 5 réelle (L2-05)", () => {
   const INTERDITS = new Set(["facecam-animee", "image-video"]);
   let videos: Parameters<typeof formatsDuTirage>[0] = [];
   let autres: Parameters<typeof formatsDuTirage>[1] = [];

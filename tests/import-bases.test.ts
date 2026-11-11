@@ -5,6 +5,7 @@
  * Exige DATABASE_URL (PostgreSQL 16) ; sans elle, ces essais sont sautés (la CI la fournit toujours).
  */
 import { randomBytes } from "node:crypto";
+import { existsSync } from "node:fs";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { TABLES_BASES_IMPORTEES } from "@/contrats";
@@ -28,7 +29,8 @@ function remplacer(nom: string, avant: string | RegExp, apres: string): FichierB
   return fichiers.map((f) => (f.nom === nom ? { nom, texte: f.texte.replace(avant, apres) } : f));
 }
 
-describe.skipIf(!url)("import des bases", () => {
+// Sans le dossier bases/ (absent du dépôt public), ces essais sont sautés.
+describe.skipIf(!url || !existsSync("bases"))("import des bases", () => {
   beforeAll(async () => {
     const admin = new Pool({ connectionString: url });
     await admin.query(`CREATE SCHEMA ${schema}`);
