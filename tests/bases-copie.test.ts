@@ -7,19 +7,21 @@ import { ecartsExternes, ecartsInternes, type TemoinBases } from "@/lib/bases-co
 vi.mock("next/server", () => ({ connection: async () => {} }));
 
 const racine = join(__dirname, "..");
-// Les bases et leur témoin ne sont pas dans le dépôt public : sans eux, ces essais sont sautés.
-const basesDisponibles = existsSync(join(racine, "bases"));
-const temoin = JSON.parse(readFileSync(join(racine, "bases.source.json"), "utf8")) as TemoinBases;
+// Ces essais tournent sur des bases fictives (tests/fixtures-bases/) : aucun contenu réel, aucun essai sauté.
+const dossierBases = join(racine, "tests", "fixtures-bases", "bases");
+const basesDisponibles = existsSync(dossierBases);
+const temoin = JSON.parse(readFileSync(join(racine, "tests", "fixtures-bases", "bases.source.json"), "utf8")) as TemoinBases;
+const temoinEmbarque = JSON.parse(readFileSync(join(racine, "bases.source.json"), "utf8")) as TemoinBases;
 
 function copie() {
   const dossier = mkdtempSync(join(process.env.TMPDIR ?? "/tmp", "bases-"));
-  cpSync(join(racine, "bases"), dossier, { recursive: true });
+  cpSync(dossierBases, dossier, { recursive: true });
   return dossier;
 }
 
-describe.skipIf(!basesDisponibles)("garde interne : la copie égale son témoin", () => {
+describe("garde interne : la copie égale son témoin", () => {
   it("la copie du dépôt est conforme", () => {
-    expect(ecartsInternes(join(racine, "bases"), temoin)).toEqual([]);
+    expect(ecartsInternes(dossierBases, temoin)).toEqual([]);
   });
 
   it("une ligne de 2-tailles.md changée à la main fait échouer", () => {
@@ -34,15 +36,15 @@ describe.skipIf(!basesDisponibles)("garde interne : la copie égale son témoin"
     writeFileSync(join(dossier, "10-intrus.md"), "x");
     expect(ecartsInternes(dossier, temoin)).toContain("en trop : 10-intrus.md");
     const fausse: TemoinBases = { ...temoin, fichiers: { ...temoin.fichiers, "0-absent.md": "0".repeat(64) } };
-    expect(ecartsInternes(join(racine, "bases"), fausse)).toContain("manquant : 0-absent.md");
+    expect(ecartsInternes(dossierBases, fausse)).toContain("manquant : 0-absent.md");
   });
 
   it("une empreinte déclarée fausse fait échouer", () => {
-    expect(ecartsInternes(join(racine, "bases"), { ...temoin, empreinte: "0".repeat(64) })).toEqual(["empreinte déclarée ≠ empreinte recalculée"]);
+    expect(ecartsInternes(dossierBases, { ...temoin, empreinte: "0".repeat(64) })).toEqual(["empreinte déclarée ≠ empreinte recalculée"]);
   });
 });
 
-describe.skipIf(!basesDisponibles)("garde externe : le témoin égale le manifeste de la source (manifeste simulé)", () => {
+describe("garde externe : le témoin égale le manifeste de la source (manifeste simulé)", () => {
   it("identique : aucun écart", () => {
     expect(ecartsExternes(temoin, { commit: temoin.commit, fichiers: temoin.fichiers, empreinte: temoin.empreinte })).toEqual([]);
   });
@@ -62,9 +64,22 @@ describe.skipIf(!basesDisponibles)("garde externe : le témoin égale le manifes
 });
 
 describe("/api/sante", () => {
-  it("publie l'empreinte des bases embarquées", async () => {
+  it("les bases fictives existent (rien n'est sauté)", () => {
+    expect(basesDisponibles).toBe(true);
+  });
+
+  it("publie une empreinte tronquée des bases embarquées, sans aucun sha de commit", async () => {
     const { GET } = await import("@/app/api/sante/route");
     const corps = await (await GET()).json();
-    expect(corps.bases).toEqual({ empreinte: temoin.empreinte, commit: temoin.commit });
+    expect(corps.bases).toEqual({ empreinte: temoinEmbarque.empreinte.slice(0, 12) });
+    expect(corps.bases).not.toHaveProperty("commit");
+    expect(JSON.stringify(corps)).not.toMatch(/\b[0-9a-f]{40}\b/);
+    expect(JSON.stringify(corps)).not.toContain(temoinEmbarque.commit);
+    expect(JSON.stringify(corps)).not.toContain(temoinEmbarque.empreinte);
+  });
+
+  it("le témoin embarqué ne porte ni sha de commit ni nom de dépôt source", () => {
+    expect(temoinEmbarque.commit).not.toMatch(/[0-9a-f]{40}/);
+    expect(temoinEmbarque.source).not.toContain("/");
   });
 });
