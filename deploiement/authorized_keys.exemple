@@ -1,0 +1,11 @@
+# Ligne attendue dans ~/.ssh/authorized_keys du compte de déploiement (jamais root) sur le serveur.
+# Copier la ligne, remplacer CLE_PUBLIQUE_A_REMPLACER par la clé PUBLIQUE de déploiement. Aucune clé n'est écrite dans le dépôt.
+# Chemin : adapter /opt/usine/recevoir-image.sh à l'endroit où le script est posé sur le serveur.
+# La clé ne peut que lancer ce script : pas de terminal, pas de redirection de port, pas d'agent, pas de rc.
+#
+# Rotation de la clé (à faire à date fixe et après tout doute) :
+#   1. créer une nouvelle paire, sans passphrase, dédiée au déploiement ;
+#   2. AJOUTER la nouvelle ligne sous l'ancienne et mettre la clé privée dans le secret du dépôt ;
+#   3. lancer un déploiement, constater qu'il passe ;
+#   4. mettre l'ancienne ligne en commentaire (ne rien effacer), puis retirer l'ancien secret.
+command="/opt/usine/recevoir-image.sh",restrict,no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-pty,no-user-rc ssh-ed25519 CLE_PUBLIQUE_A_REMPLACER usine-deploiement
