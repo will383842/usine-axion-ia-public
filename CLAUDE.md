@@ -1,0 +1,40 @@
+@AGENTS.md
+
+# Usine Axion · consignes
+
+> **Plan.** Les plans de construction et les bases de contenu de l'Usine sont tenus dans un dépôt privé. Ce dépôt public contient le code seul.
+
+## Règles valables pour toute tâche (PLAN-EXECUTION.md)
+
+- **Dépôt** : `will383842/usine-axion-ia`, branche `main`. Une branche `t<NN>-<slug>` par tâche, une PR, que l'agent ne fusionne pas : le chef d'orchestre fusionne.
+- **Pile** : Next 16.3.8 (App Router, sortie `standalone`), React 19, TypeScript strict, PostgreSQL par `pg` (aucun ORM), migrations SQL numérotées dans `migrations/`, `zod`, connexion à compte unique (`@node-rs/argon2`, `jose`), Tailwind 4, `vitest`, `pnpm`. **Next 16 a changé : lire `node_modules/next/dist/docs/` avant d'écrire du code** (le garde d'entrée s'appelle `proxy.ts`).
+- **Noms** : ceux de `CONTRATS-ECHANGE.md`, traduits en types dans `src/contrats/`. Aucun nom nouveau sans ligne ajoutée au contrat dans la même PR.
+- **Tout est livré éteint** : chaque écran ou fonction lit son interrupteur (`interrupteurAllume(code)`), éteint par défaut.
+- **Jamais** : `DELETE`, `TRUNCATE`, `DROP` (retirer = `etat = 'retire'` ou `archive_le`) ; un secret ou une donnée de vraie personne dans le dépôt (exemples en `@example.com`) ; `--no-verify` ; Haiku ; un appel sortant hors de `src/passerelles/` (règle sortante ci-dessous) ; un appel vers Zernio, Waalaxy ou le fichier clients ; « Grenoble », « Aucun gain garanti », « likez », un prix, un chiffre inventé dans un texte d'écran.
+- **Écrans** : français, vouvoiement, thème clair, lisibles au téléphone (texte 16 px au moins, boutons 44 px au moins, rien au-delà de 375 px de large), une action principale par écran, une valeur par défaut partout, « Annuler » 10 s plutôt qu'une confirmation (`src/components/Annulable.tsx`), « Archiver » jamais « Supprimer ». Lexique de `PLAN-MAITRE.md` C14 ; jamais à l'écran : CRM, lead, batch, job, prompt, token, workflow, persona, pipeline, aimant, séquence.
+- **Tests** : seulement ceux que la tâche nomme. Aucun test de confort, aucun document hors tâche.
+- **CI rouge** : deux corrections au plus, puis réduire le périmètre (le reste derrière l'interrupteur, noté dans la PR) et livrer. **Une question** : prendre la solution la plus simple, la noter dans la PR, continuer.
+- **Fin de PR** : `ETAT : <tâche> · <état> · <PR>`, puis cinq lignes : fait, à essayer, ce qui manque.
+
+## Règle sortante (D-14 levée, L0-09)
+
+- **Ce que c'est** : une garde qui détecte les usages DIRECTS d'un accès réseau dans le code du dépôt, pas une barrière. La vraie barrière est la limite réseau du serveur (sortie fermée sauf les hôtes déclarés) ; la garde évite qu'un appel sortant arrive par mégarde ou par une PR.
+- **Liste d'autorisation** : les hôtes déclarés dans `scripts/garde-sortante.mjs`, appelés seulement depuis `src/passerelles/`, un fichier par passerelle : `studio.ts` (studio.axion-ia.com), `site-lecture.ts` (axion-ia.com), `bases-source.ts` (api.github.com, lecture seule du manifeste des bases par la garde externe `scripts/garde-bases-externe.mjs`, jeton `PLANS_PRIVE_LECTURE`, redirections refusées), plus tard `buffer.ts` (hôte à déclarer). Chacune lit son secret dans une variable serveur (nom dans `.env.exemple`, valeur jamais dans le dépôt). Aucune passerelle n'existe encore : chacune s'ajoute avec sa tâche ; un hôte ou un module nouveau s'ajoute dans la garde, relu en PR.
+- **Lecture** : `scripts/garde.mjs` appelle `scripts/garde-sortante.mjs`, qui lit la syntaxe (API du compilateur TypeScript) de tous les fichiers `.ts .tsx .mts .cts .js .jsx .mjs .cjs` du dépôt hors `node_modules` : `src/`, essais, scripts, configurations et la garde elle-même. Seul `src/passerelles/` fait exception. Un commentaire n'est jamais lu ; un fichier illisible est refusé.
+- **Hors de `src/passerelles/`** : aucune référence à l'appel réseau natif (appel, alias, export, propriété, chaîne) ; `eval`, `Function`, `require`, `constructor`, `getBuiltinModule`, `importActual`, `createRequire` refusés ; sur `globalThis`, `window`, `self`, `global`, seules les propriétés de la liste fermée `PROPRIETES_GLOBALES` (ou une clé `Symbol`) se lisent. Seuls les modules de la liste fermée `MODULES_PERMIS` s'importent (statique, multi-lignes, `import()`, `require()`), plus vitest, eslint, typescript et readline hors de `src/`. Pour `next`, seuls les sous-chemins nommés (`next/link`, `next/cache`, `next/navigation`, `next/server`, `next/headers`, `next/font/local`). `node:child_process` n'est permis qu'à quatre fichiers nommés (la garde, deux essais qui lancent `git`, et `scripts/ecrire-temoin-bases.mjs` qui lit le commit de la source des bases par `git rev-parse`, sans réseau) ; `jose` à un seul (`src/lib/jeton-session.ts`). Un import relatif reste dans le dépôt, hors `node_modules`, et ne vise ni un binaire ni un nom non littéral.
+- **Tolérance assumée** : `pg` est permis partout (accès à la base par `DATABASE_URL`, sans lui l'Usine ne tient pas) ; il sait ouvrir une connexion vers n'importe quel hôte, la limite réseau du serveur en répond. `next` (modules nommés) et `react` aussi.
+- **Dans une passerelle** (fichier de `src/passerelles/` nommé dans la liste) : `export const HOTE = "https://hôte"` (sans chemin, hôte déclaré dans la garde) ; chaque appel réseau a pour premier argument `HOTE` seul ou `HOTE` suivi d'un chemin qui commence par « / », et pour options un objet littéral avec exactement un `redirect: "error"`, sans spread ni clé calculée ; l'appel natif n'y est ni exporté, ni renommé, ni passé en argument. Un fichier de `src/passerelles/` hors de la liste est refusé, essais compris (leurs essais vont dans `tests/`).
+- **Limites connues, non couvertes** : `this` non strict dans un `.cjs` ; `navigator.sendBeacon` ; une chaîne exécutée à l'exécution (`setTimeout("…")`) ; un fichier écrit puis importé ; un paquet autorisé qui ouvre lui-même une connexion (`pg`). Un contournement qui demande du code volontairement obscur est accepté tant qu'il est documenté ici.
+- Zernio, Waalaxy et le fichier clients restent interdits à l'Usine, passerelles comprises. `DELETE` reste interdit.
+
+## Où sont les choses (posées par T01)
+
+- `migrations/NNN-*.sql` : jouées au démarrage du serveur (`src/instrumentation.ts` → `src/lib/demarrage.ts` → `src/lib/migrations.ts`), une fois chacune, dans l'ordre, notées dans les tables `migration` et `journal`. Jamais au build. Une nouvelle migration = un nouveau numéro ; on ne modifie jamais une migration déjà fusionnée.
+- `src/contrats/` : identifiants et échanges du contrat (zod).
+- `src/donnees/` : `depots.<table>` (`lire`, `lister`, `compter`, `ecrire`, `modifier`, `archiver` ; `ajouter` seulement pour `journal` et `opposition`), `journaliser()`, `interrupteurAllume()`, `lireReglage()`, `ecrireReglage()`, `prochainLot()`. Requête plus riche : `requete()` et `transaction()` de `src/lib/base.ts`. Colonnes : `src/donnees/schema.ts` (un essai les compare à la base).
+- `src/services/auth.ts` : `exigerSession()` en première ligne de chaque page protégée, action serveur et route `/api`.
+- `bases/` n'est pas dans ce dépôt (contenu commercial privé) : le dossier est posé à côté de l'application sur le serveur et ne se modifie jamais à la main.
+- `metier.allume` est l'interrupteur du métier posé par Will ; l'import des bases ne l'écrit jamais (`actif` garde la valeur des bases).
+- Gabarit (en-tête, navigation basse) : `src/components/gabarit/`, posé par `src/app/layout.tsx` sur tous les écrans sauf `/connexion`.
+- Vérifier avant de pousser : `pnpm verifier` (types, lint, garde, tests, build). Les tests de base exigent `DATABASE_URL` (PostgreSQL 16).
+- Variables : `DATABASE_URL`, `SESSION_SECRET` (32 caractères au moins), `USINE_PASSWORD_HASH_B64` (`pnpm hacher`), `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY`. Noms dans `.env.exemple`, valeurs jamais dans le dépôt.

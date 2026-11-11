@@ -1,0 +1,491 @@
+{
+  "adr": "0002-lien-suivi-unique",
+  "version": 1,
+  "regles": {
+    "ordre": [
+      "utm_source",
+      "utm_medium",
+      "utm_campaign",
+      "utm_content",
+      "depuis"
+    ],
+    "reseaux": [
+      "linkedin",
+      "instagram",
+      "facebook",
+      "tiktok",
+      "youtube",
+      "youtube-shorts"
+    ],
+    "natures": [
+      "message",
+      "profil",
+      "video"
+    ],
+    "natures_reservees": [
+      "post"
+    ],
+    "activites": [
+      "clients",
+      "apporteurs",
+      "formateurs"
+    ],
+    "pages": [
+      "/fr/appel",
+      "/fr/guide-ia",
+      "/fr/diagnostic"
+    ],
+    "reseaux_message": [
+      "facebook",
+      "instagram",
+      "linkedin"
+    ],
+    "code_version": "^[0-9]{4,6}-[A-Z]{2,3}-[A-Z]{2,3}(-[A-Z0-9]{1,8})*$",
+    "code_mot": "^mot-[a-z0-9][a-z0-9-]*$",
+    "longueur_max": 60,
+    "site_utm": "^[A-Za-z0-9][A-Za-z0-9-]{0,59}$",
+    "site_depuis": "^[a-z0-9][a-z0-9-]{0,59}$"
+  },
+  "construction": {
+    "valides": [
+      {
+        "id": "V01",
+        "entree": {
+          "type_lien": "video",
+          "reseau": "instagram",
+          "code": "0042-TB-IG",
+          "activite": "clients",
+          "page": "/fr/appel"
+        },
+        "attendu": "https://axion-ia.com/fr/appel?utm_source=instagram&utm_medium=video&utm_campaign=0042-TB-IG&utm_content=clients&depuis=video-instagram",
+        "note": "tableau animé"
+      },
+      {
+        "id": "V02",
+        "entree": {
+          "type_lien": "video",
+          "reseau": "tiktok",
+          "code": "0042-AV-TT",
+          "activite": "clients",
+          "page": "/fr/appel"
+        },
+        "attendu": "https://axion-ia.com/fr/appel?utm_source=tiktok&utm_medium=video&utm_campaign=0042-AV-TT&utm_content=clients&depuis=video-tiktok"
+      },
+      {
+        "id": "V03",
+        "entree": {
+          "type_lien": "video",
+          "reseau": "linkedin",
+          "code": "0042-FC-LI",
+          "activite": "formateurs",
+          "page": "/fr/appel"
+        },
+        "attendu": "https://axion-ia.com/fr/appel?utm_source=linkedin&utm_medium=video&utm_campaign=0042-FC-LI&utm_content=formateurs&depuis=video-linkedin",
+        "note": "recrutement de formateurs"
+      },
+      {
+        "id": "V04",
+        "entree": {
+          "type_lien": "video",
+          "reseau": "facebook",
+          "code": "0042-CC-FB",
+          "activite": "clients",
+          "page": "/fr/appel"
+        },
+        "attendu": "https://axion-ia.com/fr/appel?utm_source=facebook&utm_medium=video&utm_campaign=0042-CC-FB&utm_content=clients&depuis=video-facebook",
+        "note": "cas concret : code de version, plus de cc-<cas>-<id>"
+      },
+      {
+        "id": "V05",
+        "entree": {
+          "type_lien": "video",
+          "reseau": "youtube-shorts",
+          "code": "0042-TB-YS",
+          "activite": "clients",
+          "page": "/fr/appel"
+        },
+        "attendu": "https://axion-ia.com/fr/appel?utm_source=youtube-shorts&utm_medium=video&utm_campaign=0042-TB-YS&utm_content=clients&depuis=video-youtube-shorts",
+        "note": "suffixe YS à confirmer par le studio (L2-07 remplace le code, pas la forme)"
+      },
+      {
+        "id": "V06",
+        "entree": {
+          "type_lien": "video",
+          "reseau": "tiktok",
+          "code": "0005-FC-TT",
+          "activite": "apporteurs",
+          "page": "/fr/appel"
+        },
+        "attendu": "https://axion-ia.com/fr/appel?utm_source=tiktok&utm_medium=video&utm_campaign=0005-FC-TT&utm_content=apporteurs&depuis=video-tiktok",
+        "note": "recrutement d'apporteurs"
+      },
+      {
+        "id": "V07",
+        "entree": {
+          "type_lien": "video",
+          "reseau": "instagram",
+          "code": "0042-TB-IG",
+          "activite": "apporteurs",
+          "page": "/fr/guide-ia"
+        },
+        "attendu": "https://axion-ia.com/fr/guide-ia?utm_source=instagram&utm_medium=video&utm_campaign=0042-TB-IG&utm_content=apporteurs",
+        "note": "pas de depuis hors /fr/appel"
+      },
+      {
+        "id": "V08",
+        "entree": {
+          "type_lien": "video",
+          "reseau": "linkedin",
+          "code": "0042-FC-LI",
+          "activite": "clients",
+          "page": "/fr/diagnostic"
+        },
+        "attendu": "https://axion-ia.com/fr/diagnostic?utm_source=linkedin&utm_medium=video&utm_campaign=0042-FC-LI&utm_content=clients",
+        "note": "pas de depuis hors /fr/appel"
+      },
+      {
+        "id": "V09",
+        "entree": {
+          "type_lien": "message",
+          "reseau": "instagram",
+          "code": "mot-guide",
+          "activite": "clients",
+          "page": "/fr/guide-ia"
+        },
+        "attendu": "https://axion-ia.com/fr/guide-ia?utm_source=instagram&utm_medium=message&utm_campaign=mot-guide&utm_content=clients",
+        "note": "réponse Zernio au mot GUIDE"
+      },
+      {
+        "id": "V10",
+        "entree": {
+          "type_lien": "message",
+          "reseau": "facebook",
+          "code": "mot-guide",
+          "activite": "clients",
+          "page": "/fr/appel"
+        },
+        "attendu": "https://axion-ia.com/fr/appel?utm_source=facebook&utm_medium=message&utm_campaign=mot-guide&utm_content=clients&depuis=message-facebook"
+      },
+      {
+        "id": "V11",
+        "entree": {
+          "type_lien": "message",
+          "reseau": "linkedin",
+          "code": "mot-guide",
+          "activite": "clients",
+          "page": "/fr/appel"
+        },
+        "attendu": "https://axion-ia.com/fr/appel?utm_source=linkedin&utm_medium=message&utm_campaign=mot-guide&utm_content=clients&depuis=message-linkedin",
+        "note": "réponse Waalaxy à un mot laissé en commentaire LinkedIn"
+      },
+      {
+        "id": "V12",
+        "entree": {
+          "type_lien": "profil",
+          "reseau": "youtube",
+          "code": "mot-guide",
+          "activite": "clients",
+          "page": "/fr/guide-ia"
+        },
+        "attendu": "https://axion-ia.com/fr/guide-ia?utm_source=youtube&utm_medium=profil&utm_campaign=mot-guide&utm_content=clients",
+        "note": "lien de la chaîne YouTube"
+      },
+      {
+        "id": "V13",
+        "entree": {
+          "type_lien": "profil",
+          "reseau": "instagram",
+          "code": "mot-guide",
+          "activite": "clients",
+          "page": "/fr/appel"
+        },
+        "attendu": "https://axion-ia.com/fr/appel?utm_source=instagram&utm_medium=profil&utm_campaign=mot-guide&utm_content=clients&depuis=profil-instagram",
+        "note": "lien de bio"
+      },
+      {
+        "id": "V14",
+        "entree": {
+          "type_lien": "video",
+          "reseau": "Instagram",
+          "code": "0042-TB-IG",
+          "activite": "Clients",
+          "page": "/fr/appel"
+        },
+        "attendu": "https://axion-ia.com/fr/appel?utm_source=instagram&utm_medium=video&utm_campaign=0042-TB-IG&utm_content=clients&depuis=video-instagram",
+        "note": "réseau et activité ramenés en minuscules ; le code n'est jamais modifié"
+      },
+      {
+        "id": "V15",
+        "entree": {
+          "type_lien": "video",
+          "reseau": "instagram",
+          "code": "0042-TB-IG-R1",
+          "activite": "clients",
+          "page": "/fr/appel"
+        },
+        "attendu": "https://axion-ia.com/fr/appel?utm_source=instagram&utm_medium=video&utm_campaign=0042-TB-IG-R1&utm_content=clients&depuis=video-instagram",
+        "note": "republication (suffixe gardé)"
+      }
+    ],
+    "refus": [
+      {
+        "id": "R01",
+        "entree": {
+          "type_lien": "video",
+          "reseau": "twitter",
+          "code": "0042-TB-IG",
+          "activite": "clients",
+          "page": "/fr/appel"
+        },
+        "refus": "reseau_inconnu"
+      },
+      {
+        "id": "R02",
+        "entree": {
+          "type_lien": "post",
+          "reseau": "linkedin",
+          "code": "0042-TB-LI",
+          "activite": "clients",
+          "page": "/fr/appel"
+        },
+        "refus": "nature_reservee",
+        "note": "post sans vidéo : réservé"
+      },
+      {
+        "id": "R03",
+        "entree": {
+          "type_lien": "story",
+          "reseau": "instagram",
+          "code": "0042-TB-IG",
+          "activite": "clients",
+          "page": "/fr/appel"
+        },
+        "refus": "nature_inconnue"
+      },
+      {
+        "id": "R04",
+        "entree": {
+          "type_lien": "video",
+          "reseau": "instagram",
+          "code": "0042-TB-IG",
+          "activite": "prospects",
+          "page": "/fr/appel"
+        },
+        "refus": "activite_inconnue"
+      },
+      {
+        "id": "R05",
+        "entree": {
+          "type_lien": "video",
+          "reseau": "instagram",
+          "code": "0042-TB-IG",
+          "activite": "clients",
+          "page": "/fr/tarifs"
+        },
+        "refus": "page_interdite"
+      },
+      {
+        "id": "R06",
+        "entree": {
+          "type_lien": "video",
+          "reseau": "instagram",
+          "code": "0042-TB-IG",
+          "activite": "clients",
+          "page": "/fr/appel?depuis=entete"
+        },
+        "refus": "page_interdite",
+        "note": "la page ne porte jamais de requête"
+      },
+      {
+        "id": "R07",
+        "entree": {
+          "type_lien": "video",
+          "reseau": "instagram",
+          "code": "mot-guide",
+          "activite": "clients",
+          "page": "/fr/appel"
+        },
+        "refus": "code_version_attendu"
+      },
+      {
+        "id": "R08",
+        "entree": {
+          "type_lien": "message",
+          "reseau": "instagram",
+          "code": "0042-TB-IG",
+          "activite": "clients",
+          "page": "/fr/guide-ia"
+        },
+        "refus": "code_mot_attendu"
+      },
+      {
+        "id": "R09",
+        "entree": {
+          "type_lien": "video",
+          "reseau": "facebook",
+          "code": "cc-rappels-rendez-vous-12",
+          "activite": "clients",
+          "page": "/fr/appel"
+        },
+        "refus": "code_version_attendu",
+        "note": "ancienne forme cas concret : plus fabriquée"
+      },
+      {
+        "id": "R10",
+        "entree": {
+          "type_lien": "video",
+          "reseau": "instagram",
+          "code": "usine:L12-3",
+          "activite": "clients",
+          "page": "/fr/appel"
+        },
+        "refus": "caractere_interdit",
+        "note": "repere interdit, « : » interdit"
+      },
+      {
+        "id": "R11",
+        "entree": {
+          "type_lien": "message",
+          "reseau": "instagram",
+          "code": "mot-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "activite": "clients",
+          "page": "/fr/guide-ia"
+        },
+        "refus": "trop_long"
+      },
+      {
+        "id": "R12",
+        "entree": {
+          "type_lien": "message",
+          "reseau": "tiktok",
+          "code": "mot-guide",
+          "activite": "clients",
+          "page": "/fr/guide-ia"
+        },
+        "refus": "message_impossible_sur_ce_reseau",
+        "note": "aucun outil n'envoie de message privé sur TikTok"
+      },
+      {
+        "id": "R13",
+        "entree": {
+          "type_lien": "message",
+          "reseau": "youtube",
+          "code": "mot-guide",
+          "activite": "clients",
+          "page": "/fr/guide-ia"
+        },
+        "refus": "message_impossible_sur_ce_reseau"
+      },
+      {
+        "id": "R14",
+        "entree": {
+          "type_lien": "video",
+          "reseau": "instagram",
+          "code": "0042-tb-ig",
+          "activite": "clients",
+          "page": "/fr/appel"
+        },
+        "refus": "code_version_attendu",
+        "note": "code de version en minuscules : refusé, pas corrigé"
+      }
+    ]
+  },
+  "arrivee": [
+    {
+      "id": "A01",
+      "url": "https://axion-ia.com/fr/appel?utm_source=instagram&utm_medium=video&utm_campaign=0042-TB-IG&utm_content=clients&depuis=video-instagram",
+      "vers_calendly": {
+        "utm_source": "instagram",
+        "utm_medium": "video",
+        "utm_campaign": "0042-TB-IG",
+        "utm_content": "clients",
+        "utm_term": "video-instagram"
+      },
+      "note": "lien conforme : les 5 valeurs gardées, depuis dans utm_term"
+    },
+    {
+      "id": "A02",
+      "url": "https://axion-ia.com/fr/appel?utm_source=instagram&utm_medium=video&utm_campaign=0042-TB-IG&utm_content=0042-TB-IG",
+      "vers_calendly": {
+        "utm_source": "instagram",
+        "utm_medium": "video",
+        "utm_campaign": "0042-TB-IG",
+        "utm_content": "0042-TB-IG",
+        "utm_term": null
+      },
+      "note": "ancien lien du studio : utm_content gardé tel quel (« activité inconnue » pour les lecteurs)"
+    },
+    {
+      "id": "A03",
+      "url": "https://axion-ia.com/fr/appel?depuis=entete",
+      "vers_calendly": {
+        "utm_source": null,
+        "utm_medium": null,
+        "utm_campaign": null,
+        "utm_content": null,
+        "utm_term": "entete"
+      },
+      "note": "en-tête du site : seul depuis"
+    },
+    {
+      "id": "A04",
+      "url": "https://axion-ia.com/fr/appel?utm_source=instagram&utm_medium=video&utm_campaign=0042-TB-IG&utm_content=ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc&depuis=video-instagram",
+      "vers_calendly": {
+        "utm_source": "instagram",
+        "utm_medium": "video",
+        "utm_campaign": "0042-TB-IG",
+        "utm_content": null,
+        "utm_term": "video-instagram"
+      },
+      "note": "utm_content trop long : lui seul abandonné"
+    },
+    {
+      "id": "A05",
+      "url": "https://axion-ia.com/fr/appel?utm_source=instagram&utm_medium=video&utm_campaign=usine:L12-3&utm_content=clients&depuis=Video-Instagram",
+      "vers_calendly": {
+        "utm_source": "instagram",
+        "utm_medium": "video",
+        "utm_campaign": null,
+        "utm_content": "clients",
+        "utm_term": null
+      },
+      "note": "« : » et majuscules dans depuis : ces deux valeurs abandonnées, jamais réécrites"
+    },
+    {
+      "id": "A06",
+      "url": "https://axion-ia.com/fr/appel?utm_source=instagram&utm_medium=video&utm_campaign=0042-TB-IG&utm_content=clients%20test",
+      "vers_calendly": {
+        "utm_source": "instagram",
+        "utm_medium": "video",
+        "utm_campaign": "0042-TB-IG",
+        "utm_content": null,
+        "utm_term": null
+      },
+      "note": "espace : abandonné"
+    },
+    {
+      "id": "A07",
+      "url": "https://axion-ia.com/fr/appel?utm_source=newsletter&utm_medium=email&utm_campaign=lettre-12&utm_content=haut",
+      "vers_calendly": {
+        "utm_source": "newsletter",
+        "utm_medium": "email",
+        "utm_campaign": "lettre-12",
+        "utm_content": "haut",
+        "utm_term": null
+      },
+      "note": "valeurs inconnues mais bien formées : gardées (le site ne contrôle pas les listes)"
+    },
+    {
+      "id": "A08",
+      "url": "https://axion-ia.com/fr/appel",
+      "vers_calendly": {
+        "utm_source": null,
+        "utm_medium": null,
+        "utm_campaign": null,
+        "utm_content": null,
+        "utm_term": null
+      },
+      "note": "aucune valeur : tout vide (le cookie axion_utm s'applique alors, en bloc)"
+    }
+  ]
+}

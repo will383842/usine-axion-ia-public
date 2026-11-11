@@ -1,0 +1,140 @@
+@import "tailwindcss";
+
+/*
+ * Thème clair de l'Usine : couleurs et polices du site (Fraunces, Manrope ; terracotta #b23f16).
+ * TOUTES les couleurs passent par ces jetons ; la palette Tailwind par défaut est coupée.
+ */
+:root {
+  --fond: #faf8f3; /* ivoire */
+  --surface: #ffffff;
+  --trait: #e6e0d4;
+  --texte: #1a1815;
+  --texte-doux: #5c554c; /* 7:1 sur ivoire */
+  --terracotta: #b23f16; /* signature et action principale (5,47:1 avec l'ivoire) */
+  --terracotta-fonce: #8c3010;
+  --terracotta-doux: #f6e7df;
+  --sur-terracotta: #faf8f3;
+  --mocha: #2a2520;
+  --sur-mocha: #faf8f3;
+  --hauteur-nav: 64px;
+  color-scheme: light;
+}
+
+@theme inline {
+  --color-*: initial;
+  --color-fond: var(--fond);
+  --color-surface: var(--surface);
+  --color-trait: var(--trait);
+  --color-texte: var(--texte);
+  --color-texte-doux: var(--texte-doux);
+  --color-terracotta: var(--terracotta);
+  --color-terracotta-fonce: var(--terracotta-fonce);
+  --color-terracotta-doux: var(--terracotta-doux);
+  --color-sur-terracotta: var(--sur-terracotta);
+  --color-mocha: var(--mocha);
+  --color-sur-mocha: var(--sur-mocha);
+  --font-titre: var(--police-titre), Georgia, serif;
+  --font-texte: var(--police-texte), system-ui, sans-serif;
+  --font-sans: var(--police-texte), system-ui, sans-serif;
+}
+
+@layer base {
+  html {
+    font-size: 16px;
+  }
+  body {
+    font-family: var(--font-texte);
+    font-size: 1rem;
+    line-height: 1.5;
+    background: var(--fond);
+    color: var(--texte);
+    -webkit-font-smoothing: antialiased;
+  }
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-titre);
+    line-height: 1.2;
+  }
+  :focus-visible {
+    outline: 3px solid var(--terracotta);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .bouton {
+    display: inline-flex;
+    min-height: 44px;
+    min-width: 44px;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: 0.75rem;
+    padding: 0.625rem 1.25rem;
+    font-weight: 700;
+    font-size: 1rem;
+    background: var(--terracotta);
+    color: var(--sur-terracotta);
+  }
+  .bouton:hover {
+    background: var(--terracotta-fonce);
+  }
+  .bouton:disabled {
+    opacity: 0.6;
+  }
+  .bouton-second {
+    display: inline-flex;
+    min-height: 44px;
+    min-width: 44px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.75rem;
+    padding: 0.625rem 1.25rem;
+    font-weight: 600;
+    font-size: 1rem;
+    border: 1px solid var(--trait);
+    background: var(--surface);
+    color: var(--texte);
+  }
+  .champ {
+    min-height: 44px;
+    width: 100%;
+    border-radius: 0.75rem;
+    border: 1px solid var(--trait);
+    background: var(--surface);
+    padding: 0.5rem 0.875rem;
+    font-size: 1rem;
+    color: var(--texte);
+  }
+}
+
+/*
+ * T25 · Apparence en blocs (ajouts seulement) : couleurs des pastilles d'état, ombre des cartes.
+ * Chaque état a sa couleur ET sa forme (pictogramme) : jamais la couleur seule.
+ */
+:root {
+  --ombre-carte: 0 1px 2px rgb(42 37 32 / 0.06), 0 4px 16px rgb(42 37 32 / 0.06);
+  --ambre-doux: #fbefd6;
+  --ambre: #7a4a00; /* 7:1 sur ambre doux */
+  --bleu-doux: #e4edf7;
+  --bleu: #1f4b78;
+  --vert-doux: #e1efe3;
+  --vert: #22593a;
+  --rouge-doux: #f6e1e0;
+  --rouge: #8a1f1b;
+  --gris-doux: #efebe4;
+}
+
+@theme inline {
+  --color-ambre-doux: var(--ambre-doux);
+  --color-ambre: var(--ambre);
+  --color-bleu-doux: var(--bleu-doux);
+  --color-bleu: var(--bleu);
+  --color-vert-doux: var(--vert-doux);
+  --color-vert: var(--vert);
+  --color-rouge-doux: var(--rouge-doux);
+  --color-rouge: var(--rouge);
+  --color-gris-doux: var(--gris-doux);
+  --shadow-carte: var(--ombre-carte);
+}

@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "source": "axion-plans-prive/usine/bases/pour-la-machine",
+  "commit": "1b69111b68335b2954191ebc99332b758cc570bc",
+  "fichiers": {
+    "1-cibles.md": "0179ce7b75ff4a825485898388092da6462dc50dcb7af6139407e193e96944ba",
+    "2-tailles.md": "da182f7e96c6b2fad0943c13ac9e1b07298144d1d7af030428f147e3801b1617",
+    "3-sujets.md": "1a52a662c58ecb41ac03b4a7d2cb8e08f53ef2297c10dd2d8cb2f4840aa46ad1",
+    "4-cas-d-usage.md": "fc661599909df0a65b3ac5f486412254d4b77a7f45df836ddc0c8992017a4771",
+    "5-formats.md": "61549b56c286b0c70445a44526c51f557b6d150a56f3de65c08ee37aead7996c",
+    "6-reseaux.md": "61f3857902be88c4757ecb366b93395af80e00c09c506b7cceda77162f62f9f2",
+    "7-appels.md": "145bbdb4c19caf3fabd494f4c00be132d45e6d65a020e3a1645f138aae6ad3ed",
+    "8-voix-et-interdits.md": "cbb0a4ba92565db84bd5411a22171206e19b14938fea55b86751a29438d214de",
+    "9-accroches.md": "abc4bbc35187417f39093edaa917c3b56940de3690ce68da5b45879b5de59caa"
+  },
+  "empreinte": "e4c48009926f9d67ffbb01f43e16caa94f9facd79fcf17b12d3c1dfb9ae82e59",
+  "synchronise_le": "2026-10-17T23:23:17.841Z"
+}

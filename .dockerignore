@@ -1,0 +1,9 @@
+node_modules
+.next
+.next-*
+.git
+.github
+.env*
+tests
+deploiement
+**/*.test.ts
