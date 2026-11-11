@@ -74,8 +74,8 @@ jobs:
           # Sur une PR : l'image se construit seulement ; sur main : elle est poussée.
           push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           tags: |
-            ghcr.io/will383842/usine-axion-ia:latest
-            ghcr.io/will383842/usine-axion-ia:sha-${{ steps.court.outputs.sha }}
+            ghcr.io/will383842/usine-axion-ia-public:latest
+            ghcr.io/will383842/usine-axion-ia-public:sha-${{ steps.court.outputs.sha }}
           build-args: |
             NEXT_SERVER_ACTIONS_ENCRYPTION_KEY=${{ secrets.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY }}
           cache-from: type=gha
@@ -117,8 +117,8 @@ jobs:
           ( umask 077; printf '%s\n' "$CLE" > "$dossier/cle"; printf '%s\n' "$EMPREINTE" > "$dossier/known_hosts" )
           court="${GITHUB_SHA::7}"
           printf '%s' "$JETON_REGISTRE" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-          docker pull "ghcr.io/will383842/usine-axion-ia:sha-$court"
-          docker tag "ghcr.io/will383842/usine-axion-ia:sha-$court" "usine-axion-ia:ci-$GITHUB_SHA"
+          docker pull "ghcr.io/will383842/usine-axion-ia-public:sha-$court"
+          docker tag "ghcr.io/will383842/usine-axion-ia-public:sha-$court" "usine-axion-ia:ci-$GITHUB_SHA"
           # La commande envoyée est ignorée par le serveur : la clé n'a droit qu'à sa commande forcée.
           docker save "usine-axion-ia:ci-$GITHUB_SHA" | gzip | ssh -i "$dossier/cle" \
             -o BatchMode=yes -o IdentitiesOnly=yes -o IdentityAgent=none \
