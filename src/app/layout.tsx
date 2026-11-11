@@ -7,7 +7,6 @@ import { requete } from "@/lib/base";
 import "./globals.css";
 
 // Polices du site, rangées dans le dépôt : la construction de l'image ne dépend pas du réseau.
-const policeTitre = localFont({ src: "./polices/fraunces-latin.woff2", variable: "--police-titre", weight: "100 900", display: "swap" });
 const policeTexte = localFont({ src: "./polices/manrope-latin.woff2", variable: "--police-texte", weight: "200 800", display: "swap" });
 
 export const metadata: Metadata = {
@@ -18,7 +17,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#faf8f3",
+  themeColor: "#faf9f5",
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
@@ -39,7 +38,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
   await connection();
   const eteints = await ecransEteints();
   return (
-    <html lang="fr" className={`${policeTitre.variable} ${policeTexte.variable} h-full`}>
+    <html lang="fr" className={`${policeTexte.variable} h-full`}>
       <body className="min-h-full bg-fond text-texte">
         <Gabarit eteints={eteints}>{children}</Gabarit>
       </body>

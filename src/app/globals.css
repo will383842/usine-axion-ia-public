@@ -1,21 +1,21 @@
 @import "tailwindcss";
 
 /*
- * Thème clair de l'Usine : couleurs et polices du site (Fraunces, Manrope ; terracotta #b23f16).
+ * Thème clair de l'Usine : couleurs et police du site (Manrope seule ; terracotta #B23F16).
  * TOUTES les couleurs passent par ces jetons ; la palette Tailwind par défaut est coupée.
  */
 :root {
-  --fond: #faf8f3; /* ivoire */
+  --fond: #faf9f5; /* ivoire */
   --surface: #ffffff;
-  --trait: #e6e0d4;
-  --texte: #1a1815;
-  --texte-doux: #5c554c; /* 7:1 sur ivoire */
+  --trait: #e8e6dc;
+  --texte: #141413;
+  --texte-doux: #5e5d59; /* 6,26:1 sur ivoire */
   --terracotta: #b23f16; /* signature et action principale (5,47:1 avec l'ivoire) */
   --terracotta-fonce: #8c3010;
   --terracotta-doux: #f6e7df;
-  --sur-terracotta: #faf8f3;
-  --mocha: #2a2520;
-  --sur-mocha: #faf8f3;
+  --sur-terracotta: #faf9f5;
+  --mocha: #141413;
+  --sur-mocha: #faf9f5;
   --hauteur-nav: 64px;
   color-scheme: light;
 }
@@ -33,7 +33,7 @@
   --color-sur-terracotta: var(--sur-terracotta);
   --color-mocha: var(--mocha);
   --color-sur-mocha: var(--sur-mocha);
-  --font-titre: var(--police-titre), Georgia, serif;
+  --font-titre: var(--police-texte), system-ui, sans-serif;
   --font-texte: var(--police-texte), system-ui, sans-serif;
   --font-sans: var(--police-texte), system-ui, sans-serif;
 }
