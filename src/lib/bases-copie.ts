@@ -61,7 +61,7 @@ export function ecartsExternes(temoin: TemoinBases, manifeste: Pick<TemoinBases,
 }
 
 /** Le témoin que le script de synchro écrit à partir du dossier source. */
-export function construireTemoin(dossierSource: string, commit: string, source = "axion-plans-prive/usine/bases/pour-la-machine"): TemoinBases {
+export function construireTemoin(dossierSource: string, commit: string, source = "bases-source"): TemoinBases {
   const fichiers = empreintesDuDossier(dossierSource);
   return { version: 1, source, commit, fichiers, empreinte: empreinteDe(fichiers), synchronise_le: new Date().toISOString() };
 }

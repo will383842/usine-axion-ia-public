@@ -4,12 +4,13 @@
  * 1. aucune suppression dans src/ et migrations/ (DELETE, TRUNCATE, DROP, deletePost) : retirer = archiver ;
  * 2. aucun secret ni adresse de vraie personne dans les fichiers suivis (exemples en @example.com seulement) ;
  * 3. aucun mot du lexique interdit (src/lib/lexique.ts) dans un texte d'écran (src/app, src/components, src/cartes) ;
- * 4. règle sortante, lue sur la syntaxe de TOUS les fichiers de code (essais, scripts et cette garde comprise), hors src/passerelles/ : ni fetch ni client réseau, ni Zernio ni Waalaxy (scripts/garde-sortante.mjs).
+ * 4. aucune trace du dépôt privé des plans dans aucun fichier (L7-02) ;
+ * 5. règle sortante, lue sur la syntaxe de TOUS les fichiers de code (essais, scripts et cette garde comprise), hors src/passerelles/ : ni fetch ni client réseau, ni Zernio ni Waalaxy (scripts/garde-sortante.mjs).
  */
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { motsInterditsDans } from "../src/lib/lexique.ts";
-import { fautesSortantes } from "./garde-sortante.mjs";
+import { fautesSortantes, fautesTracesPrivees } from "./garde-sortante.mjs";
 
 const fichiers = execFileSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard"], { encoding: "utf8" })
   .split("\0")
@@ -63,6 +64,7 @@ for (const f of fichiers) {
   } catch {
     continue;
   }
+  fautes.push(...fautesTracesPrivees(f, texte));
   fautes.push(...fautesSortantes(f, texte));
   if (IGNORES.has(f)) continue;
   const lignes = texte.split("\n");

@@ -140,6 +140,18 @@ const nomDeclare = (id) => {
 };
 
 /** Fautes de la règle sortante pour un fichier (chemin relatif à la racine, texte). */
+// Le nom du dépôt privé est assemblé ici : la garde lit aussi son propre fichier.
+const TRACE_PRIVEE = new RegExp(["axion", "plans", "prive"].join("[-_ ]?"), "i");
+
+/** L7-02 · Tout fichier qui nomme le dépôt privé des plans est refusé (aucune exception, ni commentaire ni chaîne). */
+export function fautesTracesPrivees(fichier, texte) {
+  const fautes = [];
+  texte.split("\n").forEach((ligne, i) => {
+    if (TRACE_PRIVEE.test(ligne)) fautes.push(`${fichier}:${i + 1} : trace du dépôt privé (à retirer d'un dépôt public)`);
+  });
+  return fautes;
+}
+
 export function fautesSortantes(fichier, texte) {
   if (!CODE.test(fichier) || fichier.split("/").includes("node_modules")) return [];
   const fautes = [];

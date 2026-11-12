@@ -2,10 +2,10 @@
  * T02 · Import des bases dans PostgreSQL : les 9 fichiers de `bases/` s'importent deux fois de suite sans doublon
  * ni changement ; une ligne disparue passe en `retire` et n'est jamais supprimée ; un fichier refusé n'écrit rien ;
  * `metier.allume` n'est jamais écrit ; lignes de départ de `service` et `compte`.
- * Exige DATABASE_URL (PostgreSQL 16) ; sans elle, ces essais sont sautés (la CI la fournit toujours).
+ * Tourne sur les bases fictives de tests/fixtures-bases/ ; exige DATABASE_URL (PostgreSQL 16).
  */
 import { randomBytes } from "node:crypto";
-import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { TABLES_BASES_IMPORTEES } from "@/contrats";
@@ -15,6 +15,7 @@ import { utiliserPool } from "@/lib/base";
 import { jouerMigrations } from "@/lib/migrations";
 
 const url = process.env.DATABASE_URL;
+const DOSSIER = join(process.cwd(), "tests", "fixtures-bases", "bases");
 const schema = `essai_${randomBytes(4).toString("hex")}`;
 let p: Pool;
 let fichiers: FichierBase[];
@@ -29,8 +30,7 @@ function remplacer(nom: string, avant: string | RegExp, apres: string): FichierB
   return fichiers.map((f) => (f.nom === nom ? { nom, texte: f.texte.replace(avant, apres) } : f));
 }
 
-// Sans le dossier bases/ (absent du dépôt public), ces essais sont sautés.
-describe.skipIf(!url || !existsSync("bases"))("import des bases", () => {
+describe.skipIf(!url)("import des bases", () => {
   beforeAll(async () => {
     const admin = new Pool({ connectionString: url });
     await admin.query(`CREATE SCHEMA ${schema}`);
@@ -38,7 +38,7 @@ describe.skipIf(!url || !existsSync("bases"))("import des bases", () => {
     p = new Pool({ connectionString: url, options: `-c search_path=${schema}` });
     utiliserPool(p);
     await jouerMigrations(p);
-    fichiers = await lireFichiersBases();
+    fichiers = await lireFichiersBases(DOSSIER);
   });
 
   afterAll(async () => {
@@ -58,7 +58,7 @@ describe.skipIf(!url || !existsSync("bases"))("import des bases", () => {
       expect(t.ajoutees, t.table).toBe(t.lues);
       expect(await compter(t.table), t.table).toBe(t.lues);
     }
-    expect(premier.tables.find((t) => t.table === "cas_usage")?.lues).toBe(3072);
+    expect(premier.tables.find((t) => t.table === "cas_usage")?.lues).toBe(8);
     expect(premier.depart).toEqual({ service: 4, compte: 6 });
     expect(duree).toBeLessThan(15_000);
 
@@ -106,7 +106,7 @@ describe.skipIf(!url || !existsSync("bases"))("import des bases", () => {
     const code = ligne.split("|")[1].trim();
     const r = await importerBases(remplacer("9-accroches.md", `${ligne}\n`, ""));
     expect(r.tables.find((t) => t.table === "accroche")).toMatchObject({ retirees: 1, ajoutees: 0, mises_a_jour: 0 });
-    expect(await compter("accroche")).toBe(17);
+    expect(await compter("accroche")).toBe(5);
     expect((await p.query("SELECT etat FROM accroche WHERE code = $1", [code])).rows[0].etat).toBe("retire");
 
     const retour = await importerBases(fichiers);
@@ -120,7 +120,7 @@ describe.skipIf(!url || !existsSync("bases"))("import des bases", () => {
     const r = await importerBases(remplacer("9-accroches.md", `${premiere}\n`, `${premiere}\n${premiere}\n`));
     expect(r.fichiersRefuses.map((f) => f.fichier)).toEqual(["9-accroches.md"]);
     expect(r.tables.some((t) => t.table === "accroche")).toBe(false);
-    expect(await compter("accroche")).toBe(17);
+    expect(await compter("accroche")).toBe(5);
     expect(await compter("accroche", "etat = 'retire'")).toBe(0);
     expect(r.tables.find((t) => t.table === "metier")).toMatchObject({ ajoutees: 0, mises_a_jour: 0, retirees: 0 });
   });

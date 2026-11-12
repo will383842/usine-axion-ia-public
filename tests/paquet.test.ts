@@ -2,7 +2,7 @@
  * T10 · Le paquet à coller : limites ; chaque interdit de la base 8 ; nombre refusé ; mot non branché refusé.
  * Données fictives, sans base.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { lireTables } from "@/import/lecteur";
@@ -10,9 +10,8 @@ import { controler, type ContexteControle, type InterditControle } from "@/lots/
 import { paquet, type FichePaquet, type LignePaquet } from "@/lots/paquet";
 import { finPaquet, type Paquet, type Reseau } from "@/contrats";
 
-// Les bases ne sont pas dans le dépôt public : sans elles, ces essais sont sautés.
-const baseDisponible = existsSync("bases/8-voix-et-interdits.md");
-const table = baseDisponible ? lireTables(readFileSync("bases/8-voix-et-interdits.md", "utf8")).find((t) => t.nom === "interdit")! : { entetes: [] as string[], lignes: [] as { valeurs: (string | null)[] }[] };
+// Les interdits sont ceux des bases fictives de tests/fixtures-bases/ (les vraies bases ne sont pas dans le dépôt public).
+const table = lireTables(readFileSync("tests/fixtures-bases/bases/8-voix-et-interdits.md", "utf8")).find((t) => t.nom === "interdit")!;
 const INTERDITS: InterditControle[] = table.lignes.map((l) => {
   const v = Object.fromEntries(table.entetes.map((e, i) => [e, l.valeurs[i] ?? null]));
   return { code: v.code!, expression: v.expression, remplacement: v.remplacement, raison: v.raison, portee: v.portee };
@@ -60,7 +59,7 @@ const fiche = (autres: Partial<FichePaquet> = {}): FichePaquet => ({
   ...autres,
 });
 
-describe.skipIf(!baseDisponible)("paquet · limites", () => {
+describe("paquet · limites", () => {
   it("aucun paquet ne dépasse une limite, le sujet finit par le repère", () => {
     for (const f of [fiche(), fiche({ cas: null, douleur: null }), fiche({ cas: { titre: "x".repeat(400), accroche: "y".repeat(400) } })]) {
       const p = paquet(ligne, f);
@@ -114,7 +113,7 @@ const EXEMPLES: Record<string, { texte: string; ctx?: Partial<ContexteControle>;
   "interdit.accroche-creuse": { texte: "Savez-vous que vos devis attendent ?" },
 };
 
-describe.skipIf(!baseDisponible)("paquet · interdits de la base 8", () => {
+describe("paquet · interdits de la base 8", () => {
   it("la base 8 a ses interdits, chacun a son exemple", () => {
     expect(INTERDITS.length).toBeGreaterThan(10);
     expect(INTERDITS.map((i) => i.code).sort()).toEqual(Object.keys(EXEMPLES).sort());
@@ -143,7 +142,7 @@ describe.skipIf(!baseDisponible)("paquet · interdits de la base 8", () => {
   });
 });
 
-describe.skipIf(!baseDisponible)("paquet · garanti et garantie", () => {
+describe("paquet · garanti et garantie", () => {
   for (const texte of ["La garantie décennale de vos chantiers", "Relire les garanties du contrat", "La garantie responsabilité civile du cabinet", "La retenue de garantie du chantier"]) {
     it(`« ${texte} » passe (assurance)`, () => {
       expect(controler(avecSujet(texte), contexte()).ok).toBe(true);
@@ -159,7 +158,7 @@ describe.skipIf(!baseDisponible)("paquet · garanti et garantie", () => {
   }
 });
 
-describe.skipIf(!baseDisponible)("paquet · nombres", () => {
+describe("paquet · nombres", () => {
   for (const texte of ["Les 3 relances du lundi", "Gagnez 30 % de temps", "Un devis à 1,5 jour", "Trois relances par jour", "Des centaines de mails", "Zéro oubli", "La moitié du temps", "Un quart d'heure", "Doublez vos réponses", "Triplez-les"]) {
     it(`« ${texte} » est refusé`, () => {
       const r = controler(avecSujet(texte), contexte());
@@ -173,7 +172,7 @@ describe.skipIf(!baseDisponible)("paquet · nombres", () => {
   });
 });
 
-describe.skipIf(!baseDisponible)("paquet · LinkedIn", () => {
+describe("paquet · LinkedIn", () => {
   for (const reseaux of [["linkedin"], ["linkedin", "tiktok"]] as Reseau[][]) {
     it(`une ligne ${JSON.stringify(reseaux)} est refusée`, () => {
       const r = controler(SAIN, contexte({ reseaux }));
@@ -183,14 +182,14 @@ describe.skipIf(!baseDisponible)("paquet · LinkedIn", () => {
   }
 });
 
-describe.skipIf(!baseDisponible)("paquet · public", () => {
+describe("paquet · public", () => {
   it("pas de préfixe Dirigeant devant un directeur, pas de « (cas général) »", () => {
     expect(paquet(ligne, fiche({ metier: { nom: "Directeur financier d'entreprise" } })).public).toMatch(/^Directeur financier/);
     expect(paquet(ligne, fiche({ metier: { nom: "Artisan (cas général)" } })).public).toMatch(/^Dirigeant · Artisan · /);
   });
 });
 
-describe.skipIf(!baseDisponible)("paquet · mot branché", () => {
+describe("paquet · mot branché", () => {
   const auMot: Paquet = { ...SAIN, fin: { type: "commentaire", mot: "GUIDE" } };
   const nonBranche = (reseaux: Reseau[], motsBranches: ContexteControle["motsBranches"]) => controler(auMot, contexte({ reseaux, motsBranches }));
 
@@ -215,7 +214,7 @@ describe.skipIf(!baseDisponible)("paquet · mot branché", () => {
   });
 });
 
-describe.skipIf(!baseDisponible)("paquet · fin comme le studio", () => {
+describe("paquet · fin comme le studio", () => {
   // Recopié de `schemaDemandeScript` (studio-axion-ia, src/domaine/scripts-tableau.ts) : la fin n'est que « commentaire » ou « diagnostic ».
   const finStudio = z.discriminatedUnion("type", [
     z.object({ type: z.literal("commentaire"), mot: z.string().regex(/^[\p{L}\p{N}-]{2,20}$/u) }),

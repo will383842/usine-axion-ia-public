@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "source": "bases-source",
+  "commit": "non-publie",
+  "fichiers": {
+    "1-cibles.md": "111effa56aba1f19cabbd53314c9876e5017f6aaa7c0d22876e76986c8695fe7",
+    "2-tailles.md": "1ef0576cd080838dbf54400256a414a96ed12676ea3055db64dcf0a8581939dc",
+    "3-sujets.md": "bbcf57509e9a610c34075f81b24dfeeddcc189c481807928b976832c8feef970",
+    "4-cas-d-usage.md": "9ba3abc935923f9e7906032760230f34147ce63970381b41ff702738ee3c3f84",
+    "5-formats.md": "7267eaa2a95496ad71ef6bf17040e6f956cc57bfe52c8eba23fa9e2658932893",
+    "6-reseaux.md": "e07de4f54ce4989a5b56c0d77f5d0a000553978ec88b682a0458b34a96b769b8",
+    "7-appels.md": "7c25b2ac0cfd78ab9f7383e960ec2c90ff9db0b29bcec061c23f616ecab52795",
+    "8-voix-et-interdits.md": "1072cff2534a86b17caaa90b53cacda5ced9237fa9313fcbeae6f90d3ae1566b",
+    "9-accroches.md": "229478a53eaef6fe2bd71197f875cac668b634f63c9e01e5194c961fad7b2f3e"
+  },
+  "empreinte": "0437bb287ca94644f26aea3f4e52d05734ccf02015053106d5beee4210f9740e",
+  "synchronise_le": "2026-01-01T00:00:00.000Z"
+}
