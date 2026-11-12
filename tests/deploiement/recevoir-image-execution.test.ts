@@ -42,7 +42,7 @@ function lancer(entree: Buffer, env: Record<string, string> = {}) {
   const r = spawnSync("bash", [SCRIPT], {
     input: entree,
     encoding: "utf8",
-    env: { PATH: `${bin}:${process.env.PATH}`, JOURNAL: journal, HOME: tmp, ...env },
+    env: { PATH: `${bin}:${process.env.PATH}`, JOURNAL: journal, HOME: tmp, ...env } as unknown as NodeJS.ProcessEnv,
   });
   const appels = existsSync(journal) ? readFileSync(journal, "utf8") : "";
   return { rc: r.status, out: r.stdout, err: r.stderr, appels };
