@@ -4,13 +4,13 @@
  * 1. aucune suppression dans src/ et migrations/ (DELETE, TRUNCATE, DROP, deletePost) : retirer = archiver ;
  * 2. aucun secret ni adresse de vraie personne dans les fichiers suivis (exemples en @example.com seulement) ;
  * 3. aucun mot du lexique interdit (src/lib/lexique.ts) dans un texte d'écran (src/app, src/components, src/cartes) ;
- * 4. aucun mot privé (liste lue à l'exécution dans le fichier désigné par INTERDITS_PUBLIC_FICHIER, hors dépôt ; absente en CI = rouge) (L7-02) ;
+ * 4. aucun mot privé (liste lue à l'exécution dans le fichier désigné par INTERDITS_PUBLIC_FICHIER, hors dépôt ; absente = rouge seulement si INTERDITS_PUBLIC_EXIGE=1) (L7-02) ;
  * 5. règle sortante, lue sur la syntaxe de TOUS les fichiers de code (essais, scripts et cette garde comprise), hors src/passerelles/ : ni fetch ni client réseau, ni Zernio ni Waalaxy (scripts/garde-sortante.mjs).
  */
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { motsInterditsDans } from "../src/lib/lexique.ts";
-import { fautesSortantes, fautesTracesPrivees, preparerMotifsPrives } from "./garde-sortante.mjs";
+import { fautesSortantes, fautesTracesPrivees, listeMotsExigee, preparerMotifsPrives } from "./garde-sortante.mjs";
 
 const fichiers = execFileSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard"], { encoding: "utf8" })
   .split("\0")
@@ -56,9 +56,9 @@ function textesEcran(ligne) {
 }
 
 const fautes = [];
-const prives = preparerMotifsPrives(process.env.INTERDITS_PUBLIC_FICHIER, (c) => readFileSync(c, "utf8"), Boolean(process.env.CI));
+const prives = preparerMotifsPrives(process.env.INTERDITS_PUBLIC_FICHIER, (c) => readFileSync(c, "utf8"), listeMotsExigee(process.env));
 fautes.push(...prives.fautes);
-if (prives.note) console.warn(`Garde : ${prives.note}.`);
+if (prives.note) console.warn(`${process.env.CI ? "::warning::" : ""}Garde : ${prives.note}.`);
 for (const f of fichiers) {
   if (BINAIRES.test(f)) continue;
   let texte;

@@ -1,6 +1,6 @@
 /** L7-02 · La garde refuse tout fichier qui contient un mot privé ; les mots viennent d'un fichier fourni à l'exécution, jamais du code. */
 import { describe, expect, it } from "vitest";
-import { fautesTracesPrivees, motifsDepuisTexte, preparerMotifsPrives } from "../scripts/garde-sortante.mjs";
+import { fautesTracesPrivees, listeMotsExigee, motifsDepuisTexte, preparerMotifsPrives } from "../scripts/garde-sortante.mjs";
 
 // Mot FICTIF : le vrai fichier de mots n'est jamais dans le dépôt (ni son contenu, ni une empreinte).
 const LISTE = "# commentaire\n\nmot-fictif[-_ ]?secret\n";
@@ -47,13 +47,13 @@ describe("fichier de mots absent, illisible ou vide", () => {
     expect(r.note).toBeNull();
   });
 
-  it("absent hors CI : aucune faute, mais la garde le dit", () => {
+  it("absent et non exigée : aucune faute, mais la garde le dit", () => {
     const r = preparerMotifsPrives(undefined, lire, false);
     expect(r.fautes).toEqual([]);
     expect(r.note).toMatch(/NON fait/);
   });
 
-  it("absent en CI : rouge", () => {
+  it("absent et exigée : rouge", () => {
     expect(preparerMotifsPrives(undefined, lire, true).fautes).toHaveLength(1);
     expect(preparerMotifsPrives("", lire, true).fautes).toHaveLength(1);
   });
@@ -61,5 +61,19 @@ describe("fichier de mots absent, illisible ou vide", () => {
   it("illisible ou vide : rouge, même hors CI", () => {
     expect(preparerMotifsPrives("/absent", lire, false).fautes).toHaveLength(1);
     expect(preparerMotifsPrives("/vide", lire, false).fautes).toHaveLength(1);
+  });
+});
+
+describe("listeMotsExigee : la CI de main reste verte tant que la liste n'y est pas fournie", () => {
+  it("CI=true seule n'exige pas la liste (sinon la fusion rendrait main rouge)", () => {
+    expect(listeMotsExigee({ CI: "true" })).toBe(false);
+    expect(listeMotsExigee({})).toBe(false);
+  });
+  it("INTERDITS_PUBLIC_EXIGE=1 l'exige : absente, la garde est alors rouge", () => {
+    expect(listeMotsExigee({ CI: "true", INTERDITS_PUBLIC_EXIGE: "1" })).toBe(true);
+    expect(preparerMotifsPrives(undefined, () => "", listeMotsExigee({ INTERDITS_PUBLIC_EXIGE: "1" })).fautes).toHaveLength(1);
+  });
+  it("toute autre valeur ne l'exige pas", () => {
+    for (const v of ["", "0", "oui", "true"]) expect(listeMotsExigee({ INTERDITS_PUBLIC_EXIGE: v })).toBe(false);
   });
 });
