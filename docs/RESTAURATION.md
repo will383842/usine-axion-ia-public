@@ -1,9 +1,9 @@
 # Restaurer la base de l'Usine
 
-La base est sauvegardée chaque nuit à 2 h 30 (heure du serveur) : un fichier `usine-AAAA-MM-JJ.sql.gz.enc`, chiffré, rangé dans `/var/backups/usine` et déposé chez R2 sous `usine/`. Rien n'est jamais supprimé par ces scripts.
+La base est sauvegardée chaque nuit à 2 h 30 UTC, soit 3 h 30 (hiver) ou 4 h 30 (été) à Paris : un fichier `usine-AAAA-MM-JJ.sql.gz.enc`, chiffré, rangé dans `/var/backups/usine` et déposé chez R2 sous `usine/`. Rien n'est jamais supprimé par ces scripts.
 
 ## Si la sauvegarde échoue
-Un e-mail d'alerte part à l'adresse réglée dans `SAUVEGARDE_ALERTE_EMAIL`. Aucune notification sur téléphone. Relancez à la main : `deploiement/sauvegarder.sh`.
+Un e-mail d'alerte part à l'adresse réglée dans `SAUVEGARDE_ALERTE_EMAIL`. Aucune notification sur téléphone. Relancez à la main : `deploiement/sauvegarder.sh`. Si le fichier du jour existe sans le fichier `.envoye` à côté, la relance refait seulement l'envoi chez R2 (pas de second dump). Sans adresse d'alerte, une ligne `ALERTE` reste dans `/var/log/usine-sauvegarde.log`.
 
 ## Restaurer, pas à pas
 1. Récupérez le fichier voulu (dossier local du serveur, ou téléchargement depuis R2).
