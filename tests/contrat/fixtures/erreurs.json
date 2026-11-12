@@ -1,0 +1,6 @@
+{
+  "codes": [
+    "metier_inconnu", "aucun_metier_allume", "signature_incoherente", "format_absent", "sujet_absent",
+    "parts_absentes", "code_inconnu", "corps_trop_grand", "type_invalide", "json_illisible", "demande_invalide"
+  ]
+}
