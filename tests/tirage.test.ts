@@ -382,10 +382,10 @@ describe.skipIf(!url)("tirage · depuis la base", () => {
     await p.query("INSERT INTO secteur (code, nom) VALUES ('essai', 'Essai')");
     for (const [i, s] of SERVICES.entries()) await p.query("INSERT INTO service (code, nom, ordre) VALUES ($1, $1, $2)", [s, i]);
     for (const [code, allume] of [["essai.allume", true], ["essai.eteint", false], ["essai.allume-2", true]] as const) {
-      await p.query("INSERT INTO metier (code, secteur, nom, allume) VALUES ($1, 'essai', $1, $2)", [code, allume]);
+      await p.query("INSERT INTO metier (code, secteur, nom, allume, etat) VALUES ($1, 'essai', $1, $2, 'valide')", [code, allume]);
       for (const s of SERVICES) {
-        await p.query("INSERT INTO douleur (code, cible, services) VALUES ($1, $2, $3)", [`${code}.d${SERVICES.indexOf(s) + 1}`, code, s]);
-        await p.query("INSERT INTO cas_usage (code, cible, service) VALUES ($1, $2, $3)", [`${code}.${s}.c01`, code, s]);
+        await p.query("INSERT INTO douleur (code, cible, services, etat) VALUES ($1, $2, $3, 'valide')", [`${code}.d${SERVICES.indexOf(s) + 1}`, code, s]);
+        await p.query("INSERT INTO cas_usage (code, cible, service, etat) VALUES ($1, $2, $3, 'valide')", [`${code}.${s}.c01`, code, s]);
       }
     }
     for (const t of ["TPE", "PME", "ETI", "GE"]) await p.query("INSERT INTO taille (code, poids, actif) VALUES ($1, '1', 'oui')", [t]);
@@ -411,6 +411,27 @@ describe.skipIf(!url)("tirage · depuis la base", () => {
     expect(lignes.some((l) => l.metier === "essai.eteint")).toBe(false);
     expect(new Set(lignes.map((l) => l.format))).toEqual(new Set(["tableau-anime"]));
     expect(new Set(lignes.flatMap((l) => l.reseaux))).toEqual(new Set(["instagram", "facebook", "youtube-shorts"]));
+  });
+
+  it("un métier, une douleur ou un cas « propose » n'est jamais tiré (seuls les validés le sont)", async () => {
+    const { chargerBases } = await import("@/tirage/charger");
+    // Lignes fictives laissées à l'état par défaut (« propose »), sur un métier allumé et sur un métier validé.
+    await p.query("INSERT INTO metier (code, secteur, nom, allume) VALUES ('essai.propose', 'essai', 'Essai', true)");
+    await p.query("INSERT INTO douleur (code, cible, services) VALUES ('essai.allume.dp', 'essai.allume', 'audit')");
+    await p.query("INSERT INTO cas_usage (code, cible, service) VALUES ('essai.allume.audit.cp', 'essai.allume', 'audit')");
+    await p.query("INSERT INTO douleur (code, cible, services) VALUES ('essai.propose.d1', 'essai.propose', 'audit')");
+    await p.query("INSERT INTO cas_usage (code, cible, service) VALUES ('essai.propose.audit.c01', 'essai.propose', 'audit')");
+    const b = await chargerBases();
+    expect(b.metiers.map((m) => m.code)).not.toContain("essai.propose");
+    expect(b.douleurs.map((d) => d.code)).not.toContain("essai.allume.dp");
+    expect(b.cas.map((c) => c.code)).not.toContain("essai.allume.audit.cp");
+    expect(b.cas.length).toBeGreaterThan(0);
+    // Un métier demandé par la porte du studio reste soumis à la même règle.
+    expect((await chargerBases(["essai.propose", "essai.allume"])).metiers.map((m) => m.code)).toEqual(["essai.allume"]);
+    await p.query("UPDATE interrupteur SET allume = true WHERE code = 'tirage'");
+    const { tirerDepuisLaBase } = await import("@/tirage/charger");
+    const lignes = (await Promise.all([1, 2, 3, 4, 5].map((graine) => tirerDepuisLaBase(10, { graine })))).flatMap((r) => r.lignes);
+    expect(lignes.some((l) => l.metier === "essai.propose" || l.douleur === "essai.allume.dp" || l.cas_usage === "essai.allume.audit.cp")).toBe(false);
   });
 
   it("refuse en base une signature déjà commandée", async () => {

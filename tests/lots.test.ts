@@ -58,10 +58,10 @@ describe.skipIf(!url)("lots · en base", () => {
     await p.query("INSERT INTO secteur (code, nom) VALUES ('essai', 'Essai')");
     for (const [i, s] of SERVICES.entries()) await p.query("INSERT INTO service (code, nom, ordre) VALUES ($1, $1, $2) ON CONFLICT (code) DO NOTHING", [s, i]);
     for (const [code, allume] of [["essai.un", true], ["essai.deux", true], ["essai.eteint", false]] as const) {
-      await p.query("INSERT INTO metier (code, secteur, nom, allume) VALUES ($1, 'essai', $1, $2)", [code, allume]);
+      await p.query("INSERT INTO metier (code, secteur, nom, allume, etat) VALUES ($1, 'essai', $1, $2, 'valide')", [code, allume]);
       for (const s of SERVICES) {
-        await p.query("INSERT INTO douleur (code, cible, services) VALUES ($1, $2, $3)", [`${code}.d${SERVICES.indexOf(s) + 1}`, code, s]);
-        for (const k of [1, 2]) await p.query("INSERT INTO cas_usage (code, cible, service) VALUES ($1, $2, $3)", [`${code}.${s}.c0${k}`, code, s]);
+        await p.query("INSERT INTO douleur (code, cible, services, etat) VALUES ($1, $2, $3, 'valide')", [`${code}.d${SERVICES.indexOf(s) + 1}`, code, s]);
+        for (const k of [1, 2]) await p.query("INSERT INTO cas_usage (code, cible, service, etat) VALUES ($1, $2, $3, 'valide')", [`${code}.${s}.c0${k}`, code, s]);
       }
     }
     for (const t of ["TPE", "PME", "ETI", "GE"]) await p.query("INSERT INTO taille (code, poids, actif) VALUES ($1, '1', 'oui')", [t]);
