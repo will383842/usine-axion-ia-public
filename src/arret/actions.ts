@@ -11,7 +11,7 @@ export async function toutArreter(): Promise<void> {
   revalidatePath("/", "layout");
 }
 
-/** Reprise : seulement sur un geste de Will, notée au journal. */
+/** Reprise : seulement sur un geste du fondateur, notée au journal. */
 export async function reprendreTout(): Promise<void> {
   await exigerSession();
   await reprendre();
