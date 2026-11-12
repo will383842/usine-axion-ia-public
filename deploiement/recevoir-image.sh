@@ -36,7 +36,21 @@ ascii_strict() { # $1 = texte, $2 = nom pour le message
   if LC_ALL=C grep -q '[^ -~]' <<< "$1"; then echec "$2 : caractère non ASCII ou de contrôle refusé"; fi
   if grep -q '\\' <<< "$1"; then echec "$2 : barre oblique inverse refusée"; fi
 }
-manifeste="$(gunzip -c "$archive" | tar -xO manifest.json 2>/dev/null)" || echec "manifest.json absent de l'archive"
+#    docker load extrait l'archive sur disque : si deux membres ont le même chemin, le dernier l'emporte, alors que « tar -xO »
+#    ne rend que le premier. On liste donc l'archive d'abord : ASCII imprimable, aucun chemin absolu ni « .. », aucun chemin
+#    en double une fois « ./ » retiré, et exactement un manifest.json à la racine (lu sous le nom exact de la liste).
+liste="$(gunzip -c "$archive" | tar -t 2>/dev/null)" || echec "archive illisible"
+ascii_strict "$liste" "liste des fichiers de l'archive"
+normalise() { sed -e 's|/\{2,\}|/|g' -e ':a' -e 's|^\./||' -e 'ta'; }
+while IFS= read -r membre; do
+  case "$membre" in /*) echec "chemin absolu dans l'archive" ;; esac
+  case "/$membre/" in */../*) echec "chemin qui remonte (..) dans l'archive" ;; esac
+done <<< "$liste"
+normalises="$(printf '%s\n' "$liste" | normalise | sed -e 's|/$||' | grep -v '^\.\?$' || true)"
+[ -z "$(printf '%s\n' "$normalises" | sort | uniq -d)" ] || echec "chemin en double dans l'archive"
+[ "$(printf '%s\n' "$normalises" | grep -cx 'manifest\.json')" -eq 1 ] || echec "manifest.json absent de l'archive ou en plusieurs exemplaires"
+nom_manifeste="$(printf '%s\n' "$liste" | while IFS= read -r m; do if [ "$(printf '%s\n' "$m" | normalise)" = "manifest.json" ]; then printf '%s\n' "$m"; fi; done)"
+manifeste="$(gunzip -c "$archive" | tar -xO "$nom_manifeste" 2>/dev/null)" || echec "manifest.json illisible"
 ascii_strict "$manifeste" "manifest.json"
 [ "$(printf '%s' "$manifeste" | grep -oi '"repotags"' | grep -c .)" -eq 1 ] || echec "une seule image attendue"
 [ "$(printf '%s' "$manifeste" | grep -o '"RepoTags"' | grep -c .)" -eq 1 ] || echec "clé d'étiquettes écrite autrement que RepoTags"
