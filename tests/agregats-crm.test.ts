@@ -292,7 +292,7 @@ describe("agrégats du CRM · sans base", () => {
   });
 
   it("PASSERELLES de la garde sortante inchangé ; aucune suppression ; le secret n'est lu que par son nom de variable", () => {
-    expect(Object.keys(PASSERELLES).sort()).toEqual(["bases-source", "buffer", "site-lecture", "studio"]);
+    expect(Object.keys(PASSERELLES).sort()).toEqual(["bases-source", "site-lecture", "studio"]);
     expect(JSON.stringify(PASSERELLES)).not.toMatch(/crm/i);
     const fichiers = ["src/agregats", "src/app/api/agregats-crm"].flatMap((d) => readdirSync(d, { recursive: true, withFileTypes: true }).filter((e) => e.isFile()).map((e) => `${e.parentPath}/${e.name}`));
     fichiers.push("migrations/028-agregats-crm.sql", "migrations/030-interrupteur-agregats-recepteur.sql", "migrations/031-agregats-jours-recus.sql", "migrations/032-agregats-reseau-cle.sql");
