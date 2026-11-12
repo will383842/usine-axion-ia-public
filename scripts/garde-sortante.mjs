@@ -37,7 +37,7 @@ const MODULES_OUTILS = new Set([
   "vitest", "vitest/config", "eslint/config", "eslint-config-next/core-web-vitals", "eslint-config-next/typescript", "typescript", "readline",
 ]);
 /** Seuls fichiers qui lancent un processus (git) ; scripts/ecrire-temoin-bases.mjs lit le commit de la source des bases (voir CLAUDE.md). */
-const FICHIERS_PROCESSUS = new Set(["scripts/garde.mjs", "scripts/ecrire-temoin-bases.mjs", "tests/porte.test.ts", "tests/lien-suivi.test.ts", "tests/deploiement/recevoir-image-execution.test.ts"]);
+const FICHIERS_PROCESSUS = new Set(["scripts/garde.mjs", "scripts/ecrire-temoin-bases.mjs", "tests/porte.test.ts", "tests/lien-suivi.test.ts", "tests/deploiement/recevoir-image-execution.test.ts", "tests/sauvegarde.test.ts"]);
 
 // Le mot est assemblé ici : la garde lit aussi son propre fichier.
 const F = ["fe", "tch"].join("");
