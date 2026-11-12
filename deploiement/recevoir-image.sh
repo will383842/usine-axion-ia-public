@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Commande forcée côté serveur : reçoit sur l'entrée standard une image Docker compressée (docker save | gzip),
-# la charge, vérifie son étiquette, la marque « courante » puis relance l'Usine.
+# vérifie son étiquette dans l'archive, la charge, la marque « courante » puis relance l'Usine.
 # La commande envoyée par le client est IGNORÉE : la clé n'a droit qu'à ce script (voir authorized_keys.exemple).
 # Aucun secret ici. Rien n'est supprimé : les anciennes images restent en place.
 set -euo pipefail
@@ -27,17 +27,24 @@ taille="$(wc -c < "$archive")"
 # 2. Archive bien formée avant tout chargement.
 gzip -t "$archive" || echec "archive compressée illisible"
 
-# 3. Chargement, puis contrôle de l'étiquette annoncée : seule usine-axion-ia:ci-<sha complet> est acceptée.
-sortie="$(gunzip -c "$archive" | docker load)"
-etiquette="$(printf '%s\n' "$sortie" | sed -n 's/^Loaded image: //p')"
-[ "$(printf '%s\n' "$etiquette" | grep -c .)" -eq 1 ] || echec "une seule image attendue"
-printf '%s\n' "$etiquette" | grep -Eq '^usine-axion-ia:ci-[0-9a-f]{40}$' || echec "étiquette refusée"
+# 3. Contrôle de l'étiquette AVANT tout chargement : on lit manifest.json de l'archive (rien n'est chargé ni écrit dans docker).
+#    Exactement une image, exactement une étiquette, et seule usine-axion-ia:ci-<sha complet> est acceptée.
+manifeste="$(gunzip -c "$archive" | tar -xO manifest.json 2>/dev/null)" || echec "manifest.json absent de l'archive"
+[ "$(printf '%s' "$manifeste" | grep -o '"RepoTags"' | grep -c .)" -eq 1 ] || echec "une seule image attendue"
+etiquettes="$(printf '%s' "$manifeste" | grep -o '"RepoTags" *: *\[[^]]*\]' | grep -o '"[^"]*"' | tail -n +2 | tr -d '"')"
+[ "$(printf '%s\n' "$etiquettes" | grep -c .)" -eq 1 ] || echec "une seule étiquette attendue"
+printf '%s\n' "$etiquettes" | grep -Eq '^usine-axion-ia:ci-[0-9a-f]{40}$' || echec "étiquette refusée"
+etiquette="$etiquettes"
 
-# 4. Étiquette courante, puis relance (si le script de relance existe).
+# 4. Chargement, puis recoupement : docker doit annoncer la même étiquette que le manifeste.
+sortie="$(gunzip -c "$archive" | docker load)"
+[ "$(printf '%s\n' "$sortie" | sed -n 's/^Loaded image: //p')" = "$etiquette" ] || echec "étiquette chargée différente du manifeste"
+
+# 5. Étiquette courante, puis relance. Sans script de relance la relance n'a PAS eu lieu : sortie 3, jamais « ok ».
 docker tag "$etiquette" "usine-axion-ia:courant"
-if [ -x "$RELANCER" ]; then
-  "$RELANCER" "$etiquette"
-else
-  echo "recevoir-image : image chargée ($etiquette), aucun script de relance à $RELANCER : relance à faire à la main." >&2
+if [ ! -x "$RELANCER" ]; then
+  echo "recevoir-image : image chargée ($etiquette) mais aucun script de relance à $RELANCER : relance NON faite." >&2
+  exit 3
 fi
+"$RELANCER" "$etiquette"
 echo "recevoir-image : ok $etiquette"

@@ -1,6 +1,8 @@
 # Ligne attendue dans ~/.ssh/authorized_keys du compte de déploiement (jamais root) sur le serveur.
 # Copier la ligne, remplacer CLE_PUBLIQUE_A_REMPLACER par la clé PUBLIQUE de déploiement. Aucune clé n'est écrite dans le dépôt.
 # Chemin : adapter /opt/usine/recevoir-image.sh à l'endroit où le script est posé sur le serveur.
+# ATTENTION : le compte de déploiement doit pouvoir lancer docker, donc il appartient au groupe docker, ce qui équivaut à root sur ce serveur.
+#   Cette clé est donc aussi sensible qu'un accès root : la garder en secret du dépôt seulement, la faire tourner à date fixe.
 # La clé ne peut que lancer ce script : pas de terminal, pas de redirection de port, pas d'agent, pas de rc.
 #
 # Rotation de la clé (à faire à date fixe et après tout doute) :
