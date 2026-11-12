@@ -114,11 +114,11 @@ describe.skipIf(!url)("arrêt · Tout arrêter", () => {
     await reprendre();
   });
 
-  it("l'interrupteur ordinaire ne peut pas reprendre : seul le bouton dédié le peut", async () => {
-    const src = readFileSync("src/app/reglages/interrupteurs/actions.ts", "utf8");
-    expect(src).toMatch(/CODE_ARRET/);
+  it("les gestes dédiés existent côté serveur (arrêt et reprise), hors des écrans : la branche ne touche aucun écran", () => {
+    const src = readFileSync("src/arret/actions.ts", "utf8");
     expect(src).toMatch(/export async function toutArreter/);
     expect(src).toMatch(/export async function reprendreTout/);
+    expect(src).toMatch(/exigerSession\(\)/);
   });
 
   it("porte : éteinte sans secret (404), 401 sans en-tête ou faux, sinon l'état sans aucune donnée de personne", async () => {

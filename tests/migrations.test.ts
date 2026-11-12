@@ -92,7 +92,7 @@ describe.skipIf(!url)("migrations", () => {
       const dernierAvant = (await q.query("SELECT jour::text, compte, genere_le FROM agregat_crm_dernier ORDER BY jour, compte")).rows;
       expect(avant).toHaveLength(3);
 
-      expect((await jouerMigrations(q)).jouees[0]).toBe("032-agregats-reseau-cle.sql");
+      expect((await jouerMigrations(q)).jouees).toEqual(["032-agregats-reseau-cle.sql", "034-interrupteur-tout-arreter.sql"]);
 
       // (a) mêmes nombres de lignes dans les nouvelles tables
       expect((await q.query("SELECT count(*)::int AS n FROM agregat_crm")).rows[0].n).toBe(3);
