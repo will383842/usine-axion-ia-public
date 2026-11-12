@@ -5,8 +5,9 @@
 import { PAGES_ARRIVEE } from "./echanges";
 import { RESEAUX } from "./identifiants";
 
-export const NATURES_LIEN = ["message", "profil", "video"] as const;
-export const NATURES_LIEN_RESERVEES = ["post"] as const;
+export const NATURES_LIEN = ["message", "profil", "video", "post"] as const;
+/** ADR 0002 v2 : « post » est ouverte ; plus aucune nature réservée. */
+export const NATURES_LIEN_RESERVEES: readonly string[] = [];
 export const RESEAUX_MESSAGE = ["facebook", "instagram", "linkedin"] as const;
 /** `public.code` sans le préfixe `public.`. */
 export const ACTIVITES_LIEN = ["clients", "apporteurs", "formateurs"] as const;
@@ -39,7 +40,7 @@ export class ErreurLienSuivi extends Error {
 }
 
 export type EntreeLienSuivi = {
-  /** `video` (code de version) · `message` et `profil` (code de mot). */
+  /** `video` et `post` (code de version) · `message` et `profil` (code de mot). */
   typeLien: string;
   reseau: string;
   /** `version.code` tel quel (casse comprise) ou `mot.code`. */
@@ -68,7 +69,7 @@ export function construireLienSuivi(entree: EntreeLienSuivi): string {
   const code = entree.code;
   if (!CARACTERES_PERMIS.test(code)) throw new ErreurLienSuivi("caractere_interdit");
   if (code.length > LONGUEUR_MAX_LIEN) throw new ErreurLienSuivi("trop_long");
-  if (nature === "video") {
+  if (nature === "video" || nature === "post") {
     if (!CODE_VERSION.test(code)) throw new ErreurLienSuivi("code_version_attendu");
   } else if (!CODE_MOT.test(code)) {
     throw new ErreurLienSuivi("code_mot_attendu");

@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ajouterJours, calendrierAllume, lignesDuCalendrier, lundiDe, placerLesNouveaux, rappelDesParts, trousAVenir } from "@/calendrier";
+import { ajouterJours, calendrierAllume, lignesDuCalendrier, lundiDe, rappelDesParts, trousAVenir } from "@/calendrier";
 import { EnTete, EtatVide } from "@/components/gabarit/EnTete";
 import { requete } from "@/lib/base";
 import { LIBELLE_FORMAT, LIBELLE_RESEAU } from "@/reglages/modele";
 import { EcranEteint } from "@/components/gabarit/EcranEteint";
 import { exigerSession } from "@/services/auth";
 import { ChangerJour } from "./ChangerJour";
+import { PlacerNouveaux } from "./PlacerNouveaux";
 
 export const metadata: Metadata = { title: "Mon calendrier" };
 export const dynamic = "force-dynamic";
@@ -21,7 +22,6 @@ export default async function Page() {
   if (!(await calendrierAllume())) {
     return <EcranEteint code="calendrier" />;
   }
-  const { auRepos } = await placerLesNouveaux();
   const [{ j: aujourd }] = await requete<{ j: string }>(`SELECT to_char((now() AT TIME ZONE 'Europe/Paris')::date, 'YYYY-MM-DD') AS j`);
   const [lignes, trous, parts] = await Promise.all([lignesDuCalendrier(aujourd, ajouterJours(aujourd, HORIZON_JOURS)), trousAVenir(aujourd), rappelDesParts(aujourd)]);
   const jours = [...new Set(lignes.map((l) => l.jour))];
@@ -30,15 +30,7 @@ export default async function Page() {
     <section className="flex flex-col gap-6">
       <EnTete titre="Mon calendrier" phrase="Ce qui sort, quel jour, sur quel réseau : vos vidéos commandées, réparties selon vos rythmes. Changez le jour d'une vidéo si besoin." />
 
-      {auRepos.length > 0 ? (
-        <p role="status" className="rounded-xl border border-trait bg-surface p-3">
-          Rythme à zéro pour {auRepos.map((r) => LIBELLE_RESEAU[r]).join(", ")} : ces contenus n&apos;ont pas de date. Réglez le rythme dans{" "}
-          <Link href="/reglages/rythmes" className="font-semibold underline">
-            Réglages › Rythmes
-          </Link>
-          .
-        </p>
-      ) : null}
+      <PlacerNouveaux />
 
       {trous.length > 0 ? (
         <div role="alert" className="flex flex-col gap-2 rounded-xl border border-terracotta bg-surface p-3">

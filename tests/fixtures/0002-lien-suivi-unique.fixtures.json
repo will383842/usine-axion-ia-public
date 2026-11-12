@@ -1,6 +1,6 @@
 {
   "adr": "0002-lien-suivi-unique",
-  "version": 1,
+  "version": 2,
   "regles": {
     "ordre": [
       "utm_source",
@@ -22,9 +22,7 @@
       "profil",
       "video"
     ],
-    "natures_reservees": [
-      "post"
-    ],
+    "natures_reservees": [],
     "activites": [
       "clients",
       "apporteurs",
@@ -44,7 +42,15 @@
     "code_mot": "^mot-[a-z0-9][a-z0-9-]*$",
     "longueur_max": 60,
     "site_utm": "^[A-Za-z0-9][A-Za-z0-9-]{0,59}$",
-    "site_depuis": "^[a-z0-9][a-z0-9-]{0,59}$"
+    "site_depuis": "^[a-z0-9][a-z0-9-]{0,59}$",
+    "natures_permises": [
+      "message",
+      "profil",
+      "video",
+      "post"
+    ],
+    "utm_medium_visuels_et_posts": "post",
+    "code_format_visuel": "VS"
   },
   "construction": {
     "valides": [
@@ -225,6 +231,18 @@
         },
         "attendu": "https://axion-ia.com/fr/appel?utm_source=instagram&utm_medium=video&utm_campaign=0042-TB-IG-R1&utm_content=clients&depuis=video-instagram",
         "note": "republication (suffixe gardé)"
+      },
+      {
+        "id": "R02",
+        "entree": {
+          "type_lien": "post",
+          "reseau": "linkedin",
+          "code": "0042-VS-LI",
+          "activite": "clients",
+          "page": "/fr/appel"
+        },
+        "attendu": "https://axion-ia.com/fr/appel?utm_source=linkedin&utm_medium=post&utm_campaign=0042-VS-LI&utm_content=clients&depuis=post-linkedin",
+        "note": "visuel ou post : nature ouverte par la version 2, code de format VS"
       }
     ],
     "refus": [
@@ -238,18 +256,6 @@
           "page": "/fr/appel"
         },
         "refus": "reseau_inconnu"
-      },
-      {
-        "id": "R02",
-        "entree": {
-          "type_lien": "post",
-          "reseau": "linkedin",
-          "code": "0042-TB-LI",
-          "activite": "clients",
-          "page": "/fr/appel"
-        },
-        "refus": "nature_reservee",
-        "note": "post sans vidéo : réservé"
       },
       {
         "id": "R03",
@@ -387,6 +393,18 @@
         },
         "refus": "code_version_attendu",
         "note": "code de version en minuscules : refusé, pas corrigé"
+      },
+      {
+        "id": "R15",
+        "entree": {
+          "type_lien": "post",
+          "reseau": "linkedin",
+          "code": "mot-guide",
+          "activite": "clients",
+          "page": "/fr/appel"
+        },
+        "refus": "code_version_attendu",
+        "note": "un post porte un code de version, pas un code de mot"
       }
     ]
   },

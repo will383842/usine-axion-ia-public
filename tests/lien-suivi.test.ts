@@ -10,8 +10,8 @@ import { ACTIVITES_LIEN, construireLienSuivi, ErreurLienSuivi, NATURES_LIEN, RES
 
 const CHEMIN = "tests/fixtures/0002-lien-suivi-unique.fixtures.json";
 const brut = readFileSync(CHEMIN);
-/** Empreinte de la copie qui fait foi (copie qui fait foi de l'ADR 0002, fichier de fixtures du lien de suivi). */
-const EMPREINTE = "7e5d9c51391cf00d7529bfcefed0524e785408265d39ba3af360a5eb8a77b506";
+/** Empreinte de la copie qui fait foi (version 2 de l'ADR 0002, identique à celle du Studio). */
+const EMPREINTE = "a47bdee5a1cf3e36da85ac2a31b643fc01feefa035a90b2ec4a92253d5184baa";
 
 type Entree = { type_lien: string; reseau: string; code: string; activite: string; page: string };
 const fixtures = JSON.parse(brut.toString("utf8")) as {
@@ -64,7 +64,7 @@ describe("lien suivi · fixtures de l'ADR 0002", () => {
     for (let i = 0; i < 1000; i++) {
       const typeLien = choisir(NATURES_LIEN);
       const reseau = typeLien === "message" ? choisir(RESEAUX_MESSAGE) : choisir(RESEAUX);
-      const code = typeLien === "video" ? `${String(hasard(10000)).padStart(4, "0")}-TB-IG${hasard(2) ? "-R1" : ""}` : `mot-${choisir(["guide", "audit", "a1"])}`;
+      const code = typeLien === "video" || typeLien === "post" ? `${String(hasard(10000)).padStart(4, "0")}-TB-IG${hasard(2) ? "-R1" : ""}` : `mot-${choisir(["guide", "audit", "a1"])}`;
       entrees.push({ typeLien, reseau, code, activite: choisir(ACTIVITES_LIEN), page: choisir(["/fr/appel", "/fr/guide-ia", "/fr/diagnostic"]) });
     }
     for (const e of entrees) {
@@ -78,7 +78,7 @@ describe("lien suivi · fixtures de l'ADR 0002", () => {
       const p = url.searchParams;
       expect(p.has("depuis")).toBe(url.pathname === "/fr/appel");
       if (p.has("depuis")) expect(p.get("depuis")).toBe(`${p.get("utm_medium")}-${p.get("utm_source")}`);
-      expect(p.get("utm_medium") === "video" ? codeVersion.test(p.get("utm_campaign")!) : codeMot.test(p.get("utm_campaign")!)).toBe(true);
+      expect(p.get("utm_medium") === "video" || p.get("utm_medium") === "post" ? codeVersion.test(p.get("utm_campaign")!) : codeMot.test(p.get("utm_campaign")!)).toBe(true);
       for (const v of p.values()) expect(v).toMatch(/^[A-Za-z0-9-]{1,60}$/);
     }
   });
