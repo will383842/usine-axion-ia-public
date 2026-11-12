@@ -72,9 +72,9 @@ describe("porte · garde", () => {
     }
   });
 
-  it("le proxy laisse passer les trois routes de la porte, et elles seules", () => {
-    for (const p of ["/api/porte/sujets", "/api/porte/sujets/retenir", "/api/porte/metiers"]) expect(estPublic(p)).toBe(true);
-    for (const p of ["/api/porte", "/api/porte/autre", "/api/porte/sujets/autre", "/porte/sujets"]) expect(estPublic(p)).toBe(false);
+  it("le proxy laisse passer les quatre routes de la porte, et elles seules", () => {
+    for (const p of ["/api/porte/sujets", "/api/porte/sujets/retenir", "/api/porte/sujets/retenir-lot", "/api/porte/metiers"]) expect(estPublic(p)).toBe(true);
+    for (const p of ["/api/porte", "/api/porte/autre", "/api/porte/sujets/autre", "/api/porte/sujets/retenir-lot/x", "/api/porte/sujets/retenir-lots", "/porte/sujets"]) expect(estPublic(p)).toBe(false);
   });
 
   it("refuse une demande hors contrat (zod strict) avant la base", async () => {
