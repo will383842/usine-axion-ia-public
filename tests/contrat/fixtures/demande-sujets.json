@@ -1,0 +1,9 @@
+{
+  "n": 5,
+  "type_contenu": "video",
+  "reseaux": ["instagram", "facebook"],
+  "metiers": ["compta.expert-comptable"],
+  "tailles": ["TPE", "PME"],
+  "services": ["audit"],
+  "graine": 42
+}

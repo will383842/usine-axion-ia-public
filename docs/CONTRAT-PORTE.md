@@ -75,3 +75,11 @@ Le studio a retenu un sujet : l'Usine le note « déjà fabriqué » (table `dej
 - `signature` doit être celle des `parts` (sinon `400` `signature_incoherente`) ; il faut un `format` et un cas ou une nouveauté. Parts exigées (sinon `400` `parts_absentes`) : pour un cas d'usage, `metier` et `structure` ; pour une nouveauté, `structure`. `douleur` (cas sans douleur reliée), `taille`, `service` peuvent être `null`, comme `metier`, `douleur` et `cas_usage` pour une nouveauté : les `parts` rendues par `/sujets` sont toujours acceptées telles quelles.
 - `reference_studio` : code de version (`0042-AV-TT`, gardé dans `code_version`) ou tout repère du studio (gardé dans la note).
 - Idempotent : rejouer l'appel rend `{ "signature": "…", "deja": true }` sans rien réécrire ; la première fois, `"deja": false`.
+
+## Fixtures du contrat (v1)
+
+- Jeu figé de JSON fictifs : `tests/contrat/fixtures/` (demande valide et invalide, sujet à retenir, rejeu de `retenir`, secrets courant · périmé · trop court, codes d'erreur). Schémas : `src/contrats/porte.ts`.
+- Empreinte sha256 du jeu : `c30cc5eb5a9707a092183b367c53723ab4fd669be4c0af8c2e147f79865acc89` (fichiers `.json` triés par nom ; pour chacun : nom, saut de ligne, contenu, saut de ligne). Le Studio recopie le jeu et la même empreinte ; si l'une change, l'autre suit.
+- Secret périmé (ancien secret après rotation) : `401`, sans détail. Secret du serveur absent ou de moins de 32 caractères : `404` (porte éteinte).
+- Rejeu de `retenir` : première réponse `deja: false`, rejeu `deja: true`, même signature.
+- Codes d'erreur rendus dans `code` : `CODES_ERREUR_PORTE` (`src/contrats/porte.ts`). Les `401` et `404` n'en portent pas.

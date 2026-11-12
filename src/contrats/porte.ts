@@ -87,6 +87,28 @@ export interface ReponseSujets {
   pourquoi: { metier: string | null; message: string }[];
 }
 
+/** Réponse de `POST /api/porte/sujets/retenir` (schéma : sert aux fixtures de contrat). */
+export const reponseRetenir = z.strictObject({
+  signature: z.string().min(1).max(800),
+  deja: z.boolean(),
+});
+
+/** Codes d'erreur (champ `code`) que la porte peut rendre. Les 401 et 404 n'en portent pas. */
+export const CODES_ERREUR_PORTE = [
+  "metier_inconnu",
+  "aucun_metier_allume",
+  "signature_incoherente",
+  "format_absent",
+  "sujet_absent",
+  "parts_absentes",
+  "code_inconnu",
+  "corps_trop_grand",
+  "type_invalide",
+  "json_illisible",
+  "demande_invalide",
+] as const;
+export type CodeErreurPorte = (typeof CODES_ERREUR_PORTE)[number];
+
 export interface ReponseRetenir {
   signature: string;
   /** Vrai si le sujet était déjà noté (appel répété : rien n'est réécrit). */
