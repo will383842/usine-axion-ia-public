@@ -19,6 +19,7 @@ const FAMILLES = ["scène vécue", "constat partagé", "contre-pied", "énuméra
 const routes = async () => ({
   sujets: (await import("@/app/api/porte/sujets/route")).POST,
   retenir: (await import("@/app/api/porte/sujets/retenir/route")).POST,
+  lot: (await import("@/app/api/porte/sujets/retenir-lot/route")).POST,
   metiers: (await import("@/app/api/porte/metiers/route")).GET,
 });
 
@@ -303,5 +304,106 @@ describe.skipIf(!url)("porte · en base", () => {
     const r = await retenir(post("sujets/retenir", { signature: l!.signature, parts: l!.parts, type_contenu: l!.type_contenu, reference_studio: "0042-AV-TT" }));
     expect(r.status).toBe(200);
     expect(await r.json()).toEqual({ signature: l!.signature, deja: false });
+  });
+
+  it("retenir-lot : 61 sujets retenus, en 4 appels, puis rejoués : rien n'est réécrit", async () => {
+    const lot = (await routes()).lot;
+    const vus = new Map<string, SujetPropose>();
+    for (let g = 0; vus.size < 61 && g < 200; g++) {
+      for (const l of (await proposer({ n: 20, metiers: ["essai.eteint", "essai.un", "essai.deux"], graine: 900 + g })).lignes) vus.set(l.signature, l);
+    }
+    expect(vus.size).toBeGreaterThanOrEqual(61);
+    const sujets = [...vus.values()].slice(0, 61).map((l) => ({ signature: l.signature, parts: l.parts, type_contenu: l.type_contenu, reference_studio: "0042-AV-TT" }));
+    const tranches = [sujets.slice(0, 20), sujets.slice(20, 40), sujets.slice(40, 60), sujets.slice(60)];
+    const avant = Number((await p.query("SELECT count(*) AS n FROM deja_fabrique")).rows[0].n);
+    for (const t of tranches) {
+      const r = await lot(post("sujets/retenir-lot", { sujets: t }));
+      expect(r.status).toBe(200);
+      expect(await r.json()).toEqual({ retenus: t.length, deja: 0, lignes: t.map((x) => ({ signature: x.signature, deja: false })) });
+    }
+    expect(Number((await p.query("SELECT count(*) AS n FROM deja_fabrique")).rows[0].n)).toBe(avant + 61);
+    for (const t of tranches) {
+      const r = await lot(post("sujets/retenir-lot", { sujets: t }));
+      expect(await r.json()).toEqual({ retenus: 0, deja: t.length, lignes: t.map((x) => ({ signature: x.signature, deja: true })) });
+    }
+    expect(Number((await p.query("SELECT count(*) AS n FROM deja_fabrique")).rows[0].n)).toBe(avant + 61);
+    // Un sujet déjà noté seul (retenir) puis dans un lot : compté « déjà ».
+    const { retenir } = await routes();
+    const mixte = (await proposer({ n: 2, metiers: ["essai.eteint"], graine: 4242 })).lignes.map((l) => ({ signature: l.signature, parts: l.parts, type_contenu: l.type_contenu, reference_studio: "0042-AV-TT" }));
+    expect((await retenir(post("sujets/retenir", mixte[0]))).status).toBe(200);
+    const r = await lot(post("sujets/retenir-lot", { sujets: [mixte[0], mixte[1], mixte[1]] }));
+    expect(await r.json()).toMatchObject({ retenus: 1, deja: 2 });
+  });
+
+  it("retenir-lot : un seul sujet incohérent et rien n'est noté ; un code inconnu des bases est refusé", async () => {
+    const { lot } = await routes();
+    const [a, b] = (await proposer({ n: 2, metiers: ["essai.deux"], graine: 777 })).lignes.map((l) => ({ signature: l.signature, parts: l.parts, type_contenu: l.type_contenu, reference_studio: "0042-AV-TT" }));
+    const avant = await ecrits();
+    for (const [mauvais, code] of [
+      [{ ...b, signature: "autre" }, "signature_incoherente"],
+      [{ ...b, parts: { ...b.parts, format: null }, signature: signature({ ...b.parts, format: null }) }, "format_absent"],
+      [{ ...b, parts: { ...b.parts, metier: null }, signature: signature({ ...b.parts, metier: null }) }, "parts_absentes"],
+    ] as const) {
+      const r = await lot(post("sujets/retenir-lot", { sujets: [a, mauvais] }));
+      expect(r.status).toBe(400);
+      expect((await r.json()).code).toBe(code);
+      expect(await ecrits()).toBe(avant);
+    }
+    const inconnu = { ...b, parts: { ...b.parts, cas_usage: "essai.absent.c01" } };
+    const r = await lot(post("sujets/retenir-lot", { sujets: [{ ...inconnu, signature: signature(inconnu.parts) }] }));
+    expect(r.status).toBe(400);
+    expect((await r.json()).code).toBe("code_inconnu");
+  });
+});
+
+describe("porte v1.1 · retenir-lot : garde et forme du corps (sans base)", () => {
+  const sujet = (i: number) => {
+    const parts = { metier: "essai.un", taille: null, service: null, douleur: null, cas_usage: `essai.un.audit.c0${i}`, actualite: null, format: "tableau-anime", structure: "scène vécue" };
+    return { signature: signature(parts), parts, type_contenu: "video", reference_studio: "0042-AV-TT" };
+  };
+
+  it("401 sans bon secret, 404 porte éteinte", async () => {
+    const { lot } = await routes();
+    process.env.USINE_PORTE_SECRET = SECRET;
+    for (const auth of [null, "Bearer faux"]) expect((await lot(post("sujets/retenir-lot", { sujets: [sujet(1)] }, auth))).status).toBe(401);
+    process.env.USINE_PORTE_SECRET = "court";
+    expect((await lot(post("sujets/retenir-lot", { sujets: [sujet(1)] }))).status).toBe(404);
+  });
+
+  it("refuse en 400 un lot vide, de plus de 20 sujets, avec un champ inconnu ou un sujet hors contrat", async () => {
+    process.env.USINE_PORTE_SECRET = SECRET;
+    const { lot } = await routes();
+    const un = sujet(1);
+    for (const corps of [
+      {},
+      { sujets: [] },
+      { sujets: Array.from({ length: 21 }, () => un) },
+      { sujets: [un], autre: true },
+      { sujets: [{ ...un, autre: true }] },
+      { sujets: [{ ...un, reference_studio: "pas valide" }] },
+      { sujets: un },
+    ]) {
+      const r = await lot(post("sujets/retenir-lot", corps));
+      expect(r.status, JSON.stringify(corps).slice(0, 80)).toBe(400);
+      expect((await r.json()).code).toBe("demande_invalide");
+    }
+  });
+
+  it("20 sujets tiennent dans les 16 Ko de la porte ; au-delà, le corps est refusé en 413", async () => {
+    process.env.USINE_PORTE_SECRET = SECRET;
+    const { lot } = await routes();
+    expect(JSON.stringify({ sujets: Array.from({ length: 20 }, () => sujet(1)) }).length).toBeLessThan(16 * 1024);
+    const gros = new Request("http://localhost/api/porte/sujets/retenir-lot", {
+      method: "POST",
+      headers: { authorization: `Bearer ${SECRET}`, "content-type": "application/json", "content-length": String(16 * 1024 + 1) },
+      body: "{}",
+    });
+    expect((await lot(gros)).status).toBe(413);
+  });
+
+  it("le schéma de réponse accepte la réponse rendue", async () => {
+    const { reponseRetenirLot } = await import("@/contrats");
+    expect(reponseRetenirLot.safeParse({ retenus: 1, deja: 1, lignes: [{ signature: "a", deja: false }, { signature: "b", deja: true }] }).success).toBe(true);
+    expect(reponseRetenirLot.safeParse({ retenus: 1, deja: 1, lignes: [{ signature: "a" }] }).success).toBe(false);
   });
 });

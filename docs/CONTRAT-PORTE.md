@@ -76,6 +76,19 @@ Le studio a retenu un sujet : l'Usine le note « déjà fabriqué » (table `dej
 - `reference_studio` : code de version (`0042-AV-TT`, gardé dans `code_version`) ou tout repère du studio (gardé dans la note).
 - Idempotent : rejouer l'appel rend `{ "signature": "…", "deja": true }` sans rien réécrire ; la première fois, `"deja": false`.
 
+## `POST /api/porte/sujets/retenir-lot` (v1.1)
+
+Retenir plusieurs sujets d'un coup. Rétrocompatible : `retenir` et `sujets` ne changent pas, aucun code d'erreur nouveau.
+
+```json
+{ "sujets": [ { "signature": "…", "parts": { "…": "…" }, "type_contenu": "video", "reference_studio": "0042-AV-TT" } ] }
+```
+
+- `sujets` : 1 à 20 éléments (`LOT_MAX_RETENIR`), chacun au format du corps de `retenir`. Le plafond de 16 Ko de la porte s'applique au corps entier ; pour 61 sujets, faire 4 appels (20, 20, 20, 1).
+- Tous les sujets sont contrôlés avant la première écriture (mêmes règles et mêmes codes que `retenir`) : un seul mauvais sujet et rien n'est noté. Un code des parts inconnu des bases (`400` `code_inconnu`) se découvre à l'écriture : les sujets déjà écrits restent notés, rejouer le lot corrigé est sans danger.
+- Réponse : `{ "retenus": 2, "deja": 1, "lignes": [ { "signature": "…", "deja": false } ] }`, une ligne par sujet dans l'ordre reçu. `retenus` : notés à cet appel ; `deja` : déjà notés (rejeu, ou même signature deux fois dans le lot).
+- Idempotent : rejouer un lot rend `retenus: 0` et `deja: n`, sans rien réécrire. Même garde, même secret que les autres routes.
+
 ## Fixtures du contrat (v1)
 
 - Jeu figé de JSON fictifs : `tests/contrat/fixtures/` (demande valide et invalide, sujet à retenir, rejeu de `retenir`, secrets courant · périmé · trop court, codes d'erreur). Schémas : `src/contrats/porte.ts`.

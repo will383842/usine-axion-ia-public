@@ -1,7 +1,7 @@
 /**
  * Porte du studio (CONTRATS-ECHANGE.md § 3, « plus tard, porte du studio, demande D9 ») : le studio demande des
  * sujets à l'Usine et lui dit ceux qu'il a retenus. Échange décrit pour le studio dans docs/CONTRAT-PORTE.md.
- * Les routes : `POST /api/porte/sujets`, `POST /api/porte/sujets/retenir`, `GET /api/porte/metiers`.
+ * Les routes : `POST /api/porte/sujets`, `POST /api/porte/sujets/retenir`, `POST /api/porte/sujets/retenir-lot` (v1.1), `GET /api/porte/metiers`.
  */
 import { z } from "zod";
 import { codeMetier, codeService, codeTaille, reseau, typeContenu, type Reseau, type TypeContenu } from "./identifiants";
@@ -49,6 +49,15 @@ export const retenirSujet = z.strictObject({
   reference_studio: z.string().trim().min(1).max(120).regex(/^[A-Za-z0-9._:-]+$/),
 });
 export type RetenirSujet = z.infer<typeof retenirSujet>;
+
+/** Nombre de sujets au plus par appel de `POST /api/porte/sujets/retenir-lot` (le corps reste sous les 16 Ko de la porte). */
+export const LOT_MAX_RETENIR = 20;
+
+/** Corps de `POST /api/porte/sujets/retenir-lot` : plusieurs sujets à retenir d'un coup (v1.1). */
+export const retenirLot = z.strictObject({
+  sujets: z.array(retenirSujet).min(1).max(LOT_MAX_RETENIR),
+});
+export type RetenirLot = z.infer<typeof retenirLot>;
 
 /** Une fin choisie pour un réseau (`appel` de la base 7). */
 export interface FinSujet {
@@ -113,6 +122,20 @@ export interface ReponseRetenir {
   signature: string;
   /** Vrai si le sujet était déjà noté (appel répété : rien n'est réécrit). */
   deja: boolean;
+}
+
+/** Réponse de `POST /api/porte/sujets/retenir-lot` : une ligne par sujet, dans l'ordre reçu. */
+export const reponseRetenirLot = z.strictObject({
+  retenus: z.number().int().min(0),
+  deja: z.number().int().min(0),
+  lignes: z.array(reponseRetenir),
+});
+export interface ReponseRetenirLot {
+  /** Sujets notés à cet appel. */
+  retenus: number;
+  /** Sujets déjà notés (rejeu, ou même signature deux fois dans le lot) : rien n'est réécrit. */
+  deja: number;
+  lignes: ReponseRetenir[];
 }
 
 /** Une ligne de `GET /api/porte/metiers`. */

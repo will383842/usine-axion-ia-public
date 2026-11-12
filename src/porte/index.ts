@@ -3,6 +3,7 @@
  * - `proposerSujets()` : tire comme un lot (bases, réglages, historique de src/tirage/charger.ts), restreint au type
  *   de contenu, aux réseaux et aux filtres demandés ; des métiers demandés sont tirés même non allumés. N'écrit rien.
  * - `retenirSujet()` : note le sujet « déjà fabriqué » (table `deja_fabrique`), pour qu'il ne revienne jamais ; idempotent.
+ * - `retenirLot()` : plusieurs sujets d'un coup (20 au plus), contrôlés avant toute écriture, même effet que `retenirSujet`.
  * - `listerMetiers()` : le filtre des métiers du studio.
  * La porte ne lit pas les interrupteurs `tirage` ni `lots` : son interrupteur est le secret (src/porte/acces.ts).
  */
@@ -13,7 +14,9 @@ import {
   type FinSujet,
   type MetierPorte,
   type ReponseRetenir,
+  type ReponseRetenirLot,
   type ReponseSujets,
+  type RetenirLot,
   type RetenirSujet,
   type SujetPropose,
 } from "@/contrats";
@@ -144,6 +147,12 @@ async function lisibles(lignes: ReturnType<typeof tirer>["lignes"], bases: Bases
 
 /** Note un sujet retenu au studio comme déjà fabriqué : il ne sera plus jamais proposé. Rejouer l'appel ne change rien. */
 export async function retenirSujet(s: RetenirSujet): Promise<ReponseRetenir> {
+  verifierSujet(s);
+  return ecrireSujet(s);
+}
+
+/** Contrôles de forme d'un sujet à retenir : rien n'est écrit. */
+function verifierSujet(s: RetenirSujet): void {
   const sig = signature(s.parts);
   if (sig !== s.signature) throw new ErreurPorte(400, "signature_incoherente", "La signature ne correspond pas à ses parts.");
   if (!s.parts.format) throw new ErreurPorte(400, "format_absent", "Le format est requis.");
@@ -154,6 +163,11 @@ export async function retenirSujet(s: RetenirSujet): Promise<ReponseRetenir> {
   const requises = p.cas_usage ? (["metier", "structure"] as const) : (["structure"] as const);
   const manquantes = requises.filter((c) => !p[c]);
   if (manquantes.length) throw new ErreurPorte(400, "parts_absentes", `Ces parts sont requises : ${manquantes.join(", ")}.`);
+}
+
+async function ecrireSujet(s: RetenirSujet): Promise<ReponseRetenir> {
+  const p = s.parts;
+  const sig = signature(p);
   try {
     const ecrites = await requete<{ id: string }>(
       `INSERT INTO deja_fabrique (type_contenu, metier, taille, service, douleur, cas_usage, actualite, format, structure, signature, code_version, note)
@@ -171,6 +185,18 @@ export async function retenirSujet(s: RetenirSujet): Promise<ReponseRetenir> {
     if ((e as { code?: string }).code === "23503") throw new ErreurPorte(400, "code_inconnu", "Un code des parts n'existe pas dans les bases.");
     throw e;
   }
+}
+
+/**
+ * Retient plusieurs sujets d'un coup (v1.1). Tous les sujets sont contrôlés avant la première écriture : un seul mauvais
+ * et rien n'est noté. Puis chacun est noté comme `retenirSujet` (idempotent) : rejouer le lot rend `deja: true` partout.
+ */
+export async function retenirLot(l: RetenirLot): Promise<ReponseRetenirLot> {
+  l.sujets.forEach(verifierSujet);
+  const lignes: ReponseRetenir[] = [];
+  for (const s of l.sujets) lignes.push(await ecrireSujet(s));
+  const deja = lignes.filter((x) => x.deja).length;
+  return { retenus: lignes.length - deja, deja, lignes };
 }
 
 export async function listerMetiers(): Promise<MetierPorte[]> {
