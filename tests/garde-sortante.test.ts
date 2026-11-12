@@ -1,6 +1,6 @@
 /** L0-09 · La garde sortante lit la syntaxe (compilateur TypeScript) et échoue fermé : tout accès réseau hors de src/passerelles/ est refusé. */
-import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { readdirSync, readFileSync } from "node:fs";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { fautesSortantes } from "../scripts/garde-sortante.mjs";
 
 const refuse = (f: string, t: string) => expect(fautesSortantes(f, t).length, `${f}\n${t}`).toBeGreaterThan(0);
@@ -182,5 +182,86 @@ describe("garde des bases : passerelle déclarée et exceptions nommées", () =>
     for (const f of ["scripts/ecrire-temoin-bases.mjs", "scripts/garde-bases-externe.mjs", "tests/bases-copie.test.ts", "src/passerelles/bases-source.ts"]) {
       laisse(f, readFileSync(f, "utf8"));
     }
+  });
+});
+
+// L7-23 · passerelle vers le Studio : éteinte par défaut, seul hôte joignable, n'écrit jamais les états de publication.
+const etatInterrupteur = { allume: false };
+vi.mock("@/donnees", () => ({ interrupteurAllume: async () => etatInterrupteur.allume }));
+
+describe("passerelle Studio (L7-23)", () => {
+  const SECRET = "x".repeat(40);
+  const reponse = () => new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "content-type": "application/json" } });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+    etatInterrupteur.allume = false;
+  });
+  const fauxFetch = () => {
+    const faux = vi.fn(async () => reponse());
+    vi.stubGlobal(F, faux);
+    return faux;
+  };
+
+  it("éteinte par défaut : sans interrupteur ni secret, aucun appel", async () => {
+    const { appelerStudio } = await import("@/passerelles/studio");
+    const faux = fauxFetch();
+    vi.stubEnv("STUDIO_PORTE_SECRET", "");
+    expect(await appelerStudio("porte/sujets", {})).toEqual({ envoye: false });
+    etatInterrupteur.allume = true; // interrupteur allumé, secret absent
+    expect(await appelerStudio("porte/sujets", {})).toEqual({ envoye: false });
+    vi.stubEnv("STUDIO_PORTE_SECRET", "trop-court");
+    expect(await appelerStudio("porte/sujets", {})).toEqual({ envoye: false });
+    etatInterrupteur.allume = false; // secret présent, interrupteur éteint
+    vi.stubEnv("STUDIO_PORTE_SECRET", SECRET);
+    expect(await appelerStudio("porte/sujets", {})).toEqual({ envoye: false });
+    expect(faux).not.toHaveBeenCalled();
+  });
+
+  it("allumée : un seul hôte, le Studio, secret sortant en Bearer, redirections refusées", async () => {
+    const { appelerStudio, HOTE } = await import("@/passerelles/studio");
+    const faux = fauxFetch();
+    etatInterrupteur.allume = true;
+    vi.stubEnv("STUDIO_PORTE_SECRET", SECRET);
+    vi.stubEnv("USINE_PORTE_SECRET", "y".repeat(40));
+    const r = await appelerStudio("porte/sujets", { a: 1 });
+    expect(r).toMatchObject({ envoye: true, statut: 200 });
+    expect(faux).toHaveBeenCalledTimes(1);
+    const [url, options] = faux.mock.calls[0] as unknown as [string, RequestInit & { headers: Record<string, string> }];
+    expect(HOTE).toBe("https://studio.axion-ia.com");
+    expect(new URL(url).host).toBe("studio.axion-ia.com");
+    expect(options.redirect).toBe("error");
+    expect(options.headers.authorization).toBe(`Bearer ${SECRET}`);
+    expect(JSON.stringify(options)).not.toContain("y".repeat(40));
+  });
+
+  it("refuse un chemin qui sortirait du Studio", async () => {
+    const { appelerStudio } = await import("@/passerelles/studio");
+    const faux = fauxFetch();
+    etatInterrupteur.allume = true;
+    vi.stubEnv("STUDIO_PORTE_SECRET", SECRET);
+    for (const mauvais of ["//autre.example.com/x", "../x", "a/../b", "https://autre.example.com", "a?b", "a#b", "", "/porte"]) {
+      await expect(appelerStudio(mauvais, {})).rejects.toThrow();
+    }
+    expect(faux).not.toHaveBeenCalled();
+  });
+
+  it("le client n'écrit jamais les états programmee, publiee ni echec", async () => {
+    const source = readFileSync("src/passerelles/studio.ts", "utf8");
+    for (const etat of ["programmee", "publiee", "echec"]) expect(source).not.toContain(etat);
+  });
+
+  it("l'entrée « buffer » est retirée de PASSERELLES ; rien de Zernio ni Waalaxy dans src/passerelles/", async () => {
+    const { PASSERELLES } = await import("../scripts/garde-sortante.mjs");
+    expect(Object.keys(PASSERELLES)).not.toContain("buffer");
+    for (const f of readdirSync("src/passerelles")) {
+      const texte = readFileSync(`src/passerelles/${f}`, "utf8").toLowerCase();
+      expect(texte, f).not.toContain(ZERNIO);
+      expect(texte, f).not.toContain(WAALAXY);
+    }
+  });
+
+  it("le secret sortant est déclaré, vide, dans .env.exemple", () => {
+    expect(readFileSync(".env.exemple", "utf8")).toMatch(/^STUDIO_PORTE_SECRET=$/m);
   });
 });

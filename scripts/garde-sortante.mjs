@@ -20,7 +20,6 @@ export const PASSERELLES = {
   studio: ["studio.axion-ia.com"],
   "site-lecture": ["axion-ia.com", "www.axion-ia.com"],
   "bases-source": ["api.github.com"], // lecture seule du manifeste des bases (garde externe, redirections refusées)
-  buffer: [], // hôte à déclarer avec la tâche qui écrit la passerelle
 };
 
 /** Liste fermée des modules importables partout (hors chemins relatifs et alias `@/`). Un client HTTP n'y est pas : l'y mettre est une décision à relire. */
