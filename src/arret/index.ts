@@ -1,6 +1,6 @@
 /**
  * U-ARRET · « Tout arrêter ». L'état est l'interrupteur `arret.tout` (allumé = arrêté), lu en base à chaque appel :
- * un redémarrage du serveur ne relance rien, seule la reprise (geste de Will, notée au journal) l'éteint.
+ * un redémarrage du serveur ne relance rien, seule la reprise (geste du fondateur, notée au journal) l'éteint.
  * Lecture impossible = arrêté : dans le doute rien ne part. L'arrêt n'efface aucune donnée.
  * Tout envoi, appel sortant ou commande automatique passe par `sousArret`.
  */
@@ -43,10 +43,10 @@ async function poser(allume: boolean): Promise<void> {
   const ligne = await depots.interrupteur.lire(CODE_ARRET);
   if (!ligne || ligne.archive_le || ligne.allume === allume) return;
   await depots.interrupteur.modifier(CODE_ARRET, { allume });
-  await journaliser("arret", allume ? "Tout arrêter : tout est arrêté." : "Reprise : geste de Will.", { cible: CODE_ARRET });
+  await journaliser("arret", allume ? "Tout arrêter : tout est arrêté." : "Reprise : geste du fondateur.", { cible: CODE_ARRET });
 }
 
 /** Arrête tout. Déjà arrêté : rien de plus. */
 export const arreter = () => poser(true);
-/** Reprise, sur geste de Will seulement (appelée par l'action du bouton, après exigerSession). */
+/** Reprise, sur geste du fondateur seulement (appelée par l'action du bouton, après exigerSession). */
 export const reprendre = () => poser(false);
