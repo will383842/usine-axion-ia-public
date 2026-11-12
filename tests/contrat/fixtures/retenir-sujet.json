@@ -1,0 +1,15 @@
+{
+  "signature": "compta.expert-comptable|pme|audit|compta.expert-comptable.d2|compta.expert-comptable.audit.c01|tableau-anime|scène vécue",
+  "parts": {
+    "metier": "compta.expert-comptable",
+    "taille": "PME",
+    "service": "audit",
+    "douleur": "compta.expert-comptable.d2",
+    "cas_usage": "compta.expert-comptable.audit.c01",
+    "actualite": null,
+    "format": "tableau-anime",
+    "structure": "scène vécue"
+  },
+  "type_contenu": "video",
+  "reference_studio": "0042-AV-TT"
+}

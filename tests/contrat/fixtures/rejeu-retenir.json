@@ -1,0 +1,6 @@
+{
+  "appels": [
+    { "signature": "compta.expert-comptable|pme|audit|compta.expert-comptable.d2|compta.expert-comptable.audit.c01|tableau-anime|scène vécue", "deja": false },
+    { "signature": "compta.expert-comptable|pme|audit|compta.expert-comptable.d2|compta.expert-comptable.audit.c01|tableau-anime|scène vécue", "deja": true }
+  ]
+}
