@@ -10,7 +10,7 @@ import { ACTIVITES_LIEN, construireLienSuivi, ErreurLienSuivi, NATURES_LIEN, RES
 
 const CHEMIN = "tests/fixtures/0002-lien-suivi-unique.fixtures.json";
 const brut = readFileSync(CHEMIN);
-/** Empreinte de la copie qui fait foi (axion-plans-prive/usine/docs/adr/0002-lien-suivi-unique.fixtures.json). */
+/** Empreinte de la copie qui fait foi (copie qui fait foi de l'ADR 0002, fichier de fixtures du lien de suivi). */
 const EMPREINTE = "7e5d9c51391cf00d7529bfcefed0524e785408265d39ba3af360a5eb8a77b506";
 
 type Entree = { type_lien: string; reseau: string; code: string; activite: string; page: string };

@@ -139,6 +139,52 @@ const nomDeclare = (id) => {
   );
 };
 
+/** L7-02 · Mots privés : jamais dans le code. Ils sont lus à l'exécution dans un fichier fourni hors dépôt (une expression par ligne, « # » = commentaire). */
+export function motifsDepuisTexte(texte) {
+  const motifs = [];
+  const fautes = [];
+  texte.split("\n").forEach((ligne, i) => {
+    const l = ligne.trim();
+    if (!l || l.startsWith("#")) return;
+    try {
+      motifs.push(new RegExp(l, "i"));
+    } catch {
+      fautes.push(`liste des mots privés, ligne ${i + 1} : expression illisible`);
+    }
+  });
+  return { motifs, fautes };
+}
+
+/**
+ * Prépare le contrôle : `chemin` = valeur de la variable d'environnement qui désigne le fichier, `lire` = lecteur de fichier,
+ * `enCI` = vrai en intégration continue. Sans fichier : hors CI on le dit et on continue, en CI c'est une faute (jamais vert par défaut).
+ */
+export function preparerMotifsPrives(chemin, lire, enCI) {
+  if (!chemin) {
+    return enCI
+      ? { motifs: [], fautes: ["liste des mots privés non fournie en CI (variable d'environnement vide) : contrôle impossible, rouge"], note: null }
+      : { motifs: [], fautes: [], note: "contrôle des mots privés NON fait : aucun fichier de mots fourni (variable d'environnement vide)" };
+  }
+  let texte;
+  try {
+    texte = lire(chemin);
+  } catch {
+    return { motifs: [], fautes: ["liste des mots privés illisible : contrôle impossible, rouge"], note: null };
+  }
+  const { motifs, fautes } = motifsDepuisTexte(texte);
+  if (motifs.length === 0 && fautes.length === 0) fautes.push("liste des mots privés vide : contrôle impossible, rouge");
+  return { motifs, fautes, note: null };
+}
+
+/** Tout fichier qui contient un mot privé est refusé (aucune exception, ni commentaire ni chaîne). Le mot n'est jamais répété dans le message. */
+export function fautesTracesPrivees(fichier, texte, motifs) {
+  const fautes = [];
+  texte.split("\n").forEach((ligne, i) => {
+    if (motifs.some((m) => m.test(ligne))) fautes.push(`${fichier}:${i + 1} : mot privé (à retirer d'un dépôt public)`);
+  });
+  return fautes;
+}
+
 /** Fautes de la règle sortante pour un fichier (chemin relatif à la racine, texte). */
 export function fautesSortantes(fichier, texte) {
   if (!CODE.test(fichier) || fichier.split("/").includes("node_modules")) return [];

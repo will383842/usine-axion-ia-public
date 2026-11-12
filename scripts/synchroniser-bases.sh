@@ -1,17 +1,16 @@
 #!/usr/bin/env bash
-# Copie les bases qui font foi (axion-plans-prive/usine/bases/pour-la-machine/) dans bases/ et dit ce qui a changé.
+# Copie les bases qui font foi (dossier source donné en argument ou par BASES_SOURCE) dans bases/ et dit ce qui a changé.
 # bases/ ne se modifie jamais à la main : on corrige la copie qui fait foi, puis on relance ce script.
-# Usage : scripts/synchroniser-bases.sh [dossier source]
-# (par défaut ../axion-plans-prive/usine/bases/pour-la-machine, à côté de ce dépôt). Rien n'est retiré de bases/.
+# Usage : scripts/synchroniser-bases.sh <dossier source>   (ou BASES_SOURCE=<dossier source>). Rien n'est retiré de bases/.
 set -euo pipefail
 
 racine="$(cd "$(dirname "$0")/.." && pwd)"
-source_dir="${1:-$racine/../axion-plans-prive/usine/bases/pour-la-machine}"
+source_dir="${1:-${BASES_SOURCE:-}}"
 cible="$racine/bases"
 
-if [ ! -d "$source_dir" ]; then
-  echo "Copie qui fait foi introuvable : $source_dir" >&2
-  echo "Clonez will383842/axion-plans-prive à côté de ce dépôt, ou donnez le dossier en argument." >&2
+if [ -z "$source_dir" ] || [ ! -d "$source_dir" ]; then
+  echo "Copie qui fait foi introuvable : « $source_dir »" >&2
+  echo "Donnez le dossier des bases en argument, ou dans BASES_SOURCE." >&2
   exit 1
 fi
 

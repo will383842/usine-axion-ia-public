@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "source": "bases-source",
+  "commit": "non-publie",
+  "fichiers": {
+    "1-cibles.md": "e8824c4f583afd099e04ce0423abd9a7e45f7802ede44378af368a714c1f6940",
+    "2-tailles.md": "79322236fe25f19345843953dff1aace677f12e240ca7fd083649297dd53cce5",
+    "9-accroches.md": "c6887c6e5a16338b4ca1d020513afdbcd703c666596f10746935b23e25c8ced5"
+  },
+  "empreinte": "c5cf530c7de2e3441d4ca56ce3497bc0940d6b0bd4916e7c4c51e0b7b3efde73",
+  "synchronise_le": "2026-01-01T00:00:00.000Z"
+}
