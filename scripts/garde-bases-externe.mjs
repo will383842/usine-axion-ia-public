@@ -11,6 +11,7 @@ import { lireManifesteSource } from "../src/passerelles/bases-source.ts";
 const temoin = JSON.parse(readFileSync(new URL("../bases.source.json", import.meta.url), "utf8"));
 const jeton = process.env.PLANS_PRIVE_LECTURE;
 const depot = process.env.PLANS_PRIVE_DEPOT;
+const chemin = process.env.PLANS_PRIVE_MANIFESTE;
 
 if (!jeton) {
   if (process.argv.includes("--pr-sans-secret")) {
@@ -26,9 +27,14 @@ if (!depot) {
   process.exit(1);
 }
 
+if (!chemin) {
+  console.error("Garde externe des bases : PLANS_PRIVE_MANIFESTE absent (chemin du manifeste dans le dépôt source). Rouge.");
+  process.exit(1);
+}
+
 let manifeste;
 try {
-  manifeste = await lireManifesteSource(jeton, depot);
+  manifeste = await lireManifesteSource(jeton, depot, chemin);
 } catch (e) {
   console.error(`Garde externe des bases : manifeste de la source illisible (${e instanceof Error ? e.message : e}). Rouge.`);
   process.exit(1);
