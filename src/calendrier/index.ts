@@ -109,6 +109,7 @@ export async function changerLeJour(id: string, jour: string): Promise<void> {
   if (!(await calendrierAllume())) throw new ErreurCalendrier("L'écran Calendrier est éteint : allumez-le dans Réglages › Interrupteurs.");
   if (!/^\d+$/.test(id)) throw new ErreurCalendrier("Ligne introuvable.");
   if (!jourValide(jour)) throw new ErreurCalendrier("Choisissez une date valide.");
+  if (jour < (await aujourdhui())) throw new ErreurCalendrier("Ce jour est déjà passé : choisissez aujourd'hui ou un jour à venir.");
   const lignes = await requete(
     `UPDATE calendrier_ligne SET prevue_le = ${SQL_INSTANT}, modifie_le = now() WHERE id = $2 AND archive_le IS NULL RETURNING id`,
     [jour, id],
