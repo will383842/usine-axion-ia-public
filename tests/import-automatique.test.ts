@@ -1,25 +1,31 @@
 /**
  * T24 · Les bases se chargent seules au démarrage : base vide → importée ; fichiers inchangés → pas de second
  * import ; `metier.allume` intact quand les fichiers changent.
- * Exige DATABASE_URL (PostgreSQL 16) ; sans elle, ces essais sont sautés (la CI la fournit toujours).
+ * Tourne sur les bases fictives de tests/fixtures-bases/ ; exige DATABASE_URL (PostgreSQL 16).
  */
 import { randomBytes } from "node:crypto";
-import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { Pool } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { importerSiBesoin } from "@/import/automatique";
 import { lireFichiersBases } from "@/import/importer";
 import { utiliserPool } from "@/lib/base";
 import { demarrer } from "@/lib/demarrage";
 
 const url = process.env.DATABASE_URL;
+const DOSSIER = join(process.cwd(), "tests", "fixtures-bases", "bases");
+
+// Le démarrage lit `bases/` sous le dossier courant : il lit ici les bases fictives.
+vi.mock("@/import/importer", async (original) => {
+  const reel = await original<typeof import("@/import/importer")>();
+  return { ...reel, lireFichiersBases: (dossier?: string) => reel.lireFichiersBases(dossier ?? join(process.cwd(), "tests", "fixtures-bases", "bases")) };
+});
 const schema = `essai_${randomBytes(4).toString("hex")}`;
 let p: Pool;
 
 const importsReussis = async () => (await p.query("SELECT count(*)::int AS n FROM journal WHERE sujet = 'import' AND cible = 'bases'")).rows[0].n;
 
-// Sans le dossier bases/ (absent du dépôt public), ces essais sont sautés.
-describe.skipIf(!url || !existsSync("bases"))("chargement automatique des bases", () => {
+describe.skipIf(!url)("chargement automatique des bases", () => {
   beforeAll(async () => {
     const admin = new Pool({ connectionString: url });
     await admin.query(`CREATE SCHEMA ${schema}`);
@@ -48,7 +54,7 @@ describe.skipIf(!url || !existsSync("bases"))("chargement automatique des bases"
   it("fichiers changés : nouvel import, metier.allume intact", async () => {
     const code = "compta.expert-comptable";
     await p.query("UPDATE metier SET allume = true WHERE code = $1", [code]);
-    const fichiers = (await lireFichiersBases()).map((f) =>
+    const fichiers = (await lireFichiersBases(DOSSIER)).map((f) =>
       f.nom === "1-cibles.md" ? { ...f, texte: f.texte.replace(/\| compta\.expert-comptable \| ([^|]*)\|/, "| compta.expert-comptable | $1 revu |") } : f,
     );
     expect(await importerSiBesoin(fichiers)).toBe("importees");
