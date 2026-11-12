@@ -1,8 +1,9 @@
 /** L7-04 · Sauvegarde nocturne : le script n'envoie qu'un dépôt (PUT), ne supprime rien, alerte en cas d'échec ; la signature est vérifiée sans réseau. */
 import { createHash, createHmac } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { configurationCurl, signerDepot } from "../deploiement/copier-r2.mjs";
 
 const lire = (f: string) => readFileSync(join(__dirname, "..", f), "utf8");
@@ -90,5 +91,111 @@ describe("scripts de sauvegarde (lecture du texte : aucun exécutable lancé)", 
     const l = lire("deploiement/crontab").split("\n").filter((x) => x.trim() && !x.startsWith("#") && !/^[A-Z_]+=/.test(x));
     expect(l).toHaveLength(1);
     expect(l[0]).toMatch(/^\d+ [0-3]? ?\* \* \* \S+ \S*deploiement\/sauvegarder\.sh/);
+  });
+});
+
+describe("sauvegarder.sh LANCÉ avec faux docker, faux curl, faux mail (aucun réseau)", () => {
+  let tmp: string;
+  const jour = new Date().toISOString().slice(0, 10);
+  const lireJournal = (n: string) => (existsSync(join(tmp, n)) ? readFileSync(join(tmp, n), "utf8") : "");
+  const fichier = () => join(tmp, "sortie", `usine-${jour}.sql.gz.enc`);
+
+  beforeEach(() => {
+    tmp = mkdtempSync("/tmp/l704-");
+    const bin = join(tmp, "bin");
+    mkdirSync(bin);
+    const faux = (nom: string, corps: string) => {
+      writeFileSync(join(bin, nom), `#!/bin/sh\n${corps}\n`);
+      chmodSync(join(bin, nom), 0o755);
+    };
+    faux("docker", 'echo "$@" >> "$TMP_FAUX/docker.log"\n[ -n "$FAUX_DOCKER_ECHEC" ] && exit 1\necho "-- dump fictif"');
+    faux("curl", 'echo "$@" >> "$TMP_FAUX/curl.log"\ncat >> "$TMP_FAUX/curl.config"\nexit "${FAUX_CURL_RC:-0}"');
+    faux("mail", 'echo "$@" >> "$TMP_FAUX/mail.log"\ncat >> "$TMP_FAUX/mail.log"');
+    writeFileSync(join(tmp, "cle"), "cle fictive de test\n");
+  });
+  afterEach(() => rmSync(tmp, { recursive: true, force: true }));
+
+  function lancer(env: Record<string, string> = {}) {
+    const r = spawnSync("bash", [join(process.cwd(), "deploiement", "sauvegarder.sh")], {
+      encoding: "utf8",
+      env: {
+        PATH: `${join(tmp, "bin")}:${process.env.PATH}`,
+        TMP_FAUX: tmp,
+        SAUVEGARDE_ENV: join(tmp, "absent.env"),
+        SAUVEGARDE_DOSSIER: join(tmp, "sortie"),
+        SAUVEGARDE_CLE_FICHIER: join(tmp, "cle"),
+        SAUVEGARDE_ALERTE_EMAIL: "alerte@example.com",
+        R2_COMPTE: "compte-fictif", R2_BUCKET: "bucket-fictif", R2_ID_ACCES: "ID_FICTIF", R2_SECRET: "SECRET_FICTIF",
+        ...env,
+      },
+    });
+    return { rc: r.status, out: r.stdout, err: r.stderr };
+  }
+
+  it("dump réussi : fichier chiffré envoyé par un seul PUT, marque d'envoi posée, aucune alerte", () => {
+    const r = lancer();
+    expect(r.rc).toBe(0);
+    expect(lireJournal("docker.log")).toContain("pg_dump");
+    expect(lireJournal("curl.config")).toMatch(/request = "PUT"/);
+    expect(lireJournal("curl.config")).not.toMatch(/DELETE/i);
+    expect(lireJournal("curl.config")).not.toContain("SECRET_FICTIF");
+    expect(existsSync(`${fichier()}.envoye`)).toBe(true);
+    expect(lireJournal("mail.log")).toBe("");
+  });
+
+  it("déjà envoyée : rien à faire, ni dump ni envoi", () => {
+    expect(lancer().rc).toBe(0);
+    const r = lancer();
+    expect(r.rc).toBe(0);
+    expect(lireJournal("docker.log").match(/pg_dump/g)).toHaveLength(1);
+    expect(lireJournal("curl.log").match(/-K/g)).toHaveLength(1);
+  });
+
+  it("envoi en échec : alerte e-mail, sortie non nulle, pas de marque ; la relance refait SEULEMENT l'envoi", () => {
+    const echec = lancer({ FAUX_CURL_RC: "22" });
+    expect(echec.rc).not.toBe(0);
+    expect(lireJournal("mail.log")).toContain("échec");
+    expect(lireJournal("mail.log")).toContain("alerte@example.com");
+    expect(existsSync(fichier())).toBe(true);
+    expect(existsSync(`${fichier()}.envoye`)).toBe(false);
+
+    const relance = lancer();
+    expect(relance.rc).toBe(0);
+    expect(lireJournal("docker.log").match(/pg_dump/g)).toHaveLength(1); // pas de second dump
+    expect(lireJournal("curl.log").match(/-K/g)).toHaveLength(2); // l'envoi est refait
+    expect(existsSync(`${fichier()}.envoye`)).toBe(true);
+  });
+
+  it("dump en échec : alerte, sortie non nulle, aucun fichier final ni envoi", () => {
+    const r = lancer({ FAUX_DOCKER_ECHEC: "1" });
+    expect(r.rc).not.toBe(0);
+    expect(lireJournal("mail.log")).toContain("échec");
+    expect(existsSync(fichier())).toBe(false);
+    expect(lireJournal("curl.log")).toBe("");
+  });
+
+  it("sans adresse d'alerte, l'échec laisse quand même une ligne dans le journal du serveur", () => {
+    const r = lancer({ FAUX_CURL_RC: "22", SAUVEGARDE_ALERTE_EMAIL: "" });
+    expect(r.rc).not.toBe(0);
+    expect(r.err).toContain("ALERTE");
+    expect(lireJournal("mail.log")).toBe("");
+  });
+
+  it("n'efface rien du dossier de sortie", () => {
+    lancer({ FAUX_CURL_RC: "22" });
+    const avant = readdirSync(join(tmp, "sortie"));
+    lancer();
+    const apres = readdirSync(join(tmp, "sortie"));
+    for (const f of avant) expect(apres).toContain(f);
+  });
+});
+
+describe("clé d'objet et heure", () => {
+  it("refuse « : » dans la clé d'objet (le chemin canonique n'est pas encodé)", () => {
+    expect(() => signerDepot({ ...entree, cle: "usine/a:b" })).toThrow();
+  });
+  it("la crontab et la doc écrivent l'heure de Paris", () => {
+    expect(lire("deploiement/crontab")).toMatch(/Paris/);
+    expect(lire("docs/RESTAURATION.md")).toMatch(/Paris/);
   });
 });

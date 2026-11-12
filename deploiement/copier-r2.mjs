@@ -16,7 +16,7 @@ const sha = (t) => createHash("sha256").update(t).digest("hex");
 export function signerDepot({ compte, bucket, cle, sha256, longueur, date, idAcces, secret }) {
   if (!/^[a-z0-9-]+$/i.test(compte)) throw new Error("compte invalide");
   if (!/^[a-z0-9.-]+$/i.test(bucket)) throw new Error("bucket invalide");
-  if (!/^[\w.:-]+(\/[\w.:-]+)*$/.test(cle) || cle.split("/").some((p) => p === "." || p === "..")) throw new Error("clé d'objet invalide");
+  if (!/^[\w.-]+(\/[\w.-]+)*$/.test(cle) || cle.split("/").some((p) => p === "." || p === "..")) throw new Error("clé d'objet invalide");
   if (!/^[0-9a-f]{64}$/.test(sha256)) throw new Error("empreinte invalide");
   const hote = `${compte}.r2.cloudflarestorage.com`;
   const chemin = `/${bucket}/${cle}`;

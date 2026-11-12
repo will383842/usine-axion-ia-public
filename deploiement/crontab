@@ -1,3 +1,3 @@
-# Sauvegarde de nuit de l'Usine (heure du serveur, UTC). À poser dans /etc/cron.d/usine-sauvegarde.
+# Sauvegarde de nuit de l'Usine (2 h 30 UTC, soit 3 h 30 l'hiver et 4 h 30 l'été à Paris ; le serveur compte en UTC). À poser dans /etc/cron.d/usine-sauvegarde.
 MAILTO=""
 30 2 * * * root /opt/usine-axion-ia/deploiement/sauvegarder.sh >> /var/log/usine-sauvegarde.log 2>&1
