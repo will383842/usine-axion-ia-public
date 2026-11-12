@@ -26,6 +26,22 @@ describe("deploiement/recevoir-image.sh", () => {
     expect(code).toMatch(/gzip -t|gunzip -t/);
   });
 
+  it("ferme le contournement par la casse, l'écriture \\u et l'équivalence unicode de la clé RepoTags", () => {
+    // docker décode manifest.json avec le décodeur de Go : clé en minuscules, en \\u ou avec « ſ » acceptées.
+    expect(code).toContain("grep -oi '\"repotags\"'"); // toutes casses confondues : une seule clé
+    expect(code).toContain("grep -o '\"RepoTags\"'"); // et elle est écrite exactement RepoTags
+    expect(code).toContain("LC_ALL=C grep -q '[^ -~]'"); // ASCII imprimable seulement
+    expect(code).toMatch(/grep -q '\\\\' <<< "\$1"/); // aucune barre oblique inverse
+    expect(code.indexOf("ascii_strict \"$manifeste\"")).toBeGreaterThan(-1);
+    expect(code.indexOf("ascii_strict \"$manifeste\"")).toBeLessThan(code.indexOf("docker load"));
+  });
+
+  it("contrôle aussi les noms d'index.json (stockage containerd) avant tout chargement", () => {
+    expect(code).toContain("io\\.containerd\\.image\\.name");
+    expect(code).toContain("org\\.opencontainers\\.image\\.ref\\.name");
+    expect(code.indexOf("index.json")).toBeLessThan(code.indexOf("docker load"));
+  });
+
   it("borne la taille reçue et ne détruit rien", () => {
     expect(code).toMatch(/head -c/);
     expect(code).not.toMatch(/\brm -rf? \/|docker (system|volume|image) (prune|rm)|docker rmi|\bDROP\b|\bTRUNCATE\b|\bDELETE\b/);

@@ -29,12 +29,36 @@ gzip -t "$archive" || echec "archive compressée illisible"
 
 # 3. Contrôle de l'étiquette AVANT tout chargement : on lit manifest.json de l'archive (rien n'est chargé ni écrit dans docker).
 #    Exactement une image, exactement une étiquette, et seule usine-axion-ia:ci-<sha complet> est acceptée.
+#    Le décodeur de docker (Go) accepte une clé dans n'importe quelle casse, écrite avec « \u », et même avec l'équivalence
+#    unicode (« ſ » vaut « s ») : un simple grep sur "RepoTags" se contourne. On n'accepte donc que de l'ASCII imprimable,
+#    sans barre oblique inverse, avec UNE seule clé « repotags » toutes casses confondues, et elle s'écrit exactement "RepoTags".
+ascii_strict() { # $1 = texte, $2 = nom pour le message
+  if LC_ALL=C grep -q '[^ -~]' <<< "$1"; then echec "$2 : caractère non ASCII ou de contrôle refusé"; fi
+  if grep -q '\\' <<< "$1"; then echec "$2 : barre oblique inverse refusée"; fi
+}
 manifeste="$(gunzip -c "$archive" | tar -xO manifest.json 2>/dev/null)" || echec "manifest.json absent de l'archive"
-[ "$(printf '%s' "$manifeste" | grep -o '"RepoTags"' | grep -c .)" -eq 1 ] || echec "une seule image attendue"
+ascii_strict "$manifeste" "manifest.json"
+[ "$(printf '%s' "$manifeste" | grep -oi '"repotags"' | grep -c .)" -eq 1 ] || echec "une seule image attendue"
+[ "$(printf '%s' "$manifeste" | grep -o '"RepoTags"' | grep -c .)" -eq 1 ] || echec "clé d'étiquettes écrite autrement que RepoTags"
 etiquettes="$(printf '%s' "$manifeste" | grep -o '"RepoTags" *: *\[[^]]*\]' | grep -o '"[^"]*"' | tail -n +2 | tr -d '"')"
 [ "$(printf '%s\n' "$etiquettes" | grep -c .)" -eq 1 ] || echec "une seule étiquette attendue"
 printf '%s\n' "$etiquettes" | grep -Eq '^usine-axion-ia:ci-[0-9a-f]{40}$' || echec "étiquette refusée"
 etiquette="$etiquettes"
+
+#    Avec le stockage containerd, docker load étiquette aussi d'après index.json (annotations de noms) : même exigence,
+#    chaque nom annoncé doit être l'étiquette du manifeste, sinon refus.
+entrees_index="$(gunzip -c "$archive" | tar -t 2>/dev/null | grep -E '(^|/)index\.json$' || true)"
+if [ -n "$entrees_index" ]; then
+  [ "$(printf '%s\n' "$entrees_index" | grep -c .)" -eq 1 ] || echec "plusieurs index.json dans l'archive"
+  case "$entrees_index" in index.json|./index.json) ;; *) echec "index.json hors de la racine de l'archive" ;; esac
+  index="$(gunzip -c "$archive" | tar -xO "$entrees_index" 2>/dev/null)" || echec "index.json illisible"
+  ascii_strict "$index" "index.json"
+  noms="$(printf '%s' "$index" | grep -oE '"(io\.containerd\.image\.name|org\.opencontainers\.image\.ref\.name)" *: *("[^"]*"|[^ ,}]*)' | sed 's/^[^:]*: *//' | tr -d '"' || true)"
+  while IFS= read -r nom; do
+    [ -z "$nom" ] && continue
+    [ "$nom" = "$etiquette" ] || [ "$nom" = "docker.io/library/$etiquette" ] || echec "nom d'image de index.json refusé"
+  done <<< "$noms"
+fi
 
 # 4. Chargement, puis recoupement : docker doit annoncer la même étiquette que le manifeste.
 sortie="$(gunzip -c "$archive" | docker load)"
