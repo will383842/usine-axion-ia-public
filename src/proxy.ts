@@ -9,7 +9,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { sessionComplete } from "@/auth/session";
 import { NOM_COOKIE_SESSION } from "@/lib/jeton-session";
 
-const PUBLICS = [/^\/connexion\/?$/, /^\/api\/sante\/?$/, /^\/api\/porte\/(sujets|sujets\/retenir|sujets\/retenir-lot|metiers)\/?$/, /^\/api\/agregats-crm\/?$/];
+const PUBLICS = [/^\/connexion\/?$/, /^\/api\/sante\/?$/, /^\/api\/porte\/(sujets|sujets\/retenir|sujets\/retenir-lot|metiers|arret)\/?$/, /^\/api\/agregats-crm\/?$/];
 
 export function estPublic(pathname: string): boolean {
   return PUBLICS.some((r) => r.test(pathname));
