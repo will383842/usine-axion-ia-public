@@ -157,12 +157,12 @@ export function motifsDepuisTexte(texte) {
 
 /**
  * Prépare le contrôle : `chemin` = valeur de la variable d'environnement qui désigne le fichier, `lire` = lecteur de fichier,
- * `enCI` = vrai en intégration continue. Sans fichier : hors CI on le dit et on continue, en CI c'est une faute (jamais vert par défaut).
+ * `exigee` = vrai si la liste est obligatoire (voir listeMotsExigee). Sans fichier : si elle n'est pas exigée on le dit et on continue, si elle l'est c'est une faute.
  */
-export function preparerMotifsPrives(chemin, lire, enCI) {
+export function preparerMotifsPrives(chemin, lire, exigee) {
   if (!chemin) {
-    return enCI
-      ? { motifs: [], fautes: ["liste des mots privés non fournie en CI (variable d'environnement vide) : contrôle impossible, rouge"], note: null }
+    return exigee
+      ? { motifs: [], fautes: ["liste des mots privés exigée mais non fournie (variable d'environnement vide) : contrôle impossible, rouge"], note: null }
       : { motifs: [], fautes: [], note: "contrôle des mots privés NON fait : aucun fichier de mots fourni (variable d'environnement vide)" };
   }
   let texte;
@@ -183,6 +183,14 @@ export function fautesTracesPrivees(fichier, texte, motifs) {
     if (motifs.some((m) => m.test(ligne))) fautes.push(`${fichier}:${i + 1} : mot privé (à retirer d'un dépôt public)`);
   });
   return fautes;
+}
+
+/**
+ * La liste des mots privés est EXIGÉE (absente = rouge) seulement si INTERDITS_PUBLIC_EXIGE vaut « 1 » : la CI de main ne la reçoit pas
+ * encore (secret à poser dans le workflow, par le pilotage) ; tant que ce n'est pas fait, `CI=true` seule ne rend pas la garde rouge.
+ */
+export function listeMotsExigee(env) {
+  return env.INTERDITS_PUBLIC_EXIGE === "1";
 }
 
 /** Fautes de la règle sortante pour un fichier (chemin relatif à la racine, texte). */
