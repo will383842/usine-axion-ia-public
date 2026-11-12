@@ -7,6 +7,12 @@ DOSSIER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FICHIER="${SAUVEGARDE_ENV:-/opt/usine-axion-ia/.env.sauvegarde}"
 [ -f "$ENV_FICHIER" ] && . "$ENV_FICHIER"
 
+# Livrée éteinte : rien ne part tant que SAUVEGARDE_ACTIVE=1 n'est pas réglée (fichier d'environnement du serveur, par le fondateur).
+if [ "${SAUVEGARDE_ACTIVE:-0}" != "1" ]; then
+  echo "Sauvegarde éteinte (SAUVEGARDE_ACTIVE n'est pas à 1) : rien à faire."
+  exit 0
+fi
+
 CONTENEUR="${SAUVEGARDE_CONTENEUR:-usine-db}"
 BASE="${SAUVEGARDE_BASE:-usine}"
 UTILISATEUR="${SAUVEGARDE_UTILISATEUR:-postgres}"

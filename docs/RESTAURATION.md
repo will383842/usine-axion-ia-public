@@ -13,6 +13,6 @@ Un e-mail d'alerte part à l'adresse réglée dans `SAUVEGARDE_ALERTE_EMAIL`. Au
 5. Gardez l'ancienne base telle quelle jusqu'à ce que vous soyez sûr du résultat.
 
 ## Réglages (sur le serveur, jamais dans le dépôt)
-`SAUVEGARDE_CONTENEUR`, `SAUVEGARDE_BASE`, `SAUVEGARDE_UTILISATEUR`, `SAUVEGARDE_DOSSIER`, `SAUVEGARDE_CLE_FICHIER` (fichier de la clé de chiffrement, à garder aussi hors du serveur), `SAUVEGARDE_ALERTE_EMAIL`, `R2_COMPTE`, `R2_BUCKET`, `R2_ID_ACCES`, `R2_SECRET`.
+`SAUVEGARDE_ACTIVE` (à `1` pour allumer ; éteinte par défaut), `SAUVEGARDE_CONTENEUR`, `SAUVEGARDE_BASE`, `SAUVEGARDE_UTILISATEUR`, `SAUVEGARDE_DOSSIER`, `SAUVEGARDE_CLE_FICHIER` (fichier de la clé de chiffrement, à garder aussi hors du serveur), `SAUVEGARDE_ALERTE_EMAIL`, `R2_COMPTE`, `R2_BUCKET`, `R2_ID_ACCES`, `R2_SECRET`.
 
 Sans la clé de chiffrement, une sauvegarde est illisible : conservez-la dans un second endroit sûr.

@@ -119,6 +119,8 @@ describe("sauvegarder.sh LANCÉ avec faux docker, faux curl, faux mail (aucun r�
     const r = spawnSync("bash", [join(process.cwd(), "deploiement", "sauvegarder.sh")], {
       encoding: "utf8",
       env: {
+        NODE_ENV: "test",
+        SAUVEGARDE_ACTIVE: "1",
         PATH: `${join(tmp, "bin")}:${process.env.PATH}`,
         TMP_FAUX: tmp,
         SAUVEGARDE_ENV: join(tmp, "absent.env"),
@@ -140,6 +142,15 @@ describe("sauvegarder.sh LANCÉ avec faux docker, faux curl, faux mail (aucun r�
     expect(lireJournal("curl.config")).not.toMatch(/DELETE/i);
     expect(lireJournal("curl.config")).not.toContain("SECRET_FICTIF");
     expect(existsSync(`${fichier()}.envoye`)).toBe(true);
+    expect(lireJournal("mail.log")).toBe("");
+  });
+
+  it("éteinte par défaut : sans SAUVEGARDE_ACTIVE=1, ni dump ni envoi ni alerte", () => {
+    const r = lancer({ SAUVEGARDE_ACTIVE: "" });
+    expect(r.rc).toBe(0);
+    expect(r.out).toContain("éteinte");
+    expect(lireJournal("docker.log")).toBe("");
+    expect(lireJournal("curl.log")).toBe("");
     expect(lireJournal("mail.log")).toBe("");
   });
 
