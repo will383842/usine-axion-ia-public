@@ -154,11 +154,11 @@ describe.skipIf(!url)("porte · en base", () => {
     await p.query("INSERT INTO secteur (code, nom) VALUES ('essai', 'Secteur d''essai')");
     for (const [i, s] of SERVICES.entries()) await p.query("INSERT INTO service (code, nom, ordre) VALUES ($1, $1, $2) ON CONFLICT (code) DO NOTHING", [s, i]);
     for (const [code, allume] of [["essai.un", true], ["essai.deux", true], ["essai.eteint", false]] as const) {
-      await p.query("INSERT INTO metier (code, secteur, nom, allume) VALUES ($1, 'essai', $2, $3)", [code, `Métier ${code}`, allume]);
+      await p.query("INSERT INTO metier (code, secteur, nom, allume, etat) VALUES ($1, 'essai', $2, $3, 'valide')", [code, `Métier ${code}`, allume]);
       for (const s of SERVICES) {
-        await p.query("INSERT INTO douleur (code, cible, services, dite) VALUES ($1, $2, $3, 'Une douleur dite.')", [`${code}.d${SERVICES.indexOf(s) + 1}`, code, s]);
+        await p.query("INSERT INTO douleur (code, cible, services, dite, etat) VALUES ($1, $2, $3, 'Une douleur dite.', 'valide')", [`${code}.d${SERVICES.indexOf(s) + 1}`, code, s]);
         for (const k of [1, 2]) {
-          await p.query("INSERT INTO cas_usage (code, cible, service, titre, source) VALUES ($1, $2, $3, $4, $5)", [`${code}.${s}.c0${k}`, code, s, `Cas ${k}`, k === 1 ? "https://exemple.example.com/source" : null]);
+          await p.query("INSERT INTO cas_usage (code, cible, service, titre, source, etat) VALUES ($1, $2, $3, $4, $5, 'valide')", [`${code}.${s}.c0${k}`, code, s, `Cas ${k}`, k === 1 ? "https://exemple.example.com/source" : null]);
         }
       }
     }
