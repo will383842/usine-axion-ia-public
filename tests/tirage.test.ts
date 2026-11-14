@@ -9,6 +9,8 @@ import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { choisirFin, finsPermises, formatsDuTirage, signature, STATUT_EN_SERVICE, tirer, type BasesTirage, type HistoriqueTirage, type LigneTiree, type ReglagesTirage } from "@/tirage";
 import type { Appel, ContexteFin } from "@/tirage/fins";
+import { RESEAUX } from "@/contrats/identifiants";
+import { RESEAUX_PAR_DEFAUT } from "@/tirage/charger";
 import { lireFichiersBases } from "@/import/importer";
 import { preparer } from "@/import/preparation";
 
@@ -410,7 +412,7 @@ describe.skipIf(!url)("tirage · depuis la base", () => {
     expect(lignes.length).toBeGreaterThan(0);
     expect(lignes.some((l) => l.metier === "essai.eteint")).toBe(false);
     expect(new Set(lignes.map((l) => l.format))).toEqual(new Set(["tableau-anime"]));
-    expect(new Set(lignes.flatMap((l) => l.reseaux))).toEqual(new Set(["instagram", "facebook", "youtube-shorts"]));
+    expect(new Set(lignes.flatMap((l) => l.reseaux))).toEqual(new Set(["instagram", "facebook"]));
   });
 
   it("un métier, une douleur ou un cas « propose » n'est jamais tiré (seuls les validés le sont)", async () => {
@@ -535,5 +537,13 @@ describe("tirage · formats en service, type image (L7-21)", () => {
       const autres = copie.tables.find((t) => t.table === "format_autre")!.lignes as never[];
       expect(formatsDuTirage([], autres).find((f) => f.code === "image")?.en_service).toBe(attendu);
     }
+  });
+});
+
+describe("tirage · réseaux par défaut (retrait de youtube-shorts)", () => {
+  it("youtube-shorts n'est pas coché d'office mais reste un réseau valide", () => {
+    expect(RESEAUX_PAR_DEFAUT).toEqual(["instagram", "facebook"]);
+    expect(RESEAUX_PAR_DEFAUT).not.toContain("youtube-shorts");
+    expect(RESEAUX).toContain("youtube-shorts");
   });
 });
