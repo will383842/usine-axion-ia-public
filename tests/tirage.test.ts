@@ -490,3 +490,36 @@ describe("tirage · base 5 fictive (L2-05)", () => {
     }
     }, 60_000);
 });
+
+describe("tirage · formats en service, type image (L7-21)", () => {
+  const BASE_5 = [
+    "## table: format_video", "",
+    "| code | code_classement | nom | statut | tournage | duree | reseaux_conseilles | squelette | en_lot | etat | version | origine | source | valide_le |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    "| tableau-anime | TB | Tableau animé | actif |  |  |  | Un squelette d'exemple. | oui | valide | 1 | exemple |  |  |",
+    "", "## table: format_autre", "",
+    "| code | proprietaire | squelette | longueur_min | longueur_max | contient_appel | validation | etat_service | etat | version | origine | source | valide_le |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    "| image | usine | Un squelette d'exemple. | 1 | 1 | oui | aucune | en_service | valide | 1 | exemple |  |  |",
+    "| carrousel | usine | Un squelette d'exemple. | 5 | 10 | oui | aucune | en_service | valide | 1 | exemple |  |  |",
+    "| story | usine | Un squelette d'exemple. | 1 | 3 | oui | aucune | prevu | valide | 1 | exemple |  |  |",
+    "",
+  ].join("\n");
+
+  it("le lecteur des bases lit une copie de la base 5 sans erreur, et type=image rend des lignes", () => {
+    const copie = preparer([{ nom: "5-formats.md", texte: BASE_5 }]);
+    expect([copie.fichiersRefuses, copie.lignesRefusees]).toEqual([[], []]);
+    const table = (nom: string) => copie.tables.find((t) => t.table === nom)!.lignes as never[];
+    const formats = formatsDuTirage(table("format_video"), table("format_autre"));
+    expect(formats.filter((f) => f.type_contenu === "image" && f.en_service).map((f) => f.code)).toEqual(["image"]);
+    // Le carrousel reste « bientôt » : son type n'est pas en service.
+    expect(formats.find((f) => f.code === "carrousel")).toMatchObject({ en_service: false });
+    // Contre-épreuve : les accroches et les fins de l'exemple sont écrites pour la vidéo ; on les ouvre à l'image.
+    const defaut = bases(2);
+    const b = bases(2, { formats, accroches: defaut.accroches.map((a) => ({ ...a, types_contenu: "video ; image" })), appels: APPELS.map((a) => ({ ...a, type_contenu: "video ; image" })) });
+    const r = reglages({ partsFormats: Object.fromEntries(["instagram", "facebook"].map((x) => [x, { image: 100 }])) });
+    const lignes = tirer(5, { ...r, graine: 1 }, VIDE, b).lignes.filter((l) => l.type_contenu === "image");
+    expect(lignes.length).toBeGreaterThan(0);
+    expect(lignes.every((l) => l.format === "image")).toBe(true);
+  });
+});
