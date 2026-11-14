@@ -18,6 +18,12 @@ export const LIBELLE_FORMAT: Record<FormatPart, string> = {
 /** Seule la vidéo est en série au départ ; les autres sont affichées « bientôt » et comptent pour zéro. */
 export const FORMATS_EN_SERVICE: readonly FormatPart[] = ["video"];
 
+/**
+ * L7-21 · Types que le tirage sait placer : un type de plus par PR, le texte avec image en premier.
+ * Distinct de `FORMATS_EN_SERVICE` (écran des parts) tant que la part de ce type n'est pas ouverte au fondateur.
+ */
+export const FORMATS_TIRAGE_EN_SERVICE: readonly FormatPart[] = ["video", "image"];
+
 export const LIBELLE_RESEAU: Record<Reseau, string> = {
   linkedin: "LinkedIn",
   instagram: "Instagram",

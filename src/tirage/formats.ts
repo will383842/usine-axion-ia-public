@@ -3,22 +3,23 @@
  * Fonction pure : `chargerBases()` l'appelle, les essais aussi, sur la vraie base 5.
  * Une vidéo n'est en service que si les quatre conditions sont vraies : `statut = actif` (jamais `masque`,
  * `bientot`, `plus_tard` ni `reserve`), `en_lot = oui`, `etat = valide` (une ligne `propose` attend Will),
- * et son type de contenu dans `FORMATS_EN_SERVICE`. Ainsi FA (`actif`, `propose`, `en_lot = non`) et
- * IV (`masque`) n'entrent jamais dans un lot.
+ * et son type de contenu dans `FORMATS_TIRAGE_EN_SERVICE`. Ainsi FA (`actif`, `propose`, `en_lot = non`) et
+ * IV (`masque`) n'entrent jamais dans un lot. Même règle pour les autres formats (dont `image`) : `etat_service = en_service`,
+ * `etat = valide` et type en service ; une ligne `propose`, `brouillon` ou `retire` n'est jamais en service.
  */
 import type { LigneBase } from "@/donnees/types";
-import { FORMATS_EN_SERVICE, type FormatPart } from "@/reglages/modele";
+import { FORMATS_TIRAGE_EN_SERVICE, type FormatPart } from "@/reglages/modele";
 import type { FormatTirage } from "./types";
 
 export const STATUT_EN_SERVICE = "actif";
 
 /** Formats sans vidéo que le tirage sait placer, et leur type de contenu. */
-const FORMATS_AUTRES: Record<string, FormatTirage["type_contenu"]> = { carrousel: "carrousel", story: "story", post_texte_linkedin: "texte" };
+const FORMATS_AUTRES: Record<string, FormatTirage["type_contenu"]> = { carrousel: "carrousel", story: "story", post_texte_linkedin: "texte", image: "image" };
 
 type Video = Pick<LigneBase<"format_video">, "code" | "statut" | "en_lot" | "etat">;
 type Autre = Pick<LigneBase<"format_autre">, "code" | "etat_service" | "etat">;
 
-export function formatsDuTirage(videos: readonly Video[], autres: readonly Autre[], enService: readonly FormatPart[] = FORMATS_EN_SERVICE): FormatTirage[] {
+export function formatsDuTirage(videos: readonly Video[], autres: readonly Autre[], enService: readonly FormatPart[] = FORMATS_TIRAGE_EN_SERVICE): FormatTirage[] {
   const typeEnService = (t: FormatTirage["type_contenu"]) => (enService as readonly string[]).includes(t);
   return [
     ...videos
@@ -26,6 +27,6 @@ export function formatsDuTirage(videos: readonly Video[], autres: readonly Autre
       .map((f) => ({ code: f.code, type_contenu: "video" as const, en_service: f.statut === STATUT_EN_SERVICE && f.en_lot === "oui" && f.etat === "valide" && typeEnService("video") })),
     ...autres
       .filter((f) => FORMATS_AUTRES[f.code] && f.etat !== "retire")
-      .map((f) => ({ code: f.code, type_contenu: FORMATS_AUTRES[f.code], en_service: f.etat_service === "en_service" && typeEnService(FORMATS_AUTRES[f.code]) })),
+      .map((f) => ({ code: f.code, type_contenu: FORMATS_AUTRES[f.code], en_service: f.etat_service === "en_service" && f.etat === "valide" && typeEnService(FORMATS_AUTRES[f.code]) })),
   ];
 }
