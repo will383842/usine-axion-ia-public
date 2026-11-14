@@ -16,7 +16,6 @@ import {
 } from "@/reglages/modele";
 import {
   CLE_QUOTAS,
-  PERIODES_QUOTA,
   TYPES_QUOTA,
   verifierQuota,
   type PeriodeQuota,
@@ -105,7 +104,7 @@ export async function enregistrerQuotas(f: FormData): Promise<void> {
     tout[r] = {} as QuotasParReseau[typeof r];
     for (const t of TYPES_QUOTA) {
       const periode = String(f.get(`${r}.${t}.periode`) ?? "") as PeriodeQuota;
-      const quota = { periode: PERIODES_QUOTA.includes(periode) ? periode : ("jour" as const), quantite: nombre(f, `${r}.${t}.quantite`) };
+      const quota = { periode, quantite: nombre(f, `${r}.${t}.quantite`) };
       const erreur = verifierQuota(quota);
       if (erreur) retour("/reglages/quotas", `${r} : ${erreur}`);
       tout[r][t] = quota;

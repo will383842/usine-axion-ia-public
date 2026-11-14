@@ -18,7 +18,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ e
     <form action={enregistrerQuotas} className="flex flex-col gap-6">
       <Entete
         titre="Quantités à produire"
-        intro="Combien de contenus, par jour ou par semaine, pour chaque réseau. Au-delà, la commande est mise de côté : vous la débloquez d'un clic. Une commande faite par vous n'est jamais bloquée."
+        intro="Combien de contenus, par jour ou par semaine, pour chaque réseau. Au-delà, la commande est mise de côté. Une commande faite par vous n'est jamais bloquée."
       />
       <Retour etat={etat} erreur={erreur} />
       {RESEAUX.map((r) => (

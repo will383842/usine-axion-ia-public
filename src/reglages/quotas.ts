@@ -51,7 +51,8 @@ export function quotasParReseau(brut: unknown): QuotasParReseau {
       r,
       Object.fromEntries(
         TYPES_QUOTA.map((t) => {
-          const cand = { periode: source[r]?.[t]?.periode as PeriodeQuota, quantite: Number(source[r]?.[t]?.quantite) };
+          const q = source[r]?.[t];
+          const cand = { periode: q?.periode as PeriodeQuota, quantite: typeof q?.quantite === "number" ? q.quantite : Number.NaN };
           return [t, verifierQuota(cand) === null ? cand : QUOTAS_DEFAUT[r][t]];
         }),
       ),
@@ -92,15 +93,18 @@ export function projeter(quota: Quota, fait: number, ajout = 0): Projection {
   };
 }
 
-export type OrigineCommande = "automatique" | "main";
+/** `debloquee` : commande mise de côté puis débloquée ; elle passe comme une commande à la main et n'est jamais remise de côté. */
+export type OrigineCommande = "automatique" | "main" | "debloquee";
 export interface Decision {
   decision: "passe" | "mise_de_cote";
   quantite: number;
 }
 
-/** Au-delà de 100 %, une commande automatique est mise de côté (jamais refusée) ; une commande à la main passe toujours. */
+/** Au-delà de 100 %, une commande automatique est mise de côté (jamais refusée) ; une commande à la main ou débloquée passe toujours.
+ * Une quantité qui n'est pas un entier d'au moins 1 est refusée par une erreur claire (jamais « passe » en silence). */
 export function decider(quota: Quota, fait: number, quantite: number, origine: OrigineCommande): Decision {
-  if (origine === "main") return { decision: "passe", quantite };
+  if (!Number.isInteger(quantite) || quantite < 1) throw new RangeError("Une commande demande au moins une pièce.");
+  if (origine === "main" || origine === "debloquee") return { decision: "passe", quantite };
   return { decision: fait + quantite > quota.quantite ? "mise_de_cote" : "passe", quantite };
 }
 
@@ -108,7 +112,11 @@ export interface Demande {
   id: string;
   quantite: number;
 }
-/** Répartit des demandes dans l'ordre : rien n'est perdu, ce qui dépasse est mis de côté. */
+/**
+ * Répartit des demandes dans l'ordre : rien n'est perdu, ce qui dépasse est mis de côté.
+ * L'ordre n'est pas strict : une grosse demande qui dépasse est mise de côté et une petite qui la suit peut encore passer
+ * (à garder en tête pour U-COMMANDE, qui tient le journal des mises de côté).
+ */
 export function repartir(quota: Quota, fait: number, demandes: readonly Demande[], origine: OrigineCommande) {
   const passent: Demande[] = [];
   const misesDeCote: Demande[] = [];
@@ -130,7 +138,11 @@ export function debloquer(m: MiseDeCote): MiseDeCote {
   return { ...m, etat: "debloquee" };
 }
 
-/** Corps prêt pour la porte : des quantités seulement, aucun champ en euros ni en centimes. */
+/**
+ * INTERNE jusqu'à U-COMMANDE : corps destiné à la porte, sans ligne dans `CONTRATS-ECHANGE.md` ni dans `src/contrats/`.
+ * Ne pas l'appeler depuis un autre module avant que U-COMMANDE ajoute sa ligne de contrat (puis le déplacer dans `src/contrats/`).
+ * Des quantités seulement, aucun champ en euros ni en centimes.
+ */
 export const corpsCommandeSchema = z.strictObject({
   reseau,
   type_contenu: typeContenu,

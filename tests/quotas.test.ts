@@ -2,7 +2,7 @@
 import { randomBytes } from "node:crypto";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { RESEAUX } from "@/contrats";
+import { RESEAUX, TYPES_CONTENU } from "@/contrats";
 import {
   QUOTAS_DEFAUT,
   TYPES_QUOTA,
@@ -34,6 +34,8 @@ describe("valeurs de départ", () => {
     expect(q.linkedin.video).toEqual({ periode: "semaine", quantite: 3 });
     expect(q.linkedin.carrousel).toEqual(QUOTAS_DEFAUT.linkedin.carrousel);
     expect(q.linkedin.image).toEqual(QUOTAS_DEFAUT.linkedin.image);
+    const illisible = quotasParReseau({ tiktok: { video: { periode: "jour", quantite: null }, carrousel: { periode: "jour", quantite: "" }, image: { periode: "jour", quantite: true } } });
+    for (const t of TYPES_QUOTA) expect(illisible.tiktok[t]).toEqual(QUOTAS_DEFAUT.tiktok[t]);
     expect(verifierQuota({ periode: "mois" as never, quantite: 1 })).not.toBeNull();
     expect(verifierQuota({ periode: "jour", quantite: 1.5 })).not.toBeNull();
     expect(verifierQuota({ periode: "jour", quantite: 0 })).toBeNull();
@@ -80,10 +82,15 @@ describe("au-delà de 100 % : mise de côté, jamais refus ni perte", () => {
     const main = repartir({ periode: "semaine", quantite: 3 }, 9, [{ id: "a", quantite: 4 }], "main");
     expect(main.misesDeCote).toEqual([]);
   });
-  it("une mise de côté se débloque d'un clic et repart telle quelle", () => {
-    const m = { id: "c", quantite: 1, etat: "mise_de_cote" as const };
-    expect(debloquer(m)).toEqual({ id: "c", quantite: 1, etat: "debloquee" });
-    expect(debloquer({ ...m, etat: "debloquee" })).toEqual({ id: "c", quantite: 1, etat: "debloquee" });
+  it("une commande débloquée passe même quand le quota est plein, et n'est jamais remise de côté", () => {
+    const m = debloquer({ id: "c", quantite: 1, etat: "mise_de_cote" });
+    expect(m.etat).toBe("debloquee");
+    for (const fait of [1, 5, 500]) expect(decider(quota, fait, m.quantite, "debloquee").decision).toBe("passe");
+    expect(decider(quota, 1, 1, "automatique").decision).toBe("mise_de_cote");
+    expect(repartir(quota, 3, [{ id: "c", quantite: 1 }], "debloquee").misesDeCote).toEqual([]);
+  });
+  it("une quantité de 0, négative ou non entière est refusée clairement, jamais « passe » en silence", () => {
+    for (const q of [0, -1, 1.5, Number.NaN]) for (const o of ["automatique", "main", "debloquee"] as const) expect(() => decider(quota, 0, q, o)).toThrow(RangeError);
   });
 });
 
@@ -103,7 +110,7 @@ describe("corps prêt pour la porte : des quantités, aucun montant", () => {
     expect(corps).toEqual({ reseau: "instagram", type_contenu: "video", quantite: 2, periode: "jour" });
   });
   it("chaque type de quota est un type de contenu connu", () => {
-    expect(TYPES_QUOTA).toEqual(["video", "carrousel", "image"]);
+    for (const t of TYPES_QUOTA) expect(TYPES_CONTENU).toContain(t);
   });
 });
 
