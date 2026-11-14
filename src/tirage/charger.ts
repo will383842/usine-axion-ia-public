@@ -18,8 +18,8 @@ export const INTERRUPTEUR_FIN_RENDEZ_VOUS = "tirage.fin-rendez-vous";
 const INTERRUPTEUR_MOTS = "mots";
 export const REGLAGE_DELAI_CAS = "tirage.delai_cas_jours";
 export const DELAI_CAS_DEFAUT = 30;
-/** Réseaux cochés d'office : jamais TikTok ni LinkedIn (PLAN-MAITRE A.3 point 12). */
-export const RESEAUX_PAR_DEFAUT: Reseau[] = ["instagram", "facebook", "youtube-shorts"];
+/** Réseaux cochés d'office : jamais TikTok, LinkedIn ni YouTube Shorts (Zernio refuse YouTube, aucune chaîne reliée). */
+export const RESEAUX_PAR_DEFAUT: Reseau[] = ["instagram", "facebook"];
 
 function nombre(v: string | null | undefined, defaut: number): number {
   const n = Number.parseFloat((v ?? "").replace(",", "."));
