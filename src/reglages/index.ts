@@ -1,6 +1,7 @@
 /** T07 · Lecture des réglages du tirage, chacun avec sa valeur de départ. */
 import "server-only";
 import { lireReglage } from "@/donnees";
+import { CLE_QUOTAS, quotasParReseau } from "./quotas";
 import { CLES, actualitesParSemaine, partsParReseau, plafondLot, poidsServiceLus, poidsTailleLus, rythmesParReseau } from "./modele";
 
 export async function lireReglagesTirage() {
@@ -23,3 +24,9 @@ export async function lireReglagesTirage() {
 }
 export type ReglagesTirage = Awaited<ReturnType<typeof lireReglagesTirage>>;
 export * from "./modele";
+
+/** U-QUOTA · Quotas de production en quantités, relus à chaque appel (donc après un redémarrage). */
+export async function lireQuotas() {
+  return quotasParReseau(await lireReglage<unknown>(CLE_QUOTAS, null));
+}
+export * from "./quotas";

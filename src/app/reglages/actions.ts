@@ -14,6 +14,14 @@ import {
   type Parts,
   type Rythme,
 } from "@/reglages/modele";
+import {
+  CLE_QUOTAS,
+  PERIODES_QUOTA,
+  TYPES_QUOTA,
+  verifierQuota,
+  type PeriodeQuota,
+  type QuotasParReseau,
+} from "@/reglages/quotas";
 import { exigerSession } from "@/services/auth";
 
 function nombre(f: FormData, nom: string): number {
@@ -89,3 +97,21 @@ export async function enregistrerLiensProfil(f: FormData): Promise<void> {
   retour("/reglages/comptes", null);
 }
 
+
+export async function enregistrerQuotas(f: FormData): Promise<void> {
+  await exigerSession();
+  const tout = {} as QuotasParReseau;
+  for (const r of RESEAUX) {
+    tout[r] = {} as QuotasParReseau[typeof r];
+    for (const t of TYPES_QUOTA) {
+      const periode = String(f.get(`${r}.${t}.periode`) ?? "") as PeriodeQuota;
+      const quota = { periode: PERIODES_QUOTA.includes(periode) ? periode : ("jour" as const), quantite: nombre(f, `${r}.${t}.quantite`) };
+      const erreur = verifierQuota(quota);
+      if (erreur) retour("/reglages/quotas", `${r} : ${erreur}`);
+      tout[r][t] = quota;
+    }
+  }
+  await ecrireReglage(CLE_QUOTAS, tout);
+  await journaliser("reglage", "Quotas de production enregistrés.", { cible: CLE_QUOTAS });
+  retour("/reglages/quotas", null);
+}

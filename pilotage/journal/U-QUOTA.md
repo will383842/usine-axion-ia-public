@@ -1,0 +1,7 @@
+# U-QUOTA · quotas de production en quantités
+- Fait : `src/reglages/quotas.ts` (fonctions pures : quotas par jour ou par semaine, par réseau et type vidéo / carrousel / infographie ; paliers 50, 80, 100 % ; projection ; mise de côté au-delà de 100 %, déblocage d'un clic ; une commande à la main n'est jamais bloquée ; corps pour la porte en quantités seulement, schéma strict sans champ en euros ni en centimes). Lecture `lireQuotas()` dans `src/reglages/index.ts`, relue à chaque appel donc après redémarrage. Écriture `enregistrerQuotas` dans `src/app/reglages/actions.ts`, session exigée, journalisée.
+- Départ : vidéo 1 par jour (Instagram 2), carrousel 1 par semaine, infographie 2 par semaine. Aucun réglage en mois.
+- Écran : `/reglages/quotas` est un BROUILLON SIMPLE, la maquette n'est pas validée. Lien ajouté sous « Rythmes et parts par réseau ».
+- Non fait, hors fiche : l'envoi réel au Studio (client de U-COMMANDE) ; le compteur « déjà fait » et le stockage des mises de côté (fonctions pures prêtes, branchement par U-COMMANDE). `src/reglages/modele.ts` non touché. Aucun appel sortant, aucune suppression de données de personnes.
+- Tests : tests/quotas.test.ts écrit rouge d'abord (module absent), puis vert : 13 passés avec PostgreSQL 16, suite entière 399 passés ; tsc, eslint, garde sans erreur.
+- Mutations temporaires (fichier restauré, vérifié) : palier 80 → 85, commande à la main bloquable, champ en euros dans le corps, période « mois » acceptée, commande perdue au-delà de 100 %, relecture ignorée : chacune rougit au moins un test.
