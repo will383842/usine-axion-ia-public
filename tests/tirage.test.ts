@@ -522,4 +522,18 @@ describe("tirage · formats en service, type image (L7-21)", () => {
     expect(lignes.length).toBeGreaterThan(0);
     expect(lignes.every((l) => l.format === "image")).toBe(true);
   });
+
+  it("une ligne image n'est en service que validée : propose, brouillon et retire restent éteints", async () => {
+    const image = (etat: string) => [{ code: "image", etat_service: "en_service", etat }] as never[];
+    for (const etat of ["propose", "brouillon", "retire"]) expect(formatsDuTirage([], image(etat)).find((f) => f.code === "image")?.en_service ?? false).toBe(false);
+    expect(formatsDuTirage([], image("valide"))[0].en_service).toBe(true);
+    // Sur une vraie copie de la base 5 fictive, avec une ligne image ajoutée.
+    const reel = (await lireFichiersBases(join(process.cwd(), "tests", "fixtures-bases", "bases"))).find((f) => f.nom === "5-formats.md")!;
+    for (const [etat, attendu] of [["propose", false], ["valide", true]] as const) {
+      const ligne = `| image | usine | Un squelette d'exemple. | 1 | 1 | oui | aucune | en_service | ${etat} | 1 | exemple |  |  |`;
+      const copie = preparer([{ nom: reel.nom, texte: `${reel.texte.trimEnd()}\n${ligne}\n` }]);
+      const autres = copie.tables.find((t) => t.table === "format_autre")!.lignes as never[];
+      expect(formatsDuTirage([], autres).find((f) => f.code === "image")?.en_service).toBe(attendu);
+    }
+  });
 });
