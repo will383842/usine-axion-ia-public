@@ -24,6 +24,7 @@ const LIGNES: Ligne[] = [
       { href: "/reglages/rythmes", titre: "Rythmes de publication" },
       { href: "/reglages/parts", titre: "Parts par format" },
       { href: "/reglages/tirage", titre: "Poids et plafond" },
+      { href: "/reglages/quotas", titre: "Quantités à produire" },
     ],
   },
   { href: "/reglages/comptes", titre: "Mes comptes", aide: "Le lien du profil de chacun de vos comptes." },
