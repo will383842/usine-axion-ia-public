@@ -33,11 +33,15 @@ const enJours = (j: string) => Date.parse(`${j}T00:00:00Z`) / JOUR_MS;
 
 const RIEN: SuiviCampagne = { cases: null, publiees: null, partInconnues: null, partPubliee: null };
 
+/** Même règle que `jourValide` de `src/campagnes/regles.ts` : « AAAA-MM-JJ » et jour qui existe (aller-retour). */
+const jourValide = (j: string): boolean =>
+  /^\d{4}-\d{2}-\d{2}$/.test(j) && Number.isFinite(enJours(j)) && new Date(`${j}T00:00:00Z`).toISOString().startsWith(j);
+
 /** Case du réseau de la campagne dont le jour est illisible : comptée comme inconnue, jamais perdue. */
-const jourIllisible = (c: Campagne, k: CaseSuivie): boolean => k.reseau === c.reseau && !Number.isFinite(enJours(k.jour));
+const jourIllisible = (c: Campagne, k: CaseSuivie): boolean => k.reseau === c.reseau && !jourValide(k.jour);
 
 function dansCampagne(c: Campagne, k: CaseSuivie): boolean {
-  if (k.reseau !== c.reseau) return false;
+  if (k.reseau !== c.reseau || !jourValide(k.jour)) return false;
   const rang = enJours(k.jour) - enJours(c.debut);
   return Number.isFinite(rang) && rang >= 0 && rang < c.dureeJours;
 }

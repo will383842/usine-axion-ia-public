@@ -74,4 +74,13 @@ describe("suivi des campagnes · données illisibles", () => {
     expect(t.cases).toBe(5);
     expect(t.partInconnues).toBe(2);
   });
+  it("case au jour inexistant (2024-02-31, 2024-02-30) : comptée une fois, comme inconnue", () => {
+    const c = { ...campagne, debut: "2024-02-01", dureeJours: 29 };
+    for (const jour of ["2024-02-31", "2024-02-30"]) {
+      const s = suivreCampagne(c, [{ jour, reseau: "instagram", publiee: true }]);
+      expect(s.cases).toBe(1);
+      expect(s.partInconnues).toBe(1);
+      expect(s.publiees).toBeNull();
+    }
+  });
 });
