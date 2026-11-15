@@ -20,7 +20,7 @@ export const dynamic = "force-dynamic";
 async function comptesDuJour(): Promise<CompteASuivre[]> {
   return requete<CompteASuivre>(
     `SELECT * FROM compte_a_suivre WHERE archive_le IS NULL
-     ORDER BY ((fait_le AT TIME ZONE 'Europe/Paris')::date = (now() AT TIME ZONE 'Europe/Paris')::date) DESC NULLS LAST,
+     ORDER BY COALESCE((fait_le AT TIME ZONE 'Europe/Paris')::date = (now() AT TIME ZONE 'Europe/Paris')::date, false) DESC,
               fait_le ASC NULLS FIRST, code
      LIMIT $1`,
     [COMPTES_PAR_JOUR],

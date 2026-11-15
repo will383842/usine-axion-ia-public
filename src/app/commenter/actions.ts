@@ -25,7 +25,10 @@ export async function compteFait(code: string): Promise<void> {
   if (!(await ouvert())) return;
   const cle = Code.parse(code);
   const compte = await depots.compte_a_suivre.lire(cle);
-  if (!compte || compte.archive_le || compte.fait_le) return;
+  if (!compte || compte.archive_le) return;
+  // Déjà fait aujourd'hui (Europe/Paris) : rien à refaire. Un « fait » d'un jour passé se remet à jour, sinon la rotation se fige.
+  const jour = (d: Date) => d.toLocaleDateString("fr-CA", { timeZone: "Europe/Paris" });
+  if (compte.fait_le && jour(new Date(compte.fait_le)) === jour(new Date())) return;
   await depots.compte_a_suivre.modifier(cle, { fait_le: new Date() });
   await journaliser("commenter", `Commentaire fait chez ${compte.nom}`, { cible: `compte_a_suivre:${cle}` });
   revalidatePath("/commenter");

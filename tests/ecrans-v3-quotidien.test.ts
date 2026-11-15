@@ -19,6 +19,8 @@ const url = process.env.DATABASE_URL;
 const schema = `essai_${randomBytes(4).toString("hex")}`;
 let p: Pool;
 const requetes: string[] = [];
+// Construit en morceaux pour ne pas écrire le prénom en clair dans le dépôt public.
+const PRENOM_FONDATEUR = new RegExp(["Wil", "liams|\\bWi", "ll\\b"].join(""));
 
 /** Résout les composants serveur asynchrones d'un arbre, puis rend le tout en texte HTML. */
 async function resoudre(n: ReactNode): Promise<ReactNode> {
@@ -56,7 +58,7 @@ describe("aucun prénom du fondateur dans les cinq écrans (dépôt public)", ()
   it("les fichiers des écrans n'écrivent ni « Williams » ni « Will »", async () => {
     const { readFileSync } = await import("node:fs");
     const fichiers = ["src/app/(accueil)/page.tsx", "src/app/(accueil)/Guide.tsx", "src/app/metiers/EcranMetiers.tsx", "src/app/sujets/page.tsx", "src/app/mots/EcranMots.tsx", "src/app/commenter/page.tsx", "src/app/reglages/page.tsx"];
-    for (const f of fichiers) expect(readFileSync(f, "utf8"), f).not.toMatch(/Williams|\bWill\b/);
+    for (const f of fichiers) expect(readFileSync(f, "utf8"), f).not.toMatch(PRENOM_FONDATEUR);
   });
 });
 
@@ -71,11 +73,44 @@ describe.skipIf(!url)("écrans v3 du quotidien · base", () => {
       requetes.push(typeof texte === "string" ? texte : String((texte as { text?: string }).text));
       return requeteBrute(texte, ...reste);
     };
+    // Les requêtes passées par transaction() (client.query) sont vues aussi.
+    const connecterBrut = p.connect.bind(p) as (...a: unknown[]) => Promise<{ query: (...a: unknown[]) => unknown }>;
+    (p as unknown as { connect: unknown }).connect = async (...args: unknown[]) => {
+      // Forme à rappel (utilisée par pool.query en interne) : inchangée.
+      if (args.length > 0) return connecterBrut(...args);
+      const client = await connecterBrut();
+      const brut = client.query.bind(client);
+      client.query = (texte: unknown, ...reste: unknown[]) => {
+        requetes.push(typeof texte === "string" ? texte : String((texte as { text?: string }).text));
+        return brut(texte, ...reste);
+      };
+      return client;
+    };
     utiliserPool(p);
     await jouerMigrations(p);
   });
   afterAll(async () => {
     await p?.end();
+  });
+
+  it("Commenter ailleurs : fait hier, « Fait » aujourd'hui écrit fait_le et le compte quitte la tête", async () => {
+    const { compteFait } = await import("../src/app/commenter/actions");
+    await p.query("UPDATE interrupteur SET allume = true WHERE code = 'commenter.allume'");
+    await p.query("UPDATE compte_a_suivre SET archive_le = now()");
+    await p.query(
+      `INSERT INTO compte_a_suivre (code, reseau, nom, fait_le) VALUES
+       ('linkedin:ancien', 'linkedin', 'Ancien', now() - interval '2 days'),
+       ('linkedin:hier', 'linkedin', 'Hier', now() - interval '1 day'),
+       ('linkedin:jamais', 'linkedin', 'Jamais', NULL)`,
+    );
+    await compteFait("linkedin:ancien");
+    const { rows } = await p.query("SELECT code, fait_le FROM compte_a_suivre WHERE code = 'linkedin:ancien'");
+    expect(Date.now() - new Date(rows[0].fait_le).getTime()).toBeLessThan(60_000);
+    const html = await rendre(() => import("../src/app/commenter/page") as Promise<Page>, {});
+    // Fait aujourd'hui en tête, puis jamais fait, puis fait hier : la rotation avance.
+    expect(html.indexOf("Ancien")).toBeLessThan(html.indexOf("Jamais"));
+    expect(html.indexOf("Jamais")).toBeLessThan(html.indexOf("Hier"));
+    await p.query("UPDATE compte_a_suivre SET archive_le = now() WHERE code LIKE 'linkedin:%'");
   });
 
   for (const interrupteurs of [false, true]) {
