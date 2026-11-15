@@ -5,6 +5,8 @@
 # Sans --ecrire : recopie « à blanc » (liste ce qui serait copié, contrôle tout, n'écrit rien dans la destination).
 # Jamais de suppression : un fichier de la destination absent de la source reste en place (il est signalé).
 set -euo pipefail
+# Locale UTF-8 si elle existe : sans elle, grep -i et [[:alpha:]] ne replient pas les lettres accentuées (« élodie » passerait pour « Élodie »). Sinon : limite notée dans docs/DEPOT-PUBLIC.md.
+if locale -a 2>/dev/null | grep -qix 'c\.utf-\?8'; then export LC_ALL=C.UTF-8; fi
 
 # Motifs de secret : mêmes familles que scripts/garde.mjs (les fragments sont assemblés ici pour ne pas se reconnaître eux-mêmes).
 CLE_PRIVEE="-----BEGIN [A-Z ]*PRIVATE"" KEY-----"
@@ -89,12 +91,12 @@ garde_fuites() {
     local tete; tete="$(head -c4 "$f" | od -An -tx1 | tr -d ' \n')"
     if [[ "$ext" =~ ^($EXT_BINAIRES)$ ]]; then
       # Extension permise : l'en-tête est tout de même vérifié (archive renommée, faux .png).
-      if [[ "$tete" == 1f8b* || "$tete" == 504b* ]] || { [ "$ext" = png ] && [ "$tete" != 89504e47 ]; }; then
+      if [[ "$tete" == 1f8b* || "$tete" == 504b* || "$tete" == 425a68* || "$tete" == fd377a58* || "$tete" == 28b52ffd* ]] || { [ "$ext" = png ] && [ "$tete" != 89504e47 ]; }; then
         faute "fichier non texte ou compressé refusé (extension trompeuse) : ${f#"$dossier"/}"
       fi
       continue
     fi
-    if [[ "$ext" =~ ^(gz|tgz|zip|tar|bz2|xz|7z|rar|zst)$ ]] || [[ "$tete" == 1f8b* || "$tete" == 504b* || "$tete" == fffe* || "$tete" == feff* ]] \
+    if [[ "$ext" =~ ^(gz|tgz|zip|tar|bz2|xz|7z|rar|zst)$ ]] || [[ "$tete" == 1f8b* || "$tete" == 504b* || "$tete" == 425a68* || "$tete" == fd377a58* || "$tete" == 28b52ffd* || "$tete" == fffe* || "$tete" == feff* ]] \
        || [ "$(LC_ALL=C tr -d '\000' < "$f" | wc -c)" != "$(wc -c < "$f")" ]; then
       faute "fichier non texte ou compressé refusé : ${f#"$dossier"/}"
     fi
@@ -153,7 +155,7 @@ recopier() {
   # Liste des noms interdits, hors dépôt : variable PUBLIER_NOMS_INTERDITS (noms séparés par « | ») ou fichier PUBLIER_NOMS_INTERDITS_FICHIER.
   LISTE_NOMS="$passage.noms"
   : > "$LISTE_NOMS"
-  if [ -n "${PUBLIER_NOMS_INTERDITS_FICHIER:-}" ] && [ -f "$PUBLIER_NOMS_INTERDITS_FICHIER" ]; then cat "$PUBLIER_NOMS_INTERDITS_FICHIER" >> "$LISTE_NOMS"; fi
+  if [ -n "${PUBLIER_NOMS_INTERDITS_FICHIER:-}" ] && [ -f "$PUBLIER_NOMS_INTERDITS_FICHIER" ]; then { cat "$PUBLIER_NOMS_INTERDITS_FICHIER"; echo; } >> "$LISTE_NOMS"; fi
   if [ -n "${PUBLIER_NOMS_INTERDITS:-}" ]; then printf '%s\n' "$PUBLIER_NOMS_INTERDITS" | tr '|' '\n' >> "$LISTE_NOMS"; fi
   # Fins de ligne CRLF (liste préparée sous Windows) : retirées, sinon aucun nom ne serait reconnu.
   # Espaces autour des noms (« Nom1 | Nom2 ») et BOM UTF-8 (liste préparée sous Windows) retirés aussi : sinon le nom serait perdu en silence.
@@ -415,6 +417,34 @@ essai() {
   source_saine; printf 'GIF89a\x00\x01' > "$base/s/src/i.png"
   code=0; bash "$moi" --ecrire "$base/s" "$base/d" >/dev/null 2>&1 || code=$?
   verifie "4. faux .png (signature absente) : code 1" "$code" 1
+
+  # 5. Relecture v4 : liste de noms sans fin de ligne, en-têtes bzip2/xz/zstd, accents.
+  source_saine; echo "// Dupontel" > "$base/s/src/n.ts"; printf 'Élodie\nDupontel' > "$base/noms.txt"
+  code=0; env -u PUBLIER_NOMS_INTERDITS PUBLIER_NOMS_INTERDITS_FICHIER="$base/noms.txt" bash "$moi" --ecrire "$base/s" "$base/d" >/dev/null 2>&1 || code=$?
+  verifie "v4-1. fichier de liste sans fin de ligne : dernier nom reconnu : code 1" "$code" 1
+  source_saine; echo "// Dupontel" > "$base/s/src/n.ts"; printf 'Dupontel' > "$base/noms.txt"
+  code=0; env -u PUBLIER_NOMS_INTERDITS PUBLIER_NOMS_INTERDITS_FICHIER="$base/noms.txt" bash "$moi" --ecrire "$base/s" "$base/d" >/dev/null 2>&1 || code=$?
+  verifie "v4-1. fichier d'un seul nom sans fin de ligne : code 1" "$code" 1
+  source_saine; printf '// Élodie\n// Dupontel\n' > "$base/s/src/n.ts"; printf 'Élodie' > "$base/noms.txt"
+  code=0; PUBLIER_NOMS_INTERDITS="Dupontel" PUBLIER_NOMS_INTERDITS_FICHIER="$base/noms.txt" bash "$moi" --ecrire "$base/s" "$base/d" >/dev/null 2>&1 || code=$?
+  verifie "v4-1. fichier sans fin de ligne + variable : code 1" "$code" 1
+  source_saine; echo "// Dupontel" > "$base/s/src/n.ts"; printf 'Élodie' > "$base/noms.txt"
+  code=0; PUBLIER_NOMS_INTERDITS="Dupontel" PUBLIER_NOMS_INTERDITS_FICHIER="$base/noms.txt" bash "$moi" --ecrire "$base/s" "$base/d" >/dev/null 2>&1 || code=$?
+  verifie "v4-1. fichier sans fin de ligne + variable : nom de la variable reconnu aussi : code 1" "$code" 1
+  for ruse in "bzip2:425a68:jpg" "xz:fd377a58:webp" "zstd:28b52ffd:png"; do
+    source_saine; printf "$(printf '\\x%s' $(echo "${ruse#*:}" | sed 's/\(..\)/\1 /g; s/:.*//'))"'\x00\x01' > "$base/s/src/c.${ruse##*:}"
+    code=0; bash "$moi" --ecrire "$base/s" "$base/d" >/dev/null 2>&1 || code=$?
+    verifie "v4-2. ${ruse%%:*} renommé .${ruse##*:} : code 1" "$code" 1
+  done
+  if [ "$(locale -a 2>/dev/null | grep -cix 'c\.utf-\?8')" -gt 0 ]; then
+    for ruse in "// élodie" "élodieJean"; do
+      source_saine; echo "$ruse" > "$base/s/src/n.ts"
+      code=0; PUBLIER_NOMS_INTERDITS="Élodie" bash "$moi" --ecrire "$base/s" "$base/d" >/dev/null 2>&1 || code=$?
+      verifie "v4-3. accent en minuscule « $ruse » : code 1" "$code" 1
+    done
+  else
+    echo "  note : locale UTF-8 absente, repli des accents non essayé (limite notée dans la doc)"
+  fi
 
   echo "4. Jamais de suppression, destination invalide refusée"
   source_saine

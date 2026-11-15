@@ -38,3 +38,5 @@ Sans contrôle automatique dans le dépôt privé, la preuve est l'essai intégr
 
 ## Limite acceptée
 Une variable secrète écrite en clé JSON entre guillemets (`"SESSION_SECRET": "…"`) n'est pas reconnue, ni par ce script ni par `scripts/garde.mjs` (même trou des deux côtés). Accepté tel quel : `scripts/garde.mjs` n'est pas modifié ici.
+
+Locale : le script passe en `LC_ALL=C.UTF-8` quand cette locale existe, pour que « élodie » soit reconnu comme « Élodie ». Sans cette locale sur la machine, le repli des lettres accentuées en minuscule n'a pas lieu (limite acceptée ; l'essai le signale). Accepté aussi : un nom tout en capitales collé à un autre (`DUPONTELLE` pour `Dupontel`) est refusé par prudence, même si c'est un autre mot. Les fichiers compressés renommés sous une extension d'image ou de police sont reconnus à leur en-tête : gzip, zip, bzip2, xz, zstd.
