@@ -4,7 +4,7 @@ import { exigerSession } from "@/services/auth";
 import { EcranMetiers } from "../metiers/EcranMetiers";
 import { EcranNouveautes } from "../nouveautes/EcranNouveautes";
 
-export const metadata: Metadata = { title: "Mes idées de sujets" };
+export const metadata: Metadata = { title: "Métiers et sujets" };
 export const dynamic = "force-dynamic";
 
 const ONGLETS = [
@@ -18,7 +18,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ o
   const actif = onglet === "nouveautes" ? "nouveautes" : "metiers";
   return (
     <section className="flex flex-col gap-6">
-      <EnTete titre="Mes idées de sujets" phrase="Choisissez les métiers dont vos vidéos parlent, et gardez les nouveautés de la semaine qui valent une vidéo." />
+      <EnTete titre="Métiers et sujets" phrase="Choisissez les métiers dont vos vidéos parlent, et gardez les nouveautés de la semaine qui valent une vidéo." />
       <Onglets onglets={ONGLETS} actif={actif} />
       {actif === "nouveautes" ? <EcranNouveautes /> : <EcranMetiers recherche={q ?? ""} />}
     </section>

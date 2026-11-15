@@ -48,8 +48,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ g
   return (
     <section className="flex flex-col gap-8">
       <header className="flex flex-col gap-1">
-        <p className="font-semibold text-texte-doux first-letter:uppercase">{dateDuJour()}</p>
-        <h1 className="text-4xl font-bold">Bonjour Williams</h1>
+        <p className="font-semibold text-texte-doux first-letter:uppercase">Bonjour · {dateDuJour()}</p>
+        <h1 className="text-4xl font-bold">Ma journée</h1>
       </header>
 
       <RangeeTuiles>
