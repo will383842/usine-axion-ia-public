@@ -1,7 +1,7 @@
 /** T14 · Chiffres par mot : saisie hebdomadaire, courbe et rapport par mot, objectif de visibilité par compte, carte hebdomadaire. */
 import "server-only";
 import { depots, interrupteurAllume, journaliser } from "@/donnees";
-import { requete } from "@/lib/base";
+import { requete, transaction } from "@/lib/base";
 import {
   INTERRUPTEUR_CARTE_RELEVE,
   INTERRUPTEUR_CHIFFRES,
@@ -18,6 +18,7 @@ import {
 } from "./regles";
 
 export * from "./regles";
+export { historiqueDesReleves, type GroupeHistorique, type LigneHistorique } from "./historique";
 
 export class ErreurChiffres extends Error {}
 
@@ -39,14 +40,21 @@ export async function enregistrerReleve(saisie: unknown): Promise<Releve> {
   const [mot, compte] = await Promise.all([depots.mot.lire(r.mot), depots.compte.lire(r.compte)]);
   if (!mot || mot.archive_le) throw new ErreurChiffres("Mot inconnu.");
   if (!compte || compte.archive_le) throw new ErreurChiffres("Compte inconnu.");
-  await requete(
-    `INSERT INTO releve_mot (semaine, mot, compte, commentaires, messages, demandes_guide, abonnes_gagnes)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
-     ON CONFLICT (semaine, mot, compte) DO UPDATE
-       SET commentaires = EXCLUDED.commentaires, messages = EXCLUDED.messages, demandes_guide = EXCLUDED.demandes_guide,
-           abonnes_gagnes = EXCLUDED.abonnes_gagnes, archive_le = NULL, modifie_le = now()`,
-    [r.semaine, r.mot, r.compte, r.commentaires, r.messages, r.demandesGuide, r.abonnesGagnes],
-  );
+  await transaction(async () => {
+    await requete(
+      `INSERT INTO releve_mot (semaine, mot, compte, commentaires, messages, demandes_guide, abonnes_gagnes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT (semaine, mot, compte) DO UPDATE
+         SET commentaires = EXCLUDED.commentaires, messages = EXCLUDED.messages, demandes_guide = EXCLUDED.demandes_guide,
+             abonnes_gagnes = EXCLUDED.abonnes_gagnes, archive_le = NULL, modifie_le = now()`,
+      [r.semaine, r.mot, r.compte, r.commentaires, r.messages, r.demandesGuide, r.abonnesGagnes],
+    );
+    await requete(
+      `INSERT INTO releve_mot_historique (semaine, mot, compte, commentaires, messages, demandes_guide, abonnes_gagnes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [r.semaine, r.mot, r.compte, r.commentaires, r.messages, r.demandesGuide, r.abonnesGagnes],
+    );
+  });
   await journaliser("chiffres", `Chiffres de la semaine du ${r.semaine} : ${mot.mot} sur ${compte.nom ?? compte.code}.`, { cible: `releve_mot:${r.mot}:${r.compte}:${r.semaine}` });
   return r;
 }

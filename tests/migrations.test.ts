@@ -88,11 +88,16 @@ describe.skipIf(!url)("migrations", () => {
         `INSERT INTO agregat_crm_dernier (jour, compte, genere_le) VALUES ('2026-01-01', 'axion', $1), ('2026-01-02', 'autre', $2)`,
         [t1, t2],
       );
+      await q.query(
+        `INSERT INTO calendrier_ligne (id, reseau, type_contenu, prevue_le, etat, note) VALUES (1, 'instagram', 'image', $1, 'programmee', 'avant 033'), (2, 'linkedin', 'texte', $2, 'brouillon', NULL)`,
+        [t1, t2],
+      );
+      const calendrierAvant = (await q.query("SELECT id, reseau, type_contenu, prevue_le, etat, note, cree_le, modifie_le FROM calendrier_ligne ORDER BY id")).rows;
       const avant = (await q.query("SELECT id, jour::text, compte, mot, reseau, demandes, guides_envoyes, accords, mises_a_l_ecart, genere_le, recu_le FROM agregat_crm ORDER BY id")).rows;
       const dernierAvant = (await q.query("SELECT jour::text, compte, genere_le FROM agregat_crm_dernier ORDER BY jour, compte")).rows;
       expect(avant).toHaveLength(3);
 
-      expect((await jouerMigrations(q)).jouees).toEqual(["032-agregats-reseau-cle.sql", "034-interrupteur-tout-arreter.sql"]);
+      expect((await jouerMigrations(q)).jouees).toEqual(["032-agregats-reseau-cle.sql", "033-calendrier-etat-proposition.sql", "034-interrupteur-tout-arreter.sql", "035-releve-historique.sql"]);
 
       // (a) mêmes nombres de lignes dans les nouvelles tables
       expect((await q.query("SELECT count(*)::int AS n FROM agregat_crm")).rows[0].n).toBe(3);
@@ -105,6 +110,14 @@ describe.skipIf(!url)("migrations", () => {
       expect(apres).toEqual(avant);
       const dernierApres = (await q.query("SELECT jour::text, compte, genere_le FROM agregat_crm_dernier ORDER BY jour, compte")).rows;
       expect(dernierApres).toEqual(dernierAvant);
+      // 033 est additive : l'ancien contenu du calendrier est conservé, les nouvelles colonnes prennent leur valeur par défaut
+      const calendrierApres = (await q.query("SELECT id, reseau, type_contenu, prevue_le, etat, note, cree_le, modifie_le FROM calendrier_ligne ORDER BY id")).rows;
+      expect(calendrierApres).toEqual(calendrierAvant);
+      const ajoutees = (await q.query("SELECT etat_studio, etat_studio_le, date_choisie FROM calendrier_ligne ORDER BY id")).rows;
+      expect(ajoutees).toEqual([
+        { etat_studio: null, etat_studio_le: null, date_choisie: false },
+        { etat_studio: null, etat_studio_le: null, date_choisie: false },
+      ]);
       // (d) le compteur d'id repart après le plus grand id existant
       const nouveau = await q.query(
         `INSERT INTO agregat_crm (jour, compte, mot, reseau, demandes, genere_le) VALUES ('2026-01-04', 'axion', 'guide', 'linkedin', 3, $1) RETURNING id`,
