@@ -36,6 +36,11 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      - name: Garde anti-fuite (aucun dossier bases/ ni fichier privé suivi)
+        run: |
+          if git ls-files | grep -E '^bases/|(^|/)\.env$|\.pem$'; then
+            echo "::error::Un fichier privé est suivi dans le dépôt public."; exit 1
+          fi
       - run: pnpm install --frozen-lockfile
       - name: Types
         run: pnpm typecheck
@@ -84,7 +89,9 @@ jobs:
   deployer:
     name: Envoi au serveur
     needs: image
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # Désactivé tant que le chemin de mise en ligne n'est pas fixé : sans la variable de dépôt
+    # USINE_DEPLOY_ACTIF = 'true', le job est « skipped » (jamais un faux vert).
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.USINE_DEPLOY_ACTIF == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     # Un seul envoi à la fois vers le serveur, jamais interrompu.
@@ -109,7 +116,7 @@ jobs:
           set -euo pipefail
           # Sans clé, empreinte, hôte et compte : rien n'est envoyé (jamais d'empreinte acceptée au premier contact).
           if [ -z "$CLE" ] || [ -z "$EMPREINTE" ] || [ -z "$HOTE" ] || [ -z "$COMPTE" ]; then
-            echo "::warning::Déploiement non réglé (clé, empreinte, hôte ou compte absent) : rien n'est envoyé."; exit 0
+            echo "::error::Déploiement activé mais non réglé (clé, empreinte, hôte ou compte absent) : rien n'est envoyé."; exit 1
           fi
           if [ "$COMPTE" = "root" ]; then echo "::error::Le compte de déploiement ne peut pas être root."; exit 1; fi
           dossier="$(mktemp -d)"
