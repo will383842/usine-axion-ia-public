@@ -8,3 +8,5 @@ Tête relue : 734229488d8aaebf02293857dfbe6e044248904f (origin/usine/L7-32)
 - Tête 734229488d8aaebf02293857dfbe6e044248904f confirmée ; diff = scripts/publier-public.sh (+369) et docs/DEPOT-PUBLIC.md (+36).
 - `--essai` sur git archive de la tête : VERT, 63 cas ok, 0 ROUGE.
 - Arbre du dépôt (git archive) : à blanc code 0 (292 fichiers) ; --ecrire code 0, copie identique à l'arbre (diff -r vide), bases/ permis inclus.
+- Points 1 à 12 de la v2 rejoués par sondes jetables (faux secrets, faux noms) : 1 à 10 corrigés ; 11 accepté ; 12 toujours ouvert (facultatif).
+- Mutations : 13 mutations (une par correctif, plus modulo 256) rougissent toutes l'essai.
