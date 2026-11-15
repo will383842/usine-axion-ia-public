@@ -5,17 +5,21 @@
  * TOUTES les couleurs passent par ces jetons ; la palette Tailwind par défaut est coupée.
  */
 :root {
-  --fond: #faf8f3; /* ivoire */
+  --fond: #f1f7fd; /* page claire, légèrement bleutée */
   --surface: #ffffff;
-  --trait: #e6e0d4;
-  --texte: #1a1815;
-  --texte-doux: #5c554c; /* 7:1 sur ivoire */
+  --trait: #d3e1ef;
+  --texte: #0f2740;
+  --texte-doux: #46607a; /* 5,5:1 sur la page */
   --terracotta: #b23f16; /* signature et action principale (5,47:1 avec l'ivoire) */
   --terracotta-fonce: #8c3010;
   --terracotta-doux: #f6e7df;
   --sur-terracotta: #faf8f3;
   --mocha: #2a2520;
   --sur-mocha: #faf8f3;
+  --barre: #a9d6f5; /* barre latérale bleu ciel */
+  --barre-texte: #071f33;
+  --barre-actif: #ffffff;
+  --barre-survol: #c3e4fa;
   --hauteur-nav: 64px;
   color-scheme: light;
 }
@@ -31,6 +35,10 @@
   --color-terracotta-fonce: var(--terracotta-fonce);
   --color-terracotta-doux: var(--terracotta-doux);
   --color-sur-terracotta: var(--sur-terracotta);
+  --color-barre: var(--barre);
+  --color-barre-texte: var(--barre-texte);
+  --color-barre-actif: var(--barre-actif);
+  --color-barre-survol: var(--barre-survol);
   --color-mocha: var(--mocha);
   --color-sur-mocha: var(--sur-mocha);
   --font-titre: var(--police-titre), Georgia, serif;
@@ -59,6 +67,12 @@
   :focus-visible {
     outline: 3px solid var(--terracotta);
     outline-offset: 2px;
+  }
+  /* La barre bleu ciel ne change pas de couleur : son anneau de focus non plus (10,9:1 sur le bleu ciel, plus sur le blanc). */
+  aside :focus-visible,
+  [data-barre] :focus-visible,
+  [data-barre]:focus-visible {
+    outline-color: var(--barre-texte);
   }
 }
 
@@ -137,4 +151,36 @@
   --color-rouge: var(--rouge);
   --color-gris-doux: var(--gris-doux);
   --shadow-carte: var(--ombre-carte);
+}
+
+/* UO-01 · thème sombre au choix (la barre bleu ciel ne change pas) et bascule du mot du bouton de thème. */
+:root[data-theme="sombre"] {
+  --fond: #0b1a2a;
+  --surface: #13273c;
+  --trait: #28425c;
+  --texte: #e7f1fb;
+  --texte-doux: #a6bdd3;
+  --terracotta: #f0762f;
+  --terracotta-fonce: #ff8d4d;
+  --terracotta-doux: #3a2316;
+  --sur-terracotta: #1a0a02;
+  --ambre-doux: #3b2f10;
+  --ambre: #f6c75a;
+  --bleu-doux: #1c3550;
+  --bleu: #9cc9f2;
+  --vert-doux: #133a24;
+  --vert: #7fdba0;
+  --rouge-doux: #4a1d1f;
+  --rouge: #ffb0ad;
+  --gris-doux: #1d3248;
+  color-scheme: dark;
+}
+.si-sombre {
+  display: none;
+}
+:root[data-theme="sombre"] .si-clair {
+  display: none;
+}
+:root[data-theme="sombre"] .si-sombre {
+  display: inline;
 }
