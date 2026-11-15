@@ -79,13 +79,21 @@ garde_fuites() {
   local args=(-iname bases)
   for p in "${BASES_PERMISES[@]}"; do args+=(! -path "$dossier/$p"); done
   if [ -n "$(find "$dossier" "${args[@]}" -print -quit)" ]; then faute "un bases/ hors des emplacements permis est dans la copie"; fi
+  # Dossier ou fichier voisin de bases/ à la racine (bases.bak, bases-2025…) : refusé, sauf le témoin bases.source.json.
+  if [ -n "$(find "$dossier" -maxdepth 1 -iname 'bases?*' ! -name bases.source.json -print -quit)" ]; then faute "un voisin de bases/ (bases?*) est à la racine de la copie"; fi
   while IFS= read -r f; do faute "lien symbolique refusé : ${f#"$dossier"/}"; done < <(find "$dossier" -type l)
   # Fichiers non texte : refusés hors de la liste d'extensions (UTF-16, archives, binaires ne se lisent pas).
   while IFS= read -r -d '' f; do
     ext="${f##*.}"; ext="${ext,,}"
     [[ "$f" == *.* ]] || ext=""
-    if [[ "$ext" =~ ^($EXT_BINAIRES)$ ]]; then continue; fi
     local tete; tete="$(head -c4 "$f" | od -An -tx1 | tr -d ' \n')"
+    if [[ "$ext" =~ ^($EXT_BINAIRES)$ ]]; then
+      # Extension permise : l'en-tête est tout de même vérifié (archive renommée, faux .png).
+      if [[ "$tete" == 1f8b* || "$tete" == 504b* ]] || { [ "$ext" = png ] && [ "$tete" != 89504e47 ]; }; then
+        faute "fichier non texte ou compressé refusé (extension trompeuse) : ${f#"$dossier"/}"
+      fi
+      continue
+    fi
     if [[ "$ext" =~ ^(gz|tgz|zip|tar|bz2|xz|7z|rar|zst)$ ]] || [[ "$tete" == 1f8b* || "$tete" == 504b* || "$tete" == fffe* || "$tete" == feff* ]] \
        || [ "$(LC_ALL=C tr -d '\000' < "$f" | wc -c)" != "$(wc -c < "$f")" ]; then
       faute "fichier non texte ou compressé refusé : ${f#"$dossier"/}"
@@ -148,7 +156,9 @@ recopier() {
   if [ -n "${PUBLIER_NOMS_INTERDITS_FICHIER:-}" ] && [ -f "$PUBLIER_NOMS_INTERDITS_FICHIER" ]; then cat "$PUBLIER_NOMS_INTERDITS_FICHIER" >> "$LISTE_NOMS"; fi
   if [ -n "${PUBLIER_NOMS_INTERDITS:-}" ]; then printf '%s\n' "$PUBLIER_NOMS_INTERDITS" | tr '|' '\n' >> "$LISTE_NOMS"; fi
   # Fins de ligne CRLF (liste préparée sous Windows) : retirées, sinon aucun nom ne serait reconnu.
-  tr -d '\r' < "$LISTE_NOMS" | sed '/^[[:space:]]*$/d' > "$LISTE_NOMS.net"; mv "$LISTE_NOMS.net" "$LISTE_NOMS"
+  # Espaces autour des noms (« Nom1 | Nom2 ») et BOM UTF-8 (liste préparée sous Windows) retirés aussi : sinon le nom serait perdu en silence.
+  local bom=$'\xef\xbb\xbf'
+  tr -d '\r' < "$LISTE_NOMS" | sed "s/^$bom//; s/^[[:space:]]*//; s/[[:space:]]*\$//; /^\$/d" > "$LISTE_NOMS.net"; mv "$LISTE_NOMS.net" "$LISTE_NOMS"
   # Expressions de recherche : nom entre deux non-lettres (sans casse), et nom collé après une minuscule (jeanNom).
   : > "$LISTE_NOMS.re"; : > "$LISTE_NOMS.camel"
   local nom echappe
@@ -157,6 +167,11 @@ recopier() {
     printf '(^|[^[:alpha:]])%s([^[:alpha:]]|$)\n' "$echappe" >> "$LISTE_NOMS.re"
     nom="${nom^}"; echappe="$(printf '%s' "$nom" | sed 's/[][\\.*^$(){}?+|\/]/\\&/g')"
     printf '[[:lower:]]%s([^[:alpha:]]|$)\n' "$echappe" >> "$LISTE_NOMS.camel"
+    # Nom placé en tête (nomJean, NomJean) ou collé tout en capitales (JEANNOM, NOMJEAN).
+    printf '(^|[^[:alpha:]])%s[[:upper:]]\n' "$echappe" >> "$LISTE_NOMS.camel"
+    printf '(^|[^[:alpha:]])%s[[:upper:]]\n' "$(printf '%s' "${nom,}" | sed 's/[][\\.*^$(){}?+|\/]/\\&/g')" >> "$LISTE_NOMS.camel"
+    echappe="$(printf '%s' "${nom^^}" | sed 's/[][\\.*^$(){}?+|\/]/\\&/g')"
+    printf '[[:upper:]]%s([^[:alpha:]]|$)\n(^|[^[:alpha:]])%s[[:upper:]]\n' "$echappe" "$echappe" >> "$LISTE_NOMS.camel"
   done < "$LISTE_NOMS"
   if [ ! -s "$LISTE_NOMS" ]; then
     if [ "$ecrire" -eq 1 ]; then
@@ -351,6 +366,55 @@ essai() {
   source_saine; printf 'session_%s = %s\n' secret "$vingt" > "$base/s/src/v.ts"
   code=0; bash "$moi" --ecrire "$base/s" "$base/d" >/dev/null 2>&1 || code=$?
   verifie "10. variable secrète en minuscules : code 1" "$code" 1
+
+  echo "3 quater. Relecture v3 : points 1 à 4 (faux noms seulement)"
+  # 1. Espaces autour des noms et BOM UTF-8.
+  local liste
+  for liste in "Dupontel | Élodie" " Dupontel |Élodie " "Élodie | Dupontel"; do
+    for ruse in "// Dupontel" "// Élodie"; do
+      source_saine; echo "$ruse" > "$base/s/src/n.ts"
+      code=0; PUBLIER_NOMS_INTERDITS="$liste" bash "$moi" --ecrire "$base/s" "$base/d" >/dev/null 2>&1 || code=$?
+      verifie "1. liste « $liste », « $ruse » : code 1" "$code" 1
+    done
+  done
+  source_saine; echo "x" > "$base/s/src/dupontel.md"
+  code=0; PUBLIER_NOMS_INTERDITS="Élodie | Dupontel" bash "$moi" --ecrire "$base/s" "$base/d" >/dev/null 2>&1 || code=$?
+  verifie "1. « Nom1 | Nom2 » : nom en fin dans un nom de fichier : code 1" "$code" 1
+  source_saine; echo "// Dupontel" > "$base/s/src/n.ts"; printf '\xef\xbb\xbfDupontel\r\nÉlodie\n' > "$base/noms.txt"
+  code=0; env -u PUBLIER_NOMS_INTERDITS PUBLIER_NOMS_INTERDITS_FICHIER="$base/noms.txt" bash "$moi" --ecrire "$base/s" "$base/d" >/dev/null 2>&1 || code=$?
+  verifie "1. liste avec BOM : premier nom reconnu : code 1" "$code" 1
+  source_saine; echo "// propre" > "$base/s/src/n.ts"
+  code=0; PUBLIER_NOMS_INTERDITS="Dupontel | Élodie" bash "$moi" --ecrire "$base/s" "$base/d" >/dev/null 2>&1 || code=$?
+  verifie "1. liste avec espaces, source propre : code 0" "$code" 0
+  # 2. Nom en tête ou en capitales collées.
+  for ruse in "dupontelJean" "DupontelJean" "JEANDUPONTEL" "DUPONTELJEAN"; do
+    source_saine; echo "// $ruse" > "$base/s/src/n.ts"
+    code=0; PUBLIER_NOMS_INTERDITS="Dupontel" bash "$moi" --ecrire "$base/s" "$base/d" >/dev/null 2>&1 || code=$?
+    verifie "2. « $ruse » : code 1" "$code" 1
+  done
+  source_saine; echo "// dupontelle propre" > "$base/s/src/n.ts"
+  code=0; PUBLIER_NOMS_INTERDITS="Dupontel" bash "$moi" --ecrire "$base/s" "$base/d" >/dev/null 2>&1 || code=$?
+  verifie "2. « dupontelle » (autre mot) : code 0" "$code" 0
+  # 3. Voisins de bases/ à la racine.
+  for ruse in bases.bak bases-2025; do
+    source_saine; mkdir -p "$base/s/$ruse"; echo x > "$base/s/$ruse/a.md"
+    code=0; bash "$moi" --ecrire "$base/s" "$base/d" >/dev/null 2>&1 || code=$?
+    verifie "3. $ruse/ à la racine : code 1" "$code" 1
+    verifie "3. $ruse/ : destination vide" "$(find "$base/d" -type f | wc -l | tr -d ' ')" 0
+  done
+  # 4. En-tête vérifié même avec une extension permise.
+  source_saine; printf '%s\n' "$sk" | gzip -c > "$base/s/src/a.png"
+  code=0; bash "$moi" --ecrire "$base/s" "$base/d" >/dev/null 2>&1 || code=$?
+  verifie "4. gzip renommé .png : code 1" "$code" 1
+  source_saine; printf 'x' | zip -q - - > "$base/s/src/f.woff2" 2>/dev/null || printf 'PK\x03\x04\x00\x00' > "$base/s/src/f.woff2"
+  code=0; bash "$moi" --ecrire "$base/s" "$base/d" >/dev/null 2>&1 || code=$?
+  verifie "4. zip renommé .woff2 : code 1" "$code" 1
+  source_saine; printf 'wOF2\x00\x01' > "$base/s/src/f.woff2"
+  code=0; bash "$moi" --ecrire "$base/s" "$base/d" >/dev/null 2>&1 || code=$?
+  verifie "4. vrai .woff2 : code 0" "$code" 0
+  source_saine; printf 'GIF89a\x00\x01' > "$base/s/src/i.png"
+  code=0; bash "$moi" --ecrire "$base/s" "$base/d" >/dev/null 2>&1 || code=$?
+  verifie "4. faux .png (signature absente) : code 1" "$code" 1
 
   echo "4. Jamais de suppression, destination invalide refusée"
   source_saine
