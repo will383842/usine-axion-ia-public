@@ -431,7 +431,7 @@ essai() {
   source_saine; echo "// Dupontel" > "$base/s/src/n.ts"; printf 'Élodie' > "$base/noms.txt"
   code=0; PUBLIER_NOMS_INTERDITS="Dupontel" PUBLIER_NOMS_INTERDITS_FICHIER="$base/noms.txt" bash "$moi" --ecrire "$base/s" "$base/d" >/dev/null 2>&1 || code=$?
   verifie "v4-1. fichier sans fin de ligne + variable : nom de la variable reconnu aussi : code 1" "$code" 1
-  for ruse in "bzip2:425a68:jpg" "xz:fd377a58:webp" "zstd:28b52ffd:png"; do
+  for ruse in "bzip2:425a68:jpg" "xz:fd377a58:webp" "zstd:28b52ffd:jpg"; do
     source_saine; printf "$(printf '\\x%s' $(echo "${ruse#*:}" | sed 's/\(..\)/\1 /g; s/:.*//'))"'\x00\x01' > "$base/s/src/c.${ruse##*:}"
     code=0; bash "$moi" --ecrire "$base/s" "$base/d" >/dev/null 2>&1 || code=$?
     verifie "v4-2. ${ruse%%:*} renommé .${ruse##*:} : code 1" "$code" 1
