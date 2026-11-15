@@ -71,7 +71,7 @@ export async function placerLesNouveaux(): Promise<{ ajoutees: number; auRepos: 
     for (const p of placements) {
       const a = infos.get(`${p.ligne}|${p.reseau}`)!;
       await requete(
-        `INSERT INTO calendrier_ligne (lot_ligne, reseau, type_contenu, format, prevue_le) VALUES ($2, $3, $4, $5, ${SQL_INSTANT})`,
+        `INSERT INTO calendrier_ligne (lot_ligne, reseau, type_contenu, format, prevue_le) VALUES ($2, $3, $4, $5, ${SQL_INSTANT}) ON CONFLICT DO NOTHING`,
         [p.jour, p.ligne, p.reseau, a.type_contenu, a.format],
       );
     }
@@ -111,11 +111,31 @@ export async function changerLeJour(id: string, jour: string): Promise<void> {
   if (!jourValide(jour)) throw new ErreurCalendrier("Choisissez une date valide.");
   if (jour < (await aujourdhui())) throw new ErreurCalendrier("Ce jour est déjà passé : choisissez aujourd'hui ou un jour à venir.");
   const lignes = await requete(
-    `UPDATE calendrier_ligne SET prevue_le = ${SQL_INSTANT}, modifie_le = now() WHERE id = $2 AND archive_le IS NULL RETURNING id`,
+    `UPDATE calendrier_ligne SET prevue_le = ${SQL_INSTANT}, date_choisie = true, modifie_le = now() WHERE id = $2 AND archive_le IS NULL RETURNING id`,
     [jour, id],
   );
   if (lignes.length === 0) throw new ErreurCalendrier("Ligne introuvable.");
   await journaliser("calendrier", `Contenu du calendrier déplacé au ${jour}.`, { cible: `calendrier_ligne:${id}` });
+}
+
+/** États que le Studio peut renvoyer ; lus seulement, jamais écrits vers le Studio. */
+export const ETATS_STUDIO = ["en_attente", "programmee", "publiee", "echec"] as const;
+
+/** Note l'état lu du Studio dans sa colonne à part : l'état de l'usine et la date ne bougent pas. */
+export async function noterEtatStudio(id: string, etat: string): Promise<void> {
+  if (!/^\d+$/.test(id)) throw new ErreurCalendrier("Ligne introuvable.");
+  if (!(ETATS_STUDIO as readonly string[]).includes(etat)) throw new ErreurCalendrier("État du Studio inconnu.");
+  await requete(`UPDATE calendrier_ligne SET etat_studio = $2, etat_studio_le = now() WHERE id = $1 AND archive_le IS NULL`, [id, etat]);
+}
+
+/** Propose la date par défaut de l'usine ; ne remplace jamais une date choisie. Renvoie vrai si la date a changé. */
+export async function proposerLaDateParDefaut(id: string, jour: string): Promise<boolean> {
+  if (!/^\d+$/.test(id) || !jourValide(jour)) throw new ErreurCalendrier("Ligne ou date invalide.");
+  const l = await requete(
+    `UPDATE calendrier_ligne SET prevue_le = ${SQL_INSTANT}, modifie_le = now() WHERE id = $2 AND archive_le IS NULL AND date_choisie = false RETURNING id`,
+    [jour, id],
+  );
+  return l.length > 0;
 }
 
 export interface RappelParts {
