@@ -185,7 +185,8 @@ essai() {
 
   echo "3 bis. Contournements rejoués : 256 fautes, nom, binaire, jeton npm, casse de bases/"
   local i
-  source_saine; for i in $(seq 1 256); do echo "p$i@reelle.fr"; done > "$base/s/src/m.ts"
+  local dom="reelle"".fr"
+  source_saine; for i in $(seq 1 256); do echo "p$i@${dom}"; done > "$base/s/src/m.ts"
   code=0; bash "$moi" --ecrire "$base/s" "$base/d" >/dev/null 2>&1 || code=$?
   verifie "256 adresses réelles : code 1 (pas de repli modulo 256)" "$code" 1
   verifie "256 adresses réelles : destination vide" "$(find "$base/d" -type f | wc -l | tr -d ' ')" 0
