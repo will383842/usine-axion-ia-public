@@ -56,3 +56,22 @@ describe("suivi des campagnes · donnée absente", () => {
     expect(afficherPart(50)).toBe("50 %");
   });
 });
+
+describe("suivi des campagnes · données illisibles", () => {
+  it("campagne invalide (premier jour illisible) : tout est non disponible, jamais 0", () => {
+    const s = suivreCampagne({ ...campagne, debut: "pas-une-date" }, cases);
+    expect(s).toEqual({ cases: null, publiees: null, partInconnues: null, partPubliee: null });
+    expect(afficherNombre(s.cases)).toBe(NON_DISPONIBLE);
+    expect(afficherNombre(s.partInconnues)).toBe(NON_DISPONIBLE);
+  });
+  it("case au jour illisible : comptée comme inconnue, elle ne disparaît pas", () => {
+    const s = suivreCampagne(campagne, [{ jour: "2024-01-xx", reseau: "instagram", publiee: true }]);
+    expect(s.cases).toBe(1);
+    expect(s.partInconnues).toBe(1);
+    expect(s.publiees).toBeNull();
+    expect(afficherPart(s.partPubliee)).toBe(NON_DISPONIBLE);
+    const t = suivreCampagne(campagne, [...cases, { jour: "2024-01-xx", reseau: "instagram", publiee: true }]);
+    expect(t.cases).toBe(5);
+    expect(t.partInconnues).toBe(2);
+  });
+});

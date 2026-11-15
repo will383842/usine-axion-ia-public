@@ -5,7 +5,7 @@
  * Livré éteint : rien ne l'appelle encore.
  */
 import type { Reseau } from "@/contrats";
-import type { Campagne } from "@/campagnes/regles";
+import { verifierCampagne, type Campagne } from "@/campagnes/regles";
 
 export const NON_DISPONIBLE = "non disponible";
 
@@ -31,6 +31,11 @@ export interface SuiviCampagne {
 const JOUR_MS = 86_400_000;
 const enJours = (j: string) => Date.parse(`${j}T00:00:00Z`) / JOUR_MS;
 
+const RIEN: SuiviCampagne = { cases: null, publiees: null, partInconnues: null, partPubliee: null };
+
+/** Case du réseau de la campagne dont le jour est illisible : comptée comme inconnue, jamais perdue. */
+const jourIllisible = (c: Campagne, k: CaseSuivie): boolean => k.reseau === c.reseau && !Number.isFinite(enJours(k.jour));
+
 function dansCampagne(c: Campagne, k: CaseSuivie): boolean {
   if (k.reseau !== c.reseau) return false;
   const rang = enJours(k.jour) - enJours(c.debut);
@@ -38,14 +43,15 @@ function dansCampagne(c: Campagne, k: CaseSuivie): boolean {
 }
 
 export function suivreCampagne(c: Campagne, cases: readonly CaseSuivie[] | null | undefined): SuiviCampagne {
-  if (!cases) return { cases: null, publiees: null, partInconnues: null, partPubliee: null };
+  if (!cases || verifierCampagne(c) !== null) return { ...RIEN };
   const miennes = cases.filter((k) => dansCampagne(c, k));
+  const illisibles = cases.filter((k) => jourIllisible(c, k)).length;
   const connues = miennes.filter((k) => typeof k.publiee === "boolean");
   const publiees = connues.filter((k) => k.publiee === true).length;
   return {
-    cases: miennes.length,
+    cases: miennes.length + illisibles,
     publiees: connues.length === 0 ? null : publiees,
-    partInconnues: miennes.length - connues.length,
+    partInconnues: miennes.length - connues.length + illisibles,
     partPubliee: connues.length === 0 ? null : Math.round((publiees / connues.length) * 100),
   };
 }
