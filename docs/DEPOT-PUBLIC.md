@@ -13,16 +13,18 @@ Le dépôt public ne contient que le code de l'Usine. Les bases réelles, les pl
 3. Dans la destination : relire `git diff`, lancer `pnpm verifier`, puis ouvrir la PR.
 
 ## Ce qui n'est jamais copié
-`bases/` (à toute profondeur), `.git`, `node_modules`, `.env` et `.env.*` (sauf `.env.exemple`), clés (`*.pem`, `*.key`, `*.p12`, `id_rsa*`, `id_ed25519*`), sorties de build (`.next`, `out`, `build`, `coverage`), `ALERTE-BASES.txt`.
+`bases/` (à toute profondeur, sans tenir compte de la casse), `.git`, `node_modules`, `.env` et `.env.*` (sauf `.env.exemple`), `.npmrc`, clés (`*.pem`, `*.key`, `*.p12`, `id_rsa*`, `id_ed25519*`), sorties de build (`.next`, `out`, `build`, `coverage`), `ALERTE-BASES.txt`.
 
 ## Garde anti-fuite (avant toute copie)
 Le script prépare la copie dans un dossier de passage, la contrôle, et ne touche à la destination que si tout est propre. Refus (code 1, rien copié) si :
 - un fichier de `bases/` s'y trouve ;
 - un lien symbolique s'y trouve ;
 - un secret probable apparaît (mêmes familles que `scripts/garde.mjs` : clés privées, jetons, hachages, adresses de base avec mot de passe, variables secrètes) ;
+- un jeton npm (`npm_…`, `_authToken`) apparaît ;
+- un nom de la liste des noms interdits apparaît (liste hors dépôt : variable `PUBLIER_NOMS_INTERDITS`, noms séparés par « | », ou fichier `PUBLIER_NOMS_INTERDITS_FICHIER`, un nom par ligne ; sans liste, `--ecrire` refuse et l'à blanc avertit) ;
 - le dépôt privé des plans est nommé quelque part (règle L7-02) ;
 - une adresse e-mail n'est pas en `@example.com`.
-Le message donne `fichier:ligne` et le motif, jamais la valeur trouvée.
+Les fichiers binaires sont lus comme les autres. Le refus tient dès la première faute, quel qu'en soit le nombre (pas de code de retour compté modulo 256). Le message donne `fichier:ligne` et le motif, jamais la valeur trouvée.
 
 Après la recopie réelle, la destination repasse par ses propres gardes : `node scripts/garde.mjs` (règle sortante, traces privées) dans le dépôt public, et la garde externe des bases `scripts/garde-bases-externe.mjs` avec ses variables d'environnement, comme d'habitude. Le script lui-même ne fait aucun appel réseau.
 
