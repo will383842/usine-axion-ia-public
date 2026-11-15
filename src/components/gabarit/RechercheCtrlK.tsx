@@ -31,7 +31,7 @@ function Fenetre({ fermer }: { fermer: () => void }) {
     const depart = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const masques: HTMLElement[] = [];
     for (const frere of Array.from(document.body.children)) {
-      if (frere instanceof HTMLElement && frere !== fenetre.current?.parentElement && !frere.inert && frere.tagName !== "SCRIPT") {
+      if (frere instanceof HTMLElement && !frere.contains(fenetre.current) && !frere.inert && frere.tagName !== "SCRIPT") {
         frere.inert = true;
         masques.push(frere);
       }
@@ -67,7 +67,7 @@ function Fenetre({ fermer }: { fermer: () => void }) {
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       setChoix(Math.max(actuel - 1, 0));
-    } else if (e.key === "Enter" && trouvees[actuel]) ouvrir(trouvees[actuel].href);
+    } else if (e.key === "Enter" && e.target === champ.current && trouvees[actuel]) ouvrir(trouvees[actuel].href);
   };
   return createPortal(
     <div ref={fenetre} role="dialog" aria-modal="true" aria-label="Chercher une page" onKeyDown={surTouche} className="fixed inset-0 z-30 flex items-start justify-center bg-texte/40 p-4 pt-[12vh]">
