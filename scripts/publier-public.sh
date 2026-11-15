@@ -152,7 +152,7 @@ essai() {
       secret) printf 'jeton=gh%s_%s\n' p "$(printf 'a%.0s' $(seq 1 36))" > "$base/s/src/b.ts";;
       trace) printf '// voir %s-%s-%s\n' "$t1" "$t2" "$t3" > "$base/s/src/b.ts";;
       adresse) printf 'contact: personne@%s.fr\n' "reelle" > "$base/s/src/b.ts";;
-      base) printf 'url=postgres://u:mdp@%s.fr:5432/x\n' "serveur" > "$base/s/src/b.ts";;
+      base) printf 'url=%s://u:mdp@%s.fr:5432/x\n' postgres serveur > "$base/s/src/b.ts";;
       lien) ln -s "$base/s/bases/secret.md" "$base/s/src/b.md";;
     esac
     code=0; sortie="$(bash "$moi" --ecrire "$base/s" "$base/d" 2>&1)" || code=$?
