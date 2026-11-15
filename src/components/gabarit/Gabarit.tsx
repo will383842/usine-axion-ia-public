@@ -78,7 +78,7 @@ export function Gabarit({ children, eteints = [] }: { children: React.ReactNode;
         </ul>
       </nav>
       {plusOuvert ? (
-        <div role="dialog" aria-modal="true" aria-label="Menu complet" className="fixed inset-0 z-20 flex flex-col bg-surface p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] lg:hidden">
+        <div role="dialog" aria-modal="true" aria-label="Menu complet" data-barre="" className="fixed inset-0 z-20 flex flex-col bg-barre text-barre-texte p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] lg:hidden">
           <div className="mb-3 flex items-center justify-between">
             <p className="font-titre text-lg font-bold">Menu</p>
             <button type="button" onClick={() => setPlusOuvert(false)} className="bouton-second">

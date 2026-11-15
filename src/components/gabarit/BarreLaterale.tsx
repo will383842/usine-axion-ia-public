@@ -84,7 +84,7 @@ export function Menu({ pathname, eteints, surClic, surRecherche }: { pathname: s
 /** Barre latérale bleu ciel, fixe à partir de 1024 px (au téléphone, le même contenu s'ouvre par « Plus »). */
 export function BarreLaterale(props: { pathname: string; eteints: ReadonlySet<string>; surRecherche: () => void }) {
   return (
-    <aside className="fixed inset-y-0 left-0 z-10 hidden w-72 flex-col gap-4 bg-barre p-4 text-barre-texte lg:flex">
+    <aside data-barre="" className="fixed inset-y-0 left-0 z-10 hidden w-72 flex-col gap-4 bg-barre p-4 text-barre-texte lg:flex">
       <Link href="/" className="inline-flex min-h-11 items-center self-start rounded-full bg-barre-texte px-4 font-titre text-lg font-bold text-barre">
         Usine Axion
       </Link>

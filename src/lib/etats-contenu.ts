@@ -29,7 +29,7 @@ export const ETATS_CONTENU: readonly EtatContenu[] = [
   { code: "echec", libelle: "Échec", phrase: "La fabrication ou la publication n'a pas abouti.", icone: "alerte", ton: "refus", plein: false },
   { code: "annule", libelle: "Annulé", phrase: "Arrêté avant la fabrication. Rien n'est dépensé.", icone: "retour", ton: "neutre", plein: false },
   { code: "archive", libelle: "Archivé", phrase: "Masqué, intact, remis en un clic.", icone: "retirer", ton: "neutre", plein: false },
-  { code: "corbeille", libelle: "Corbeille", phrase: "Rangé à part, retiré tout seul au bout de 30 jours.", icone: "retirer", ton: "refus", plein: false },
+  { code: "corbeille", libelle: "Corbeille", phrase: "Mis de côté. Rien n'est effacé sans votre confirmation écrite.", icone: "retirer", ton: "refus", plein: false },
 ];
 
 export function etatContenu(code: string): EtatContenu {

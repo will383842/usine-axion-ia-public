@@ -68,6 +68,12 @@
     outline: 3px solid var(--terracotta);
     outline-offset: 2px;
   }
+  /* La barre bleu ciel ne change pas de couleur : son anneau de focus non plus (10,9:1 sur le bleu ciel, plus sur le blanc). */
+  aside :focus-visible,
+  [data-barre] :focus-visible,
+  [data-barre]:focus-visible {
+    outline-color: var(--barre-texte);
+  }
 }
 
 @layer components {

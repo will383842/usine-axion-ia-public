@@ -130,3 +130,38 @@ describe("coquille : barre bleu ciel et branchements", () => {
     }
   });
 });
+
+describe("UO-01 · corrections de la relecture", () => {
+  it("la Corbeille ne promet ni délai chiffré ni effacement tout seul", async () => {
+    const { etatContenu } = await import("@/lib/etats-contenu");
+    const phrase = etatContenu("corbeille").phrase;
+    expect(phrase).not.toMatch(/\d/);
+    expect(phrase).not.toMatch(/tout seul/);
+    expect(phrase).toContain("confirmation écrite");
+  });
+  it("l'anneau de focus de la barre prend la couleur du texte de la barre (contraste ≥ 3:1 en sombre)", () => {
+    const css = lire("src/app/globals.css");
+    expect(css).toMatch(/aside :focus-visible[\s\S]*?outline-color:\s*var\(--barre-texte\)/);
+    expect(lire("src/components/gabarit/BarreLaterale.tsx")).toContain("data-barre");
+    expect(lire("src/components/gabarit/Gabarit.tsx")).toContain("data-barre");
+    const lum = (hex: string) => {
+      const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+      return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+    };
+    const ratio = (a: string, b: string) => (Math.max(lum(a), lum(b)) + 0.05) / (Math.min(lum(a), lum(b)) + 0.05);
+    expect(ratio("#071f33", "#a9d6f5")).toBeGreaterThanOrEqual(3);
+    expect(ratio("#071f33", "#ffffff")).toBeGreaterThanOrEqual(3);
+  });
+  it("la recherche Ctrl K : piège de focus, page derrière inert, focus rendu, combobox/listbox/option", () => {
+    const r = lire("src/components/gabarit/RechercheCtrlK.tsx");
+    expect(r).toContain('e.key === "Tab"');
+    expect(r).toContain(".inert = true");
+    expect(r).toContain(".inert = false");
+    expect(r).toContain("depart?.focus()");
+    expect(r).toContain('role="combobox"');
+    expect(r).toContain('role="listbox"');
+    expect(r).toContain('role="option"');
+    expect(r).toContain("aria-activedescendant");
+    expect(r).toContain("aria-selected");
+  });
+});
