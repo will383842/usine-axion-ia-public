@@ -20,6 +20,9 @@ SECRETS=(
   '\bJGFyZ29uMmlk[A-Za-z0-9+/=]{20,}'
   '\bnpm_[A-Za-z0-9]{30,}'
   '_authToken[[:space:]]*=[[:space:]]*["'"'"']?[A-Za-z0-9_+/=-]{8,}'
+)
+# Variables secrètes : reconnues quelle que soit la casse (grep -i).
+SECRETS_I=(
   '\b(SESSION_SECRET|NEXT_SERVER_ACTIONS_ENCRYPTION_KEY|USINE_PASSWORD_HASH_B64)[[:space:]]*[=:][[:space:]]*["'"'"']?[A-Za-z0-9+/=_-]{16,}'
 )
 # Trace du dépôt privé des plans (même règle que L7-02), assemblée pour ne pas s'y reconnaître.
@@ -27,54 +30,100 @@ t1="axion"; t2="plans"; t3="prive"
 TRACE_PRIVEE="$t1[-_ ]?$t2[-_ ]?$t3"
 ADRESSE='\b[A-Za-z0-9._%+-]+@([A-Za-z0-9-]+\.)+[A-Za-z]{2,}\b'
 ADRESSES_PERMISES='@(example\.(com|org|net)|anthropic\.com|users\.noreply\.github\.com)$'
+# Adresse de base locale : testée juste après le mot de passe (comme scripts/garde.mjs:37), jamais « n'importe où ».
+BASE_LOCALE='^postgres(ql)?://[^:/]+:[^@]+@(localhost|127\.0\.0\.1|postgres)([:/]|$)'
+BASE_AVEC_MDP='postgres(ql)?://[^:[:space:]/]+:[^@[:space:]]+@[^[:space:]"]*'
+# Seuls bases/ permis hors de la racine : l'écran Réglages › Bases et les bases FICTIVES des essais. Tout autre bases/ est refusé, pas tu.
+BASES_PERMISES=(src/app/reglages/bases tests/fixtures-bases/bases)
+# Fichiers non texte permis (images, polices) ; tout autre fichier non texte (UTF-16, archive, binaire) est refusé.
+EXT_BINAIRES='png|ico|woff|woff2|jpg|jpeg|gif|webp|avif'
 
-# Liste des fichiers à copier (séparés par NUL) : jamais bases/, .git, node_modules, secrets, sorties de build.
+# Liste des fichiers à copier (séparés par NUL) : jamais ./bases (racine, sans casse), .git, node_modules, secrets, sorties de build.
 lister() {
   (cd "$1" && find . \
-    \( -name .git -o -name node_modules -o -iname bases -o -name .next -o -name '.next-*' \
+    \( -name .git -o -name node_modules -o -ipath ./bases -o -name .next -o -name '.next-*' \
        -o -path ./out -o -path ./build -o -path ./coverage \
-       -o -name .npmrc -o -name .env -o \( -name '.env.*' ! -name .env.exemple \) \
+       -o -name .npmrc -o \( -iname '.env*' ! -name .env.exemple \) \
        -o -name '*.pem' -o -name '*.key' -o -name '*.p12' -o -name 'id_rsa*' -o -name 'id_ed25519*' \
        -o -name 'ALERTE-BASES.txt' -o -name .DS_Store -o -name '*.tsbuildinfo' \) -prune \
     -o \( -type f -o -type l \) -print0)
 }
 
+# Aides de la garde : N compte les fautes (jamais de valeur affichée).
+faute() { echo "FUITE : $1" >&2; N=$((N + 1)); }
+# Lit « fichier NUL ligne:texte » (grep -Z -n) et appelle « $@ chemin ligne texte » pour chaque trouvaille.
+chaque_trouvaille() {
+  local f rest
+  while IFS= read -r -d '' f && IFS= read -r rest; do "$@" "${f#"$DOSSIER"/}" "${rest%%:*}" "${rest#*:}"; done
+}
+cb_message() { faute "$MESSAGE : $1:$2"; }
+cb_base() { [[ "$3" =~ $BASE_LOCALE ]] || faute "secret probable : $1:$2"; return 0; }
+cb_adresse() {
+  shopt -s nocasematch
+  if ! [[ "$3" =~ $ADRESSES_PERMISES ]] && ! [[ "$3" =~ ^[^@]+@[0-9] ]]; then faute "adresse e-mail (utiliser @example.com) : $1:$2"; fi
+  shopt -u nocasematch
+  return 0
+}
+# Contrôle d'une liste de chemins (un par ligne, fichier $1) : jamais de valeur ni de chemin affichés, seulement le numéro de ligne.
+chemins_motif() { # $1 = message ; reste = options et motif de grep
+  local msg="$1" ln; shift
+  while IFS=: read -r ln _; do faute "nom de fichier suspect ($msg) : ligne $ln de la liste"; done < <(grep -n "$@" "$CHEMINS" || true)
+}
+
 # Garde anti-fuite sur le dossier de passage : affiche « fichier:ligne : motif » (jamais la valeur trouvée), met le nombre de fautes dans FAUTES et renvoie 1 dès qu'il y en a une (un code de retour est pris modulo 256).
 garde_fuites() {
-  local dossier="$1" n=0 l re
-  FAUTES=0
-  if [ -n "$(find "$dossier" \( -iname bases -o -ipath '*/bases/*' \) -print -quit)" ]; then
-    echo "FUITE : un fichier de bases/ est dans la copie" >&2; n=$((n + 1))
-  fi
-  while IFS= read -r l; do echo "FUITE : lien symbolique refusé : ${l#"$dossier"/}" >&2; n=$((n + 1)); done < <(find "$dossier" -type l)
+  local dossier="$1" re f p ext
+  DOSSIER="$dossier"; N=0; FAUTES=0; CHEMINS="$dossier.chemins"
+  (cd "$dossier" && find . -mindepth 1 | sed 's|^\./||') > "$CHEMINS"
+  # bases/ : seuls les emplacements permis (liste nommée) ; le reste est refusé, jamais tu.
+  local args=(-iname bases)
+  for p in "${BASES_PERMISES[@]}"; do args+=(! -path "$dossier/$p"); done
+  if [ -n "$(find "$dossier" "${args[@]}" -print -quit)" ]; then faute "un bases/ hors des emplacements permis est dans la copie"; fi
+  while IFS= read -r f; do faute "lien symbolique refusé : ${f#"$dossier"/}"; done < <(find "$dossier" -type l)
+  # Fichiers non texte : refusés hors de la liste d'extensions (UTF-16, archives, binaires ne se lisent pas).
+  while IFS= read -r -d '' f; do
+    ext="${f##*.}"; ext="${ext,,}"
+    [[ "$f" == *.* ]] || ext=""
+    if [[ "$ext" =~ ^($EXT_BINAIRES)$ ]]; then continue; fi
+    local tete; tete="$(head -c4 "$f" | od -An -tx1 | tr -d ' \n')"
+    if [[ "$ext" =~ ^(gz|tgz|zip|tar|bz2|xz|7z|rar|zst)$ ]] || [[ "$tete" == 1f8b* || "$tete" == 504b* || "$tete" == fffe* || "$tete" == feff* ]] \
+       || [ "$(LC_ALL=C tr -d '\000' < "$f" | wc -c)" != "$(wc -c < "$f")" ]; then
+      faute "fichier non texte ou compressé refusé : ${f#"$dossier"/}"
+    fi
+  done < <(find "$dossier" -type f -print0)
   # Noms de personnes : liste hors dépôt (variable ou fichier), un nom par ligne ou séparés par « | ». Jamais affichée.
+  # Bornes explicites (pas de grep -w : « _ » est une lettre pour lui) et casse « camel » (jeanNom).
   if [ -s "${LISTE_NOMS:-}" ]; then
-    while IFS= read -r l; do echo "FUITE : nom interdit : ${l#"$dossier"/}" >&2; n=$((n + 1)); done \
-      < <( (grep -raniF -w -f "$LISTE_NOMS" "$dossier" || true) | cut -d: -f1,2)
+    MESSAGE="nom interdit"
+    chaque_trouvaille cb_message < <(grep -raniEZ -f "$LISTE_NOMS.re" "$dossier" || true)
+    chaque_trouvaille cb_message < <(grep -ranEZ -f "$LISTE_NOMS.camel" "$dossier" || true)
+    chemins_motif "nom interdit" -iE -f "$LISTE_NOMS.re"
+    chemins_motif "nom interdit" -E -f "$LISTE_NOMS.camel"
   fi
+  MESSAGE="secret probable"
   for re in "${SECRETS[@]}"; do
-    while IFS= read -r l; do echo "FUITE : secret probable : ${l#"$dossier"/}" >&2; n=$((n + 1)); done \
-      < <( (grep -ranE --exclude=pnpm-lock.yaml -e "$re" "$dossier" || true) | cut -d: -f1,2)
+    chaque_trouvaille cb_message < <(grep -ranEZ -e "$re" "$dossier" || true)
+    chemins_motif "secret" -E -e "$re"
   done
-  # Adresse de base avec mot de passe, sauf locale (localhost, 127.0.0.1, postgres) comme dans scripts/garde.mjs.
-  while IFS= read -r l; do
-    local m="${l#*:*:}"
-    if ! [[ "$m" =~ @(localhost|127\.0\.0\.1|postgres)([:/]|$) ]]; then
-      echo "FUITE : secret probable : $(cut -d: -f1,2 <<<"${l#"$dossier"/}")" >&2; n=$((n + 1))
-    fi
-  done < <(grep -ranoE --exclude=pnpm-lock.yaml -e 'postgres(ql)?://[^:[:space:]/]+:[^@[:space:]]+@[^[:space:]"]*' "$dossier" || true)
-  while IFS= read -r l; do echo "FUITE : trace du dépôt privé : ${l#"$dossier"/}" >&2; n=$((n + 1)); done \
-    < <( (grep -ranEi --exclude=pnpm-lock.yaml -e "$TRACE_PRIVEE" "$dossier" || true) | cut -d: -f1,2)
-  while IFS= read -r l; do
-    local m="${l##*:}" ou="${l%:*}"
+  for re in "${SECRETS_I[@]}"; do
+    chaque_trouvaille cb_message < <(grep -raniEZ -e "$re" "$dossier" || true)
+    chemins_motif "secret" -iE -e "$re"
+  done
+  # Adresse de base avec mot de passe, sauf locale (localhost, 127.0.0.1, postgres) testée juste après le mot de passe, comme scripts/garde.mjs.
+  chaque_trouvaille cb_base < <(grep -ranoEZ -e "$BASE_AVEC_MDP" "$dossier" || true)
+  while IFS=: read -r ln m; do [[ "$m" =~ $BASE_LOCALE ]] || faute "secret probable (nom de fichier) : ligne $ln de la liste"; done < <(grep -noE -e "$BASE_AVEC_MDP" "$CHEMINS" || true)
+  MESSAGE="trace du dépôt privé"
+  chaque_trouvaille cb_message < <(grep -raniEZ -e "$TRACE_PRIVEE" "$dossier" || true)
+  chemins_motif "trace du dépôt privé" -iE -e "$TRACE_PRIVEE"
+  # Adresses e-mail : seul le pnpm-lock.yaml de la racine y échappe (versions de paquets), et seulement pour ce motif.
+  chaque_trouvaille cb_adresse < <(find "$dossier" -type f ! -path "$dossier/pnpm-lock.yaml" -print0 | xargs -0 -r grep -aHnoEZ -e "$ADRESSE" || true)
+  while IFS=: read -r ln m; do
     shopt -s nocasematch
-    if ! [[ "$m" =~ $ADRESSES_PERMISES ]] && ! [[ "$m" =~ ^[^@]+@[0-9] ]]; then
-      echo "FUITE : adresse e-mail (utiliser @example.com) : ${ou#"$dossier"/}" >&2; n=$((n + 1))
-    fi
+    if ! [[ "$m" =~ $ADRESSES_PERMISES ]] && ! [[ "$m" =~ ^[^@]+@[0-9] ]]; then faute "adresse e-mail dans un nom de fichier : ligne $ln de la liste"; fi
     shopt -u nocasematch
-  done < <(grep -ranoE --exclude=pnpm-lock.yaml -e "$ADRESSE" "$dossier" || true)
-  FAUTES=$n
-  if [ "$n" -gt 0 ]; then return 1; fi
+  done < <(grep -noE -e "$ADRESSE" "$CHEMINS" || true)
+  FAUTES=$N
+  if [ "$N" -gt 0 ]; then return 1; fi
   return 0
 }
 
@@ -90,7 +139,7 @@ recopier() {
   case "$cible/" in "$source_dir"/*) echo "La destination ne peut pas être dans la source." >&2; return 1;; esac
 
   local passage; passage="$(mktemp -d)"
-  trap 'rm -rf "$passage" "$passage.noms"' RETURN
+  trap 'rm -rf "$passage" "$passage".*' RETURN
   lister "$source_dir" | tar -C "$source_dir" --null -T - -cf - | tar -C "$passage" -xf -
 
   # Liste des noms interdits, hors dépôt : variable PUBLIER_NOMS_INTERDITS (noms séparés par « | ») ou fichier PUBLIER_NOMS_INTERDITS_FICHIER.
@@ -98,7 +147,17 @@ recopier() {
   : > "$LISTE_NOMS"
   if [ -n "${PUBLIER_NOMS_INTERDITS_FICHIER:-}" ] && [ -f "$PUBLIER_NOMS_INTERDITS_FICHIER" ]; then cat "$PUBLIER_NOMS_INTERDITS_FICHIER" >> "$LISTE_NOMS"; fi
   if [ -n "${PUBLIER_NOMS_INTERDITS:-}" ]; then printf '%s\n' "$PUBLIER_NOMS_INTERDITS" | tr '|' '\n' >> "$LISTE_NOMS"; fi
-  sed -i '/^[[:space:]]*$/d' "$LISTE_NOMS"
+  # Fins de ligne CRLF (liste préparée sous Windows) : retirées, sinon aucun nom ne serait reconnu.
+  tr -d '\r' < "$LISTE_NOMS" | sed '/^[[:space:]]*$/d' > "$LISTE_NOMS.net"; mv "$LISTE_NOMS.net" "$LISTE_NOMS"
+  # Expressions de recherche : nom entre deux non-lettres (sans casse), et nom collé après une minuscule (jeanNom).
+  : > "$LISTE_NOMS.re"; : > "$LISTE_NOMS.camel"
+  local nom echappe
+  while IFS= read -r nom; do
+    echappe="$(printf '%s' "$nom" | sed 's/[][\\.*^$(){}?+|\/]/\\&/g')"
+    printf '(^|[^[:alpha:]])%s([^[:alpha:]]|$)\n' "$echappe" >> "$LISTE_NOMS.re"
+    nom="${nom^}"; echappe="$(printf '%s' "$nom" | sed 's/[][\\.*^$(){}?+|\/]/\\&/g')"
+    printf '[[:lower:]]%s([^[:alpha:]]|$)\n' "$echappe" >> "$LISTE_NOMS.camel"
+  done < "$LISTE_NOMS"
   if [ ! -s "$LISTE_NOMS" ]; then
     if [ "$ecrire" -eq 1 ]; then
       echo "Refus : la liste des noms interdits est absente (PUBLIER_NOMS_INTERDITS ou PUBLIER_NOMS_INTERDITS_FICHIER, hors dépôt). Rien n'a été copié." >&2; return 1
@@ -134,7 +193,7 @@ essai() {
   local base; base="$(mktemp -d)"
   trap 'rm -rf "$base"' RETURN
   local echecs=0
-  export PUBLIER_NOMS_INTERDITS="Zzfictif"
+  export PUBLIER_NOMS_INTERDITS="Zz""fictif"
   verifie() { if [ "$2" -eq "$3" ]; then echo "  ok : $1"; else echo "  ROUGE : $1 (attendu $3, obtenu $2)" >&2; echecs=$((echecs + 1)); fi; }
   dossier_neuf() { rm -rf "$base/s" "$base/d"; mkdir -p "$base/s/src" "$base/s/bases" "$base/s/node_modules/x" "$base/s/.git" "$base/d"; }
   source_saine() {
@@ -201,12 +260,97 @@ essai() {
   source_saine; printf 'x=npm_%s\n' "$(printf 'c%.0s' $(seq 1 36))" > "$base/s/src/t.ts"
   code=0; bash "$moi" --ecrire "$base/s" "$base/d" >/dev/null 2>&1 || code=$?
   verifie "jeton npm : code 1" "$code" 1
-  source_saine; echo "//registry.example.com/:_authToken=zzzzzzzzzzzz" > "$base/s/.npmrc"
+  source_saine; printf '//registry.example.com/:_auth%s=%s\n' Token "$(printf 'z%.0s' $(seq 1 12))" > "$base/s/.npmrc"
   bash "$moi" --ecrire "$base/s" "$base/d" >/dev/null 2>&1 || true
   verifie ".npmrc jamais copié" "$([ -e "$base/d/.npmrc" ] && echo 1 || echo 0)" 0
   source_saine; mkdir -p "$base/s/Bases"; echo x > "$base/s/Bases/a.md"
   bash "$moi" --ecrire "$base/s" "$base/d" >/dev/null 2>&1 || true
   verifie "Bases/ (casse) jamais copié" "$(find "$base/d" -ipath '*bases/*' | wc -l | tr -d ' ')" 0
+
+  echo "3 ter. Relecture v2 : points 1 à 10, chacun rejoué (faux secrets et faux noms seulement)"
+  local racine; racine="$(dirname "$moi")/.."
+  local vingt; vingt="$(printf 'k%.0s' $(seq 1 20))"
+  # 1. L'arbre du dépôt (script et doc compris, donnée d'essai assemblée) passe la garde ; le .npmrc d'essai est lui-même assemblé.
+  rm -rf "$base/d"; mkdir -p "$base/d"
+  code=0; bash "$moi" "$racine" "$base/d" >/dev/null 2>&1 || code=$?
+  verifie "1. l'arbre du dépôt passe la garde (à blanc)" "$code" 0
+  # 2. Seul ./bases (racine) est écarté ; les bases/ permis sont copiés ; tout autre bases/ est refusé, pas tu.
+  source_saine; mkdir -p "$base/s/src/app/reglages/bases" "$base/s/tests/fixtures-bases/bases"
+  echo "export const p = 1;" > "$base/s/src/app/reglages/bases/page.tsx"; echo "base fictive" > "$base/s/tests/fixtures-bases/bases/a.md"
+  code=0; bash "$moi" --ecrire "$base/s" "$base/d" >/dev/null 2>&1 || code=$?
+  verifie "2. bases/ permis : code 0" "$code" 0
+  verifie "2. src/app/reglages/bases/page.tsx copié" "$([ -f "$base/d/src/app/reglages/bases/page.tsx" ] && echo 1 || echo 0)" 1
+  verifie "2. tests/fixtures-bases/bases/a.md copié" "$([ -f "$base/d/tests/fixtures-bases/bases/a.md" ] && echo 1 || echo 0)" 1
+  verifie "2. bases/ de la racine toujours écarté" "$([ -e "$base/d/bases" ] && echo 1 || echo 0)" 0
+  source_saine; mkdir -p "$base/s/src/x/bases"; echo x > "$base/s/src/x/bases/a.md"
+  code=0; bash "$moi" --ecrire "$base/s" "$base/d" >/dev/null 2>&1 || code=$?
+  verifie "2. autre bases/ : refus (code 1)" "$code" 1
+  verifie "2. autre bases/ : destination vide" "$(find "$base/d" -type f | wc -l | tr -d ' ')" 0
+  # 3. Adresse de base : l'exception locale se teste juste après le mot de passe.
+  local ruse
+  for ruse in "10.1.2.3:5432/db?x=@localhost/" "dbprod:5432/db#@postgres/" "dbprod:5432/db"; do
+    source_saine; printf '%s://u:mdpreel@%s\n' postgres "$ruse" > "$base/s/src/b.ts"
+    code=0; bash "$moi" --ecrire "$base/s" "$base/d" >/dev/null 2>&1 || code=$?
+    verifie "3. ruse locale « $ruse » : code 1" "$code" 1
+  done
+  source_saine; printf '%s://u:mdpreel@%s\n' postgres "dbprod:5432/db" > "$base/s/src/x:y:@postgres:z.ts"
+  code=0; bash "$moi" --ecrire "$base/s" "$base/d" >/dev/null 2>&1 || code=$?
+  verifie "3. nom de fichier « @postgres » ne sauve pas l'adresse : code 1" "$code" 1
+  source_saine; printf '%s://u:mdpreel@%s\n' postgres "localhost:5432/db" > "$base/s/src/b.ts"
+  code=0; bash "$moi" --ecrire "$base/s" "$base/d" >/dev/null 2>&1 || code=$?
+  verifie "3. base vraiment locale : code 0" "$code" 0
+  # 4. Les noms de fichiers sont contrôlés comme les contenus.
+  local sk; sk="sk-ant-$(printf 'a%.0s' $(seq 1 30))"
+  source_saine; echo x > "$base/s/src/$sk.txt"
+  code=0; bash "$moi" --ecrire "$base/s" "$base/d" >/dev/null 2>&1 || code=$?
+  verifie "4. secret dans un nom de fichier : code 1" "$code" 1
+  source_saine; echo x > "$base/s/src/$t1-$t2-$t3.md"
+  code=0; bash "$moi" --ecrire "$base/s" "$base/d" >/dev/null 2>&1 || code=$?
+  verifie "4. trace privée dans un nom de fichier : code 1" "$code" 1
+  source_saine; echo x > "$base/s/src/dupontel.md"
+  code=0; PUBLIER_NOMS_INTERDITS="Dupontel" bash "$moi" --ecrire "$base/s" "$base/d" >/dev/null 2>&1 || code=$?
+  verifie "4. nom interdit dans un nom de fichier : code 1" "$code" 1
+  # 5. Noms collés à « _ » ou en casse camel.
+  for ruse in "auteur_dupontel" "jeanDupontel"; do
+    source_saine; echo "// $ruse" > "$base/s/src/n.ts"
+    code=0; PUBLIER_NOMS_INTERDITS="Dupontel" bash "$moi" --ecrire "$base/s" "$base/d" >/dev/null 2>&1 || code=$?
+    verifie "5. « $ruse » : code 1" "$code" 1
+  done
+  # 6. UTF-16, archive et binaire hors liste refusés ; une image reste permise.
+  source_saine; printf '%s' "$sk" | sed 's/./&\x00/g' > "$base/s/src/u.txt"
+  code=0; bash "$moi" --ecrire "$base/s" "$base/d" >/dev/null 2>&1 || code=$?
+  verifie "6. secret en UTF-16 : code 1" "$code" 1
+  source_saine; printf '%s\n' "$sk" | gzip -c > "$base/s/src/a.gz"
+  code=0; bash "$moi" --ecrire "$base/s" "$base/d" >/dev/null 2>&1 || code=$?
+  verifie "6. secret dans une archive .gz : code 1" "$code" 1
+  source_saine; printf '// %s-%s-%s\n' "$t1" "$t2" "$t3" | sed 's/./&\x00/g' > "$base/s/src/u.txt"
+  code=0; bash "$moi" --ecrire "$base/s" "$base/d" >/dev/null 2>&1 || code=$?
+  verifie "6. trace privée en UTF-16 : code 1" "$code" 1
+  source_saine; printf '\x89PNG\x00\x01' > "$base/s/src/i.png"
+  code=0; bash "$moi" --ecrire "$base/s" "$base/d" >/dev/null 2>&1 || code=$?
+  verifie "6. image .png permise : code 0" "$code" 0
+  # 7. Liste de noms en CRLF.
+  source_saine; echo "// Dupontel" > "$base/s/src/n.ts"; printf 'Dupontel\r\n' > "$base/noms.txt"
+  code=0; env -u PUBLIER_NOMS_INTERDITS PUBLIER_NOMS_INTERDITS_FICHIER="$base/noms.txt" bash "$moi" --ecrire "$base/s" "$base/d" >/dev/null 2>&1 || code=$?
+  verifie "7. liste de noms CRLF : code 1" "$code" 1
+  # 8. Seul ./pnpm-lock.yaml échappe, et seulement au motif des adresses.
+  source_saine; echo "$sk" > "$base/s/src/pnpm-lock.yaml"
+  code=0; bash "$moi" --ecrire "$base/s" "$base/d" >/dev/null 2>&1 || code=$?
+  verifie "8. secret dans src/pnpm-lock.yaml : code 1" "$code" 1
+  source_saine; printf 'mon@%s 1.2.3\n' "$dom" > "$base/s/pnpm-lock.yaml"
+  code=0; bash "$moi" --ecrire "$base/s" "$base/d" >/dev/null 2>&1 || code=$?
+  verifie "8. pnpm-lock.yaml de la racine (adresses) : code 0" "$code" 0
+  source_saine; echo "mon@$dom" > "$base/s/src/pnpm-lock.yaml"
+  code=0; bash "$moi" --ecrire "$base/s" "$base/d" >/dev/null 2>&1 || code=$?
+  verifie "8. adresse dans src/pnpm-lock.yaml : code 1" "$code" 1
+  # 9. Variantes de .env jamais copiées.
+  source_saine; for ruse in .env-prod .env_prod .envrc .ENV.local; do echo "VALEUR=1" > "$base/s/$ruse"; done
+  bash "$moi" --ecrire "$base/s" "$base/d" >/dev/null 2>&1 || true
+  verifie "9. .env-prod .env_prod .envrc .ENV.local jamais copiés" "$(find "$base/d" -iname '.env*' ! -name .env.exemple | wc -l | tr -d ' ')" 0
+  # 10. Variable secrète en minuscules.
+  source_saine; printf 'session_%s = %s\n' secret "$vingt" > "$base/s/src/v.ts"
+  code=0; bash "$moi" --ecrire "$base/s" "$base/d" >/dev/null 2>&1 || code=$?
+  verifie "10. variable secrète en minuscules : code 1" "$code" 1
 
   echo "4. Jamais de suppression, destination invalide refusée"
   source_saine

@@ -13,18 +13,19 @@ Le dépôt public ne contient que le code de l'Usine. Les bases réelles, les pl
 3. Dans la destination : relire `git diff`, lancer `pnpm verifier`, puis ouvrir la PR.
 
 ## Ce qui n'est jamais copié
-`bases/` (à toute profondeur, sans tenir compte de la casse), `.git`, `node_modules`, `.env` et `.env.*` (sauf `.env.exemple`), `.npmrc`, clés (`*.pem`, `*.key`, `*.p12`, `id_rsa*`, `id_ed25519*`), sorties de build (`.next`, `out`, `build`, `coverage`), `ALERTE-BASES.txt`.
+`bases/` à la racine (sans tenir compte de la casse), `.git`, `node_modules`, tout `.env*` (`.env`, `.env.*`, `.env-prod`, `.envrc`… sauf `.env.exemple`), `.npmrc`, clés (`*.pem`, `*.key`, `*.p12`, `id_rsa*`, `id_ed25519*`), sorties de build (`.next`, `out`, `build`, `coverage`), `ALERTE-BASES.txt`.
 
 ## Garde anti-fuite (avant toute copie)
 Le script prépare la copie dans un dossier de passage, la contrôle, et ne touche à la destination que si tout est propre. Refus (code 1, rien copié) si :
-- un fichier de `bases/` s'y trouve ;
+- un `bases/` hors de la racine s'y trouve, sauf les deux emplacements permis nommés (`src/app/reglages/bases`, écran Réglages › Bases, et `tests/fixtures-bases/bases`, bases fictives des essais) : tout autre est refusé, jamais tu ;
 - un lien symbolique s'y trouve ;
-- un secret probable apparaît (mêmes familles que `scripts/garde.mjs` : clés privées, jetons, hachages, adresses de base avec mot de passe, variables secrètes) ;
+- un secret probable apparaît, dans un contenu ou dans un nom de fichier ou de dossier (variables secrètes reconnues quelle que soit la casse ; mêmes familles que `scripts/garde.mjs` : mêmes familles que `scripts/garde.mjs` : clés privées, jetons, hachages, adresses de base avec mot de passe, variables secrètes) ; l'exception des bases locales (`localhost`, `127.0.0.1`, `postgres`) n'est admise que juste après le mot de passe ;
 - un jeton npm (`npm_…`, `_authToken`) apparaît ;
-- un nom de la liste des noms interdits apparaît (liste hors dépôt : variable `PUBLIER_NOMS_INTERDITS`, noms séparés par « | », ou fichier `PUBLIER_NOMS_INTERDITS_FICHIER`, un nom par ligne ; sans liste, `--ecrire` refuse et l'à blanc avertit) ;
-- le dépôt privé des plans est nommé quelque part (règle L7-02) ;
-- une adresse e-mail n'est pas en `@example.com`.
-Les fichiers binaires sont lus comme les autres. Le refus tient dès la première faute, quel qu'en soit le nombre (pas de code de retour compté modulo 256). Le message donne `fichier:ligne` et le motif, jamais la valeur trouvée.
+- un nom de la liste des noms interdits apparaît, entre deux non-lettres (`auteur_nom` compte) ou collé après une minuscule (`jeanNom`), en contenu comme en nom de fichier (liste hors dépôt : variable `PUBLIER_NOMS_INTERDITS`, noms séparés par « | », ou fichier `PUBLIER_NOMS_INTERDITS_FICHIER`, un nom par ligne, fins de ligne Windows admises ; sans liste, `--ecrire` refuse et l'à blanc avertit) ;
+- le dépôt privé des plans est nommé quelque part, contenu ou nom de fichier (règle L7-02) ;
+- un fichier n'est pas du texte (UTF-16, archive `.gz` `.zip` `.tar`…, binaire avec octets nuls) et n'a pas une extension d'image ou de police permise (`png`, `ico`, `woff`, `woff2`, `jpg`, `jpeg`, `gif`, `webp`, `avif`) ;
+- une adresse e-mail n'est pas en `@example.com` (seul le `pnpm-lock.yaml` de la racine échappe à ce motif, pour les versions de paquets ; il passe par tous les autres).
+Les fichiers non texte hors liste sont refusés plutôt que lus. Le refus tient dès la première faute, quel qu'en soit le nombre (pas de code de retour compté modulo 256). Le message donne `fichier:ligne` et le motif, jamais la valeur trouvée.
 
 Après la recopie réelle, la destination repasse par ses propres gardes : `node scripts/garde.mjs` (règle sortante, traces privées) dans le dépôt public, et la garde externe des bases `scripts/garde-bases-externe.mjs` avec ses variables d'environnement, comme d'habitude. Le script lui-même ne fait aucun appel réseau.
 
