@@ -55,7 +55,7 @@ const ECRANS = [
 ] as const;
 
 describe("aucun prénom du fondateur dans les cinq écrans (dépôt public)", () => {
-  it("les fichiers des écrans n'écrivent ni « Williams » ni « Will »", async () => {
+  it("les fichiers des écrans n'écrivent pas le prénom du fondateur", async () => {
     const { readFileSync } = await import("node:fs");
     const fichiers = ["src/app/(accueil)/page.tsx", "src/app/(accueil)/Guide.tsx", "src/app/metiers/EcranMetiers.tsx", "src/app/sujets/page.tsx", "src/app/mots/EcranMots.tsx", "src/app/commenter/page.tsx", "src/app/reglages/page.tsx"];
     for (const f of fichiers) expect(readFileSync(f, "utf8"), f).not.toMatch(PRENOM_FONDATEUR);
