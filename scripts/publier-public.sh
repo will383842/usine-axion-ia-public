@@ -18,7 +18,6 @@ SECRETS=(
   '\bxox[abprs]-[A-Za-z0-9-]{10,}'
   '\$argon2id\$v=[0-9]+\$[^ "]+'
   '\bJGFyZ29uMmlk[A-Za-z0-9+/=]{20,}'
-  'postgres(ql)?://[^:[:space:]/]+:[^@[:space:]]+@'
   '\b(SESSION_SECRET|NEXT_SERVER_ACTIONS_ENCRYPTION_KEY|USINE_PASSWORD_HASH_B64)[[:space:]]*[=:][[:space:]]*["'"'"']?[A-Za-z0-9+/=_-]{16,}'
 )
 # Trace du dépôt privé des plans (même règle que L7-02), assemblée pour ne pas s'y reconnaître.
@@ -49,13 +48,22 @@ garde_fuites() {
     while IFS= read -r l; do echo "FUITE : secret probable : ${l#"$dossier"/}" >&2; n=$((n + 1)); done \
       < <( (grep -rInE --exclude=pnpm-lock.yaml -e "$re" "$dossier" || true) | cut -d: -f1,2)
   done
+  # Adresse de base avec mot de passe, sauf locale (localhost, 127.0.0.1, postgres) comme dans scripts/garde.mjs.
+  while IFS= read -r l; do
+    local m="${l#*:*:}"
+    if ! [[ "$m" =~ @(localhost|127\.0\.0\.1|postgres)([:/]|$) ]]; then
+      echo "FUITE : secret probable : $(cut -d: -f1,2 <<<"${l#"$dossier"/}")" >&2; n=$((n + 1))
+    fi
+  done < <(grep -rInoE --exclude=pnpm-lock.yaml -e 'postgres(ql)?://[^:[:space:]/]+:[^@[:space:]]+@[^[:space:]"]*' "$dossier" || true)
   while IFS= read -r l; do echo "FUITE : trace du dépôt privé : ${l#"$dossier"/}" >&2; n=$((n + 1)); done \
     < <( (grep -rInEi --exclude=pnpm-lock.yaml -e "$TRACE_PRIVEE" "$dossier" || true) | cut -d: -f1,2)
   while IFS= read -r l; do
     local m="${l##*:}" ou="${l%:*}"
+    shopt -s nocasematch
     if ! [[ "$m" =~ $ADRESSES_PERMISES ]] && ! [[ "$m" =~ ^[^@]+@[0-9] ]]; then
       echo "FUITE : adresse e-mail (utiliser @example.com) : ${ou#"$dossier"/}" >&2; n=$((n + 1))
     fi
+    shopt -u nocasematch
   done < <(grep -rInoE --exclude=pnpm-lock.yaml -e "$ADRESSE" "$dossier" || true)
   return "$n"
 }
@@ -112,7 +120,7 @@ essai() {
     echo "export const a = 1;" > "$base/s/src/a.ts"
     echo '{"empreinte":"abc"}' > "$base/s/bases.source.json"
     echo "VAR=" > "$base/s/.env.exemple"
-    echo "contact@example.com" > "$base/s/README.md"
+    echo "contact@example.com Will@Example.COM postgres://postgres:postgres@localhost:5432/essai" > "$base/s/README.md"
     echo "base fictive" > "$base/s/bases/secret.md"
     echo "x" > "$base/s/node_modules/x/i.js"; echo "x" > "$base/s/.git/config"
     echo "VALEUR=1" > "$base/s/.env"; echo "x" > "$base/s/cle.pem"
@@ -138,18 +146,19 @@ essai() {
 
   echo "3. Un secret, une trace privée, une adresse réelle ou un lien : refus, rien copié"
   local fuite
-  for fuite in secret trace adresse lien; do
+  for fuite in secret trace adresse lien base; do
     source_saine
     case "$fuite" in
       secret) printf 'jeton=gh%s_%s\n' p "$(printf 'a%.0s' $(seq 1 36))" > "$base/s/src/b.ts";;
       trace) printf '// voir %s-%s-%s\n' "$t1" "$t2" "$t3" > "$base/s/src/b.ts";;
       adresse) printf 'contact: personne@%s.fr\n' "reelle" > "$base/s/src/b.ts";;
+      base) printf 'url=postgres://u:mdp@%s.fr:5432/x\n' "serveur" > "$base/s/src/b.ts";;
       lien) ln -s "$base/s/bases/secret.md" "$base/s/src/b.md";;
     esac
     code=0; sortie="$(bash "$moi" --ecrire "$base/s" "$base/d" 2>&1)" || code=$?
     verifie "$fuite : code 1" "$code" 1
     verifie "$fuite : destination vide" "$(find "$base/d" -type f | wc -l | tr -d ' ')" 0
-    verifie "$fuite : la valeur n'est jamais affichée" "$(grep -cE 'aaaaaaaa|personne@' <<<"$sortie" || true)" 0
+    verifie "$fuite : la valeur n'est jamais affichée" "$(grep -cE 'aaaaaaaa|personne@|mdp@' <<<"$sortie" || true)" 0
   done
 
   echo "4. Jamais de suppression, destination invalide refusée"
