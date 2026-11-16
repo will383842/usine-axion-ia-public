@@ -8,7 +8,7 @@ import { requete } from "@/lib/base";
 import { INTERRUPTEUR_LOTS } from "@/lots/regles";
 import { LIBELLE_RESEAU } from "@/reglages/modele";
 import { exigerSession } from "@/services/auth";
-import { refaireAction } from "./actions";
+import { BoutonRefaire, GroupeRefaire } from "./BoutonRefaire";
 
 export const metadata: Metadata = { title: "Bibliothèque" };
 export const dynamic = "force-dynamic";
@@ -24,11 +24,7 @@ function Carte({ l }: { l: LigneBibliotheque }) {
         {l.format ? ` · ${l.format}` : ""} · {l.reseaux.map(nomReseau).join(", ") || "aucun réseau"}
       </p>
       {l.motif ? <p className="font-semibold">Motif : {l.motif}</p> : null}
-      <form action={refaireAction.bind(null, l.id)}>
-        <button type="submit" className="bouton-second min-h-11">
-          Refaire
-        </button>
-      </form>
+      <BoutonRefaire id={l.id} />
     </li>
   );
 }
@@ -43,15 +39,10 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
     listerRefuses(),
     requete<{ code: string; nom: string }>(`SELECT code, nom FROM metier WHERE etat <> 'retire' ORDER BY nom`),
   ]);
-  const fait = typeof q.fait === "string" ? q.fait : null;
-  const erreur = typeof q.erreur === "string" ? q.erreur : null;
 
   return (
     <section className="flex flex-col gap-8">
       <EnTete titre="Bibliothèque" phrase="Ce qui a été fabriqué ou publié, et ce que vous avez refusé. « Refaire » prépare une nouvelle vidéo avec les mêmes choix." />
-      {fait ? <p role="status" className="rounded-2xl border border-trait bg-surface p-4 font-semibold">{fait}</p> : null}
-      {erreur ? <p role="alert" className="rounded-2xl border border-trait bg-surface p-4 font-semibold">{erreur}</p> : null}
-
       <form method="get" className="flex flex-col gap-3 sm:flex-row sm:items-end">
         <label className="flex flex-col gap-1 font-semibold">
           Métier
@@ -83,6 +74,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
         <button type="submit" className="bouton min-h-11">Filtrer</button>
       </form>
 
+      <GroupeRefaire>
       <section className="flex flex-col gap-4" aria-labelledby="fabriquees">
         <h2 id="fabriquees" className="text-2xl font-bold">Fabriquées et publiées</h2>
         {fabriquees.length === 0 ? (
@@ -96,6 +88,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Rec
         <h2 id="refuses" className="text-2xl font-bold">Refusés</h2>
         {refusees.length === 0 ? <EtatVide message="Aucune vidéo refusée." /> : <ul className="flex flex-col gap-3">{refusees.map((l) => <Carte key={l.id} l={l} />)}</ul>}
       </section>
+      </GroupeRefaire>
       <Link href="/lots" className="bouton-second self-start">Retour à mes vidéos</Link>
     </section>
   );

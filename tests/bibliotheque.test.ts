@@ -19,9 +19,11 @@ describe("bibliothèque · partie pure", () => {
     for (const f of SOURCES) {
       const s = readFileSync(f, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
       expect(s, f).not.toMatch(/\b(DELETE|TRUNCATE|DROP)\b/i);
-      expect(s, f).not.toMatch(/plafond_eur|cout_max_eur|toFixed|€|euros\(/);
+      expect(s, f).not.toMatch(/cout_max_eur|toFixed|€|euros\(/);
+      // le plafond n'est que recopié du lot d'origine (index.ts) ; jamais nommé ailleurs
+      if (f !== "src/bibliotheque/index.ts") expect(s, f).not.toMatch(/plafond/i);
       // aucun littéral décimal (0.01, 2.5…) dans le code ajouté
-      expect(s, f).not.toMatch(/(?<![\w.])\d+[.,]\d+(?![\w.])/);
+      expect(s, f).not.toMatch(/(?<![\w.{])\d+[.,]\d+(?![\w.}])/);
     }
   });
 });

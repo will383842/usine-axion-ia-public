@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BoutonRefaire, GroupeRefaire } from "@/app/bibliotheque/BoutonRefaire";
 
-const refaire = vi.fn(async (_id: string) => ({ fait: true, message: "Noté." }));
+const refaire = vi.fn<(id: string) => Promise<{ fait: boolean; message: string }>>(async () => ({ fait: true, message: "Noté." }));
 vi.mock("@/app/bibliotheque/actions", () => ({ refaireAction: (id: string) => refaire(id) }));
 
 let racine: Root;

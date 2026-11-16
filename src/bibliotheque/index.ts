@@ -1,14 +1,14 @@
 /**
  * UO-03 · bibliothèque (fabriqué ou publié), « Refusés » et « Refaire ».
- * Lecture seule sauf `refaire()` : une NOUVELLE ligne dans le lot de reprises (brouillon), sans paquet, sans code ni signature ;
- * la ligne d'origine n'est jamais modifiée. « Tout arrêter » (U-ARRET, via U-COMMANDE) bloque « Refaire ».
+ * Lecture seule sauf `refaire()` : un lot brouillon dont l'aperçu porte la reprise ; la ligne d'origine n'est jamais modifiée. « Tout arrêter » (U-ARRET, via U-COMMANDE) bloque « Refaire ».
  */
 import "server-only";
 import { sousArret } from "@/arret";
 import { interrupteurAllume, journaliser, prochainLot } from "@/donnees";
 import { requete, transaction } from "@/lib/base";
-import { INTERRUPTEUR_LOTS } from "@/lots/regles";
-import { ETATS_BIBLIOTHEQUE, ETATS_REFAISABLES, MAX_LIGNES, PHRASE_ARRET_REFAIRE, PHRASE_ECRAN_ETEINT, PHRASE_LIGNE_INTROUVABLE, PHRASE_REFAITE, type Filtres } from "./regles";
+import { COUT_MAX_LIGNE_DEFAUT_EUR, INTERRUPTEUR_LOTS } from "@/lots/regles";
+import type { LigneTiree } from "@/tirage";
+import { ETATS_BIBLIOTHEQUE, ETATS_REFAISABLES, MAX_LIGNES, PHRASE_ARRET_REFAIRE, PHRASE_DEJA_REFAITE, PHRASE_ECRAN_ETEINT, PHRASE_LIGNE_INTROUVABLE, PHRASE_REFAITE, type Filtres } from "./regles";
 
 export * from "./regles";
 
@@ -47,37 +47,91 @@ export async function listerRefuses(): Promise<LigneBibliotheque[]> {
 
 export type ResultatRefaire = { fait: boolean; message: string };
 
-/** Le lot de reprises : un seul brouillon marqué `reglages.reprises`, créé au premier « Refaire ». */
-async function lotDeReprises(): Promise<string> {
-  await requete(`SELECT pg_advisory_xact_lock(hashtext('lot-de-reprises'))`);
-  const [existant] = await requete<{ id: string }>(
-    `SELECT id FROM lot WHERE etat = 'brouillon' AND archive_le IS NULL AND reglages ->> 'reprises' = 'true' ORDER BY numero LIMIT 1 FOR UPDATE`,
-  );
-  if (existant) return existant.id;
-  const { id, numero } = await prochainLot();
-  // Plafond symbolique : les lignes reprises ont un coût maximum nul, la dépense reste décidée à la commande.
-  await requete(`INSERT INTO lot (id, numero, nombre, plafond_eur, reglages, etat) VALUES ($1, $2, 3, 0.01, '{"reprises": true}'::jsonb, 'brouillon')`, [id, numero]);
-  return id;
+interface Origine {
+  type_contenu: LigneTiree["type_contenu"];
+  format: string | null;
+  metier: string | null;
+  taille: string | null;
+  service: string | null;
+  douleur: string | null;
+  cas_usage: string | null;
+  sujet: string | null;
+  actualite: string | null;
+  accroche: string | null;
+  structure: string | null;
+  reseaux: LigneTiree["reseaux"];
+  fins: LigneTiree["fins"];
+  signature: string | null;
+  nombre: number;
+  plafond_eur: string;
+  reglages: Record<string, unknown>;
 }
 
-/** « Refaire » : mêmes choix, nouvelle ligne à coller. Rien ne part si l'écran est éteint ou si « Tout arrêter » est allumé. */
+/**
+ * « Refaire » : mêmes choix, rangés comme ligne d'APERÇU d'un lot brouillon (aucune ligne de lot écrite) ; le parcours de l'écran Lots
+ * (relire, commander avec plafond, métiers allumés et signatures, ou archiver) s'applique ensuite. Le plafond, le nombre et le coût maximum
+ * sont ceux du lot d'origine. Rien ne part si l'écran est éteint ou si « Tout arrêter » est allumé.
+ * Rejouable : une origine déjà en reprise non commandée n'en crée pas une deuxième.
+ */
 export async function refaire(idLigne: string): Promise<ResultatRefaire> {
   if (!(await bibliothequeAllumee())) return { fait: false, message: PHRASE_ECRAN_ETEINT };
   if (!/^L[0-9]+-[0-9]+$/.test(idLigne)) return { fait: false, message: PHRASE_LIGNE_INTROUVABLE };
   const r = await sousArret("commande", () =>
     transaction(async (): Promise<ResultatRefaire> => {
-      const [origine] = await requete<{ id: string }>(`SELECT id FROM lot_ligne WHERE id = $1 AND archive_le IS NULL AND etat = ANY($2)`, [idLigne, [...ETATS_REFAISABLES]]);
-      if (!origine) return { fait: false, message: PHRASE_LIGNE_INTROUVABLE };
-      const lot = await lotDeReprises();
-      const [{ rang }] = await requete<{ rang: number }>(`SELECT coalesce(max(rang), 0) + 1 AS rang FROM lot_ligne WHERE lot = $1`, [lot]);
-      const nouvelle = `${lot}-${rang}`;
-      await requete(
-        `INSERT INTO lot_ligne (id, lot, rang, type_contenu, format, public, metier, taille, service, douleur, cas_usage, sujet, actualite, accroche, structure, reseaux, fins, repere, etat)
-         SELECT $2, $3, $4, type_contenu, format, public, metier, taille, service, douleur, cas_usage, sujet, actualite, accroche, structure, reseaux, fins, $5, 'a_coller'
-           FROM lot_ligne WHERE id = $1`,
-        [idLigne, nouvelle, lot, rang, `usine:${nouvelle}`],
+      await requete(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`reprise:${idLigne}`]);
+      const [origine] = await requete<Origine>(
+        `SELECT l.type_contenu, l.format, l.metier, l.taille, l.service, l.douleur, l.cas_usage, l.sujet, l.actualite, l.accroche, l.structure, l.reseaux, l.fins, l.signature,
+                o.nombre, o.plafond_eur, o.reglages
+           FROM lot_ligne l JOIN lot o ON o.id = l.lot
+          WHERE l.id = $1 AND l.archive_le IS NULL AND l.etat = ANY($2)`,
+        [idLigne, [...ETATS_REFAISABLES]],
       );
-      await journaliser("lot", "Une vidéo a été remise à refaire.", { cible: nouvelle, donnees: { origine: idLigne } });
+      if (!origine) return { fait: false, message: PHRASE_LIGNE_INTROUVABLE };
+      const [enCours] = await requete<{ id: string }>(
+        `SELECT id FROM lot WHERE etat = 'brouillon' AND archive_le IS NULL AND reglages ->> 'reprise_de' = $1 LIMIT 1`,
+        [idLigne],
+      );
+      if (enCours) return { fait: false, message: PHRASE_DEJA_REFAITE };
+
+      // Signature propre à la reprise : l'unicité en base interdit de redonner celle de l'origine.
+      const [{ n }] = await requete<{ n: number }>(`SELECT count(*)::int AS n FROM lot_ligne WHERE starts_with(signature, $1)`, [`${origine.signature ?? idLigne}|reprise-`]);
+      const sig = `${origine.signature ?? idLigne}|reprise-${n + 1}`;
+      const { apercu: _apercu, ...reglagesOrigine } = origine.reglages as { apercu?: unknown } & Record<string, unknown>;
+      void _apercu;
+      const ligne: LigneTiree = {
+        rang: 1,
+        type_contenu: origine.type_contenu,
+        format: origine.format as string,
+        public: "public.clients",
+        metier: origine.metier,
+        taille: origine.taille,
+        service: origine.service,
+        douleur: origine.douleur,
+        cas_usage: origine.cas_usage,
+        sujet: origine.sujet,
+        actualite: origine.actualite,
+        accroche: origine.accroche as string,
+        structure: origine.structure as string,
+        reseaux: origine.reseaux,
+        fins: origine.fins,
+        mots: {},
+        signature: sig,
+      };
+      const reglages = {
+        ...reglagesOrigine,
+        coutMaxLigneEur: typeof reglagesOrigine.coutMaxLigneEur === "number" ? reglagesOrigine.coutMaxLigneEur : COUT_MAX_LIGNE_DEFAUT_EUR,
+        reprise_de: idLigne,
+        apercu: { lignes: [ligne], pourquoi: [], ecartees: origine.signature ? [origine.signature] : [] },
+      };
+      const { id, numero } = await prochainLot();
+      await requete(`INSERT INTO lot (id, numero, nombre, plafond_eur, reglages, etat) VALUES ($1, $2, $3, $4, $5::jsonb, 'brouillon')`, [
+        id,
+        numero,
+        origine.nombre,
+        origine.plafond_eur,
+        JSON.stringify(reglages),
+      ]);
+      await journaliser("lot", "Une vidéo a été remise à refaire.", { cible: id, donnees: { origine: idLigne } });
       return { fait: true, message: PHRASE_REFAITE };
     }),
   );

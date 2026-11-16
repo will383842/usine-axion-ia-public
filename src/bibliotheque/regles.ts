@@ -5,7 +5,8 @@ import { PHRASE_ARRET } from "@/commandes/regles";
 export const PHRASE_ARRET_REFAIRE = PHRASE_ARRET;
 export const PHRASE_ECRAN_ETEINT = "Cet écran est éteint : allumez-le dans Réglages › Interrupteurs.";
 export const PHRASE_LIGNE_INTROUVABLE = "Cette vidéo n'existe plus ou n'est pas encore fabriquée.";
-export const PHRASE_REFAITE = "C'est noté : une nouvelle vidéo vous attend dans le lot de reprises, à relire avant de commander.";
+export const PHRASE_REFAITE = "C'est noté : la vidéo à refaire vous attend dans Mes vidéos, en préparation, à relire avant de commander.";
+export const PHRASE_DEJA_REFAITE = "Cette vidéo est déjà remise à refaire : elle vous attend dans Mes vidéos.";
 export const ETATS_BIBLIOTHEQUE = ["fabriquee", "publiee"] as const;
 /** Une ligne se refait quand elle est fabriquée, publiée ou refusée. */
 export const ETATS_REFAISABLES = ["fabriquee", "publiee", "refusee"] as const;
