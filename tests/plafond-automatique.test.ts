@@ -42,8 +42,12 @@ const reponse = (surcharge: Record<string, unknown> = {}) => ({
 });
 
 describe.skipIf(!url)("plafond automatique · en base, avec une doublure du Studio", () => {
-  const reglage = async () => (await p.query("SELECT valeur FROM reglage WHERE cle = $1", [CLE])).rows[0]?.valeur ?? null;
-  const journal = async () => (await p.query("SELECT sujet, message, cible, donnees FROM journal WHERE cible = $1 ORDER BY id", [CLE])).rows;
+  let repere = 0;
+  const reglage = async () => (await import("@/reglages/plafond-automatique")).lirePlafondAutomatique();
+  const journal = async () => (await p.query("SELECT sujet, message, cible, donnees FROM journal WHERE cible = $1 AND id > $2 ORDER BY id", [CLE, repere])).rows;
+  const reperer = async () => {
+    repere = Number((await p.query("SELECT COALESCE(max(id), 0) AS m FROM journal")).rows[0].m);
+  };
   const arret = (allume: boolean) => p.query("UPDATE interrupteur SET allume = $1 WHERE code = 'arret.tout'", [allume]);
 
   beforeAll(async () => {
@@ -64,15 +68,15 @@ describe.skipIf(!url)("plafond automatique · en base, avec une doublure du Stud
     reglerPlafondDuStudio.mockReset();
     reglerPlafondDuStudio.mockResolvedValue(reponse());
     await arret(false);
-    await p.query("DELETE FROM reglage WHERE cle = $1", [CLE]);
-    await p.query("DELETE FROM journal WHERE cible = $1", [CLE]);
+    await (await import("@/donnees")).ecrireReglage(CLE, {}); // illisible : lirePlafondAutomatique() rend null
+    await reperer();
   });
 
   it("hors bornes : refus, passerelle jamais appelée, aucun journal, réglage inchangé", async () => {
     const { envoyerPlafondAutomatique } = await import("@/reglages/plafond-automatique");
     for (const c of [-1, 10001, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
       const r = await envoyerPlafondAutomatique(c);
-      expect(r.ok).toBe(false);
+      expect(r).toMatchObject({ ok: false, raison: "hors_bornes" });
     }
     expect(reglerPlafondDuStudio).not.toHaveBeenCalled();
     expect(await journal()).toHaveLength(0);
@@ -85,7 +89,7 @@ describe.skipIf(!url)("plafond automatique · en base, avec une doublure du Stud
     expect(r).toEqual({ ok: true, plafond_cents: 2000, deja: false });
     expect(reglerPlafondDuStudio).toHaveBeenCalledTimes(1);
     expect(reglerPlafondDuStudio).toHaveBeenCalledWith(2000);
-    expect((await reglage()).plafond_cents).toBe(2000);
+    expect((await reglage())?.plafond_cents).toBe(2000);
     expect((await lirePlafondAutomatique())?.plafond_cents).toBe(2000);
     const j = await journal();
     expect(j).toHaveLength(1);
@@ -99,13 +103,13 @@ describe.skipIf(!url)("plafond automatique · en base, avec une doublure du Stud
     await envoyerPlafondAutomatique(2000);
     reglerPlafondDuStudio.mockResolvedValue(reponse({ deja: true }));
     expect(await envoyerPlafondAutomatique(2000)).toEqual({ ok: true, plafond_cents: 2000, deja: true });
-    expect((await reglage()).plafond_cents).toBe(2000);
+    expect((await reglage())?.plafond_cents).toBe(2000);
   });
 
   it("refus et pannes : bonne raison, réglage précédent gardé, une ligne de journal", async () => {
     const { envoyerPlafondAutomatique } = await import("@/reglages/plafond-automatique");
     await envoyerPlafondAutomatique(2000);
-    await p.query("DELETE FROM journal WHERE cible = $1", [CLE]);
+    await reperer();
     const cas: Array<[string, () => void, string, number | undefined]> = [
       ["pas_branche", () => reglerPlafondDuStudio.mockResolvedValue({ envoye: false }), "pas_branche", undefined],
       ["sans_reponse", () => reglerPlafondDuStudio.mockRejectedValue(new Error("réseau")), "sans_reponse", undefined],
@@ -119,7 +123,7 @@ describe.skipIf(!url)("plafond automatique · en base, avec une doublure du Stud
       const r = await envoyerPlafondAutomatique(5000);
       expect(r, nom).toMatchObject({ ok: false, raison });
       if (statut) expect(r).toMatchObject({ statut });
-      expect((await reglage()).plafond_cents, nom).toBe(2000);
+      expect((await reglage())?.plafond_cents, nom).toBe(2000);
     }
     expect(await journal()).toHaveLength(cas.length);
     // « Tout arrêter » : la passerelle n'est pas appelée.
@@ -127,7 +131,7 @@ describe.skipIf(!url)("plafond automatique · en base, avec une doublure du Stud
     await arret(true);
     expect(await envoyerPlafondAutomatique(5000)).toMatchObject({ ok: false, raison: "arret" });
     expect(reglerPlafondDuStudio).not.toHaveBeenCalled();
-    expect((await reglage()).plafond_cents).toBe(2000);
+    expect((await reglage())?.plafond_cents).toBe(2000);
   });
 
   it("réponse inattendue : rien n'est noté accepté ; si le Studio dit allumé, alerte au journal", async () => {
