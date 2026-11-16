@@ -2,7 +2,8 @@
 import "server-only";
 import { journaliser, type CommandeStudio } from "@/donnees";
 import { requete } from "@/lib/base";
-import { PHRASE_ETEINT, corpsDeLigne, type LigneAProposer } from "./regles";
+import { estArrete } from "@/arret";
+import { PHRASE_ARRET, PHRASE_ETEINT, PHRASE_SANS_REPONSE, corpsDeLigne, type LigneAProposer } from "./regles";
 import { commandesAllumees, proposerAuStudio } from "./service";
 
 /** Une commande « à envoyer » depuis moins longtemps est peut-être encore en cours : on n'y touche pas. */
@@ -27,12 +28,14 @@ export async function reprendreCommande(cle: string): Promise<ResultatReprise> {
     await note(cle, "Une commande déjà proposée au Studio n'a pas été renvoyée.", c.etat_envoi);
     return { issue: "deja_envoyee", message: "Déjà proposée au Studio : rien n'est renvoyé." };
   }
-  if (c.etat_envoi === "non_envoyee") {
+  // Seules les commandes dont on doute sont reprises : « à envoyer », ou « sans réponse du Studio » (la coupure a eu lieu avant la réponse).
+  const doute = c.etat_envoi === "a_envoyer" || (c.etat_envoi === "non_envoyee" && c.message === PHRASE_SANS_REPONSE);
+  if (!doute) {
     await note(cle, "Une commande non envoyée est laissée telle quelle : à relancer depuis le calendrier.", c.etat_envoi);
     return { issue: "rien", message: "Cette commande n'est pas partie : relancez-la depuis le calendrier." };
   }
-
-  // a_envoyer : la coupure a eu lieu avant la réponse du Studio.
+  // « Tout arrêter » : on ne touche à rien, la commande reste reprenable.
+  if (await estArrete()) return { issue: "rien", message: PHRASE_ARRET };
   const [ligne] = await requete<LigneAProposer>(
     `SELECT id::text, reseau, compte, type_contenu, prevue_le, lot_ligne FROM calendrier_ligne WHERE id = $1 AND archive_le IS NULL`,
     [c.calendrier_ligne],
@@ -40,23 +43,27 @@ export async function reprendreCommande(cle: string): Promise<ResultatReprise> {
   const corps = ligne ? corpsDeLigne(ligne, new Date()) : null;
   if (!ligne || !corps || !corps.ok) {
     const phrase = !ligne ? "Cette ligne n'existe plus." : corps && !corps.ok ? corps.phrase : "Cette ligne n'est pas prête à être proposée.";
-    await requete(`UPDATE commande_studio SET etat_envoi = 'non_envoyee', message = $2, modifie_le = now() WHERE cle = $1 AND etat_envoi = 'a_envoyer'`, [cle, phrase]);
+    await requete(`UPDATE commande_studio SET etat_envoi = 'non_envoyee', message = $2, modifie_le = now() WHERE cle = $1 AND (etat_envoi = 'a_envoyer' OR etat_envoi = 'non_envoyee')`, [cle, phrase]);
     await note(cle, "Une commande interrompue a été annulée : elle ne peut plus partir.", "non_envoyee");
     return { issue: "annulee", message: phrase };
   }
   const r = await proposerAuStudio(ligne.id); // même clé : le rejeu ne peut pas doubler la commande
-  await note(cle, "Une commande interrompue a été reprise.", r.etat_envoi ?? "a_envoyer");
-  return { issue: "reprise", message: r.message };
+  if (r.etat_envoi === "envoyee" || r.etat_envoi === "mise_de_cote_studio") {
+    await note(cle, "Une commande interrompue a été reprise.", r.etat_envoi);
+    return { issue: "reprise", message: r.message };
+  }
+  await note(cle, "Une commande interrompue n'a pas pu être reprise.", r.etat_envoi ?? "inchangee");
+  return { issue: "rien", message: r.message };
 }
 
-/** Passage général : reprend les anciennes commandes « à envoyer » (20 au plus, les plus anciennes d'abord). */
+/** Passage général : reprend les anciennes commandes « à envoyer » ou « sans réponse du Studio » (20 au plus, les plus anciennes d'abord). */
 export async function reprendreInterrompues(max: number = REPRISES_MAX): Promise<{ reprises: number; message: string }> {
   if (!(await commandesAllumees())) return { reprises: 0, message: PHRASE_ETEINT };
   const limite = Math.min(Math.max(1, Math.trunc(max)), REPRISES_MAX);
   const lignes = await requete<{ cle: string }>(
-    `SELECT cle FROM commande_studio WHERE etat_envoi = 'a_envoyer' AND archive_le IS NULL AND modifie_le < now() - make_interval(mins => $2)
+    `SELECT cle FROM commande_studio WHERE (etat_envoi = 'a_envoyer' OR (etat_envoi = 'non_envoyee' AND message = $3)) AND archive_le IS NULL AND modifie_le < now() - make_interval(mins => $2)
       ORDER BY modifie_le ASC, cle LIMIT $1`,
-    [limite, MINUTES_AVANT_REPRISE],
+    [limite, MINUTES_AVANT_REPRISE, PHRASE_SANS_REPONSE],
   );
   let reprises = 0;
   for (const { cle } of lignes) {

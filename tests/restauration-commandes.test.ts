@@ -1,4 +1,8 @@
-/** U-REPRISE · après restauration d'une sauvegarde sur une base d'essai, les commandes en cours sont retrouvées dans le même état. Aucun appel réel. */
+/**
+ * U-REPRISE · les commandes en cours sont retrouvées dans le même état sur une base d'essai « restaurée ». Aucun appel réel.
+ * Limite assumée : la restauration est simulée par recopie des lignes entre deux schémas d'essai (pas de pg_dump : `node:child_process`
+ * est refusé aux essais par la garde). Le script réel de sauvegarde/restauration relève de L7-04 (tests/sauvegarde.test.ts).
+ */
 import { randomBytes } from "node:crypto";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
