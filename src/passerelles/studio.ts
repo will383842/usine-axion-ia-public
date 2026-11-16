@@ -30,3 +30,25 @@ export async function appelerStudio(chemin: string, corps: unknown): Promise<Rep
   }
   return { envoye: true, statut: reponse.status, corps: json };
 }
+
+const JOUR = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Lit (GET) les créneaux déjà pris du Studio entre deux jours (31 au plus, contrôlé par le Studio). Rend `{ envoye: false }`, sans aucun appel, tant que l'interrupteur ou le secret manque. Lecture seule. */
+export async function lireOccupesDuStudio(du: string, au: string): Promise<ReponseStudio> {
+  if (!JOUR.test(du) || !JOUR.test(au)) throw new Error("jours du Studio mal formés");
+  const secret = process.env.STUDIO_PORTE_SECRET ?? "";
+  if (secret.length < SECRET_MIN || !(await interrupteurAllume(INTERRUPTEUR_STUDIO))) return { envoye: false };
+  const reponse = await fetch(`${HOTE}/api/usine/calendrier/occupes?du=${du}&au=${au}&contrat=2`, {
+    method: "GET",
+    headers: { authorization: `Bearer ${secret}` },
+    redirect: "error",
+  });
+  const texte = await reponse.text();
+  let json: unknown = null;
+  try {
+    json = texte ? JSON.parse(texte) : null;
+  } catch {
+    json = null;
+  }
+  return { envoye: true, statut: reponse.status, corps: json };
+}
