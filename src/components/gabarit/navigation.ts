@@ -16,7 +16,7 @@ export const MENU: readonly EntreeMenu[] = [
   { href: "/", libelle: "Ma journée", phrase: "Ce que j'ai à faire aujourd'hui" },
   { href: "/a-valider", libelle: "À valider", phrase: "Ce que le Studio a préparé, à valider avant la mise en ligne", codes: ["commandes.studio"] },
   { href: "/lots", libelle: "Mes vidéos", phrase: "Commander des vidéos et suivre celles en cours", codes: ["lots"] },
-  { href: "/calendrier", libelle: "Mon calendrier", phrase: "Ce qui sort, quel jour, sur quel réseau", codes: ["calendrier"] },
+  { href: "/calendrier", libelle: "Mon calendrier", phrase: "Ce qui sort, quel jour, sur quel réseau", codes: ["calendrier"], aussi: ["/semaine"] },
   {
     href: "/sujets",
     libelle: "Mes idées de sujets",
