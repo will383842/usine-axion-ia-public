@@ -3,13 +3,14 @@
  * La route entrante des chiffres du CRM (/api/agregats-crm) est publique pour le proxy : elle renvoie elle-même 401 sans HMAC valide (src/agregats/).
  * Le proxy ne suffit pas : chaque action serveur et chaque page appelle aussi exigerSession().
  * N-26 : seule une session complète (mot de passe ET second code) passe ; une session partielle n'ouvre que /connexion.
+ * La route de l'horloge (/api/horloge/semaine) est publique pour le proxy : elle exige son propre secret (401 sans détail).
  * La porte du studio (/api/porte/**) n'a pas de session : chacune de ses routes exige le secret partagé (src/porte/acces.ts).
  */
 import { NextResponse, type NextRequest } from "next/server";
 import { sessionComplete } from "@/auth/session";
 import { NOM_COOKIE_SESSION } from "@/lib/jeton-session";
 
-const PUBLICS = [/^\/connexion\/?$/, /^\/api\/sante\/?$/, /^\/api\/porte\/(sujets|sujets\/retenir|sujets\/retenir-lot|metiers|arret)\/?$/, /^\/api\/agregats-crm\/?$/];
+const PUBLICS = [/^\/connexion\/?$/, /^\/api\/sante\/?$/, /^\/api\/porte\/(sujets|sujets\/retenir|sujets\/retenir-lot|metiers|arret)\/?$/, /^\/api\/agregats-crm\/?$/, /^\/api\/horloge\/semaine\/?$/];
 
 export function estPublic(pathname: string): boolean {
   return PUBLICS.some((r) => r.test(pathname));
