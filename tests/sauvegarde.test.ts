@@ -88,7 +88,7 @@ describe("scripts de sauvegarde (lecture du texte : aucun exécutable lancé)", 
   });
 
   it("crontab : une seule ligne de nuit, vers sauvegarder.sh", () => {
-    const l = lire("deploiement/crontab").split("\n").filter((x) => x.trim() && !x.startsWith("#") && !/^[A-Z_]+=/.test(x) && !x.includes("proposer-semaine.sh"));
+    const l = lire("deploiement/crontab").split("\n").filter((x) => x.trim() && !x.startsWith("#") && !/^[A-Z_]+=/.test(x) && !/^0 6 \* \* 1 root \S*deploiement\/proposer-semaine\.sh/.test(x));
     expect(l).toHaveLength(1);
     expect(l[0]).toMatch(/^\d+ [0-3]? ?\* \* \* \S+ \S*deploiement\/sauvegarder\.sh/);
   });

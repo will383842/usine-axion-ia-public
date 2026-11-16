@@ -6,15 +6,23 @@ import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { estPublic } from "@/proxy";
 
-const etat = { arret: false, allume: true, dejaFait: false, envoyees: 2 };
+const etat = { arret: false, allume: true, verrou: true, envoyees: 2 };
+const marques: string[] = [];
 const proposer = vi.fn(async (_lundi: string) => ({ message: "ok", proposees: etat.envoyees, envoyees: etat.envoyees, reportees: 0, listeReportees: [] }));
-const journaliser = vi.fn(async () => {});
+const journaliser = vi.fn(async (_sujet: string, _message: string, options?: { cible?: string }) => {
+  if (options?.cible) marques.push(options.cible);
+});
 
 vi.mock("@/arret", () => ({ estArrete: async () => etat.arret }));
 vi.mock("@/donnees", () => ({ interrupteurAllume: async () => etat.allume, journaliser }));
 vi.mock("@/lib/base", () => ({
-  requete: async (sql: string) => (/FROM journal/.test(sql) ? (etat.dejaFait ? [{ n: 1 }] : []) : []),
-  transaction: async (fn: () => Promise<unknown>) => fn(),
+  requete: async (sql: string, v: unknown[] = []) => (/FROM journal/.test(sql) && marques.includes(String(v[0])) ? [{ n: 1 }] : []),
+  pool: () => ({
+    connect: async () => ({
+      query: async (sql: string) => ({ rows: /try_advisory/.test(sql) ? [{ ok: etat.verrou }] : [] }),
+      release: () => {},
+    }),
+  }),
 }));
 vi.mock("@/planification", () => ({ proposerLaSemaine: proposer, lundiVise: async () => "2099-03-02" }));
 
@@ -23,7 +31,8 @@ const post = (autorisation: string | null = `Bearer ${SECRET}`) =>
   new Request("http://localhost/api/horloge/semaine", { method: "POST", headers: autorisation === null ? {} : { authorization: autorisation } });
 
 beforeEach(() => {
-  Object.assign(etat, { arret: false, allume: true, dejaFait: false, envoyees: 2 });
+  Object.assign(etat, { arret: false, allume: true, verrou: true, envoyees: 2 });
+  marques.length = 0;
   proposer.mockClear();
   journaliser.mockClear();
   process.env.USINE_HORLOGE_SECRET = SECRET;
@@ -49,21 +58,28 @@ describe("horloge · lancement", () => {
     const { lancerHorloge } = await import("@/planification/horloge");
     expect(await lancerHorloge()).toMatchObject({ lance: true, raison: "lance", envoyees: 2 });
     expect(proposer).toHaveBeenCalledWith("2099-03-02");
-    expect(journaliser).toHaveBeenCalledTimes(1);
+    expect(journaliser).toHaveBeenCalledWith("horloge", expect.any(String), expect.objectContaining({ cible: "horloge:2099-03-02" }));
   });
 
   it("deux déclenchements la même semaine : le second ne lance rien (aucun doublon)", async () => {
     const { lancerHorloge } = await import("@/planification/horloge");
     await lancerHorloge();
-    etat.dejaFait = true;
+    expect(marques).toEqual(["horloge:2099-03-02"]);
     expect(await lancerHorloge()).toMatchObject({ lance: false, raison: "deja_fait" });
     expect(proposer).toHaveBeenCalledTimes(1);
   });
 
-  it("rien n'est parti vers le Studio : la semaine n'est pas marquée faite (nouvel essai possible)", async () => {
+  it("verrou déjà pris (déclenchement simultané) : rien n'est lancé", async () => {
+    const { lancerHorloge } = await import("@/planification/horloge");
+    etat.verrou = false;
+    expect(await lancerHorloge()).toMatchObject({ lance: false, raison: "deja_fait" });
+    expect(proposer).not.toHaveBeenCalled();
+  });
+
+  it("rien n'est parti vers le Studio : lance=false « rien_envoye », la semaine n'est pas marquée faite (nouvel essai possible)", async () => {
     const { lancerHorloge } = await import("@/planification/horloge");
     etat.envoyees = 0;
-    expect(await lancerHorloge()).toMatchObject({ lance: true, envoyees: 0 });
+    expect(await lancerHorloge()).toMatchObject({ lance: false, raison: "rien_envoye", envoyees: 0 });
     expect(journaliser).not.toHaveBeenCalled();
   });
 });
@@ -78,6 +94,13 @@ describe("horloge · route", () => {
     }
     delete process.env.USINE_HORLOGE_SECRET;
     expect((await POST(post())).status).toBe(401);
+    expect(proposer).not.toHaveBeenCalled();
+  });
+
+  it("secret serveur de moins de 32 caractères : refusé même envoyé tel quel", async () => {
+    const { POST } = await import("@/app/api/horloge/semaine/route");
+    process.env.USINE_HORLOGE_SECRET = "trop-court";
+    expect((await POST(post("Bearer trop-court"))).status).toBe(401);
     expect(proposer).not.toHaveBeenCalled();
   });
 

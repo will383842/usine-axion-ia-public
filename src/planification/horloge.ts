@@ -7,7 +7,7 @@
 import "server-only";
 import { estArrete } from "@/arret";
 import { interrupteurAllume, journaliser } from "@/donnees";
-import { requete, transaction } from "@/lib/base";
+import { pool, requete } from "@/lib/base";
 import { enteteValide } from "@/porte/acces";
 import { lundiVise, proposerLaSemaine } from "@/planification";
 
@@ -15,7 +15,7 @@ export const INTERRUPTEUR_HORLOGE = "horloge.semaine";
 export const VARIABLE_HORLOGE = "USINE_HORLOGE_SECRET";
 const LONGUEUR_MIN = 32;
 
-export type RaisonHorloge = "eteint" | "arrete" | "deja_fait" | "lance";
+export type RaisonHorloge = "eteint" | "arrete" | "deja_fait" | "rien_envoye" | "lance";
 export interface ResultatHorloge {
   lance: boolean;
   raison: RaisonHorloge;
@@ -36,19 +36,28 @@ export function accesHorloge(requete: Pick<Request, "headers">, env: Record<stri
 
 export const horlogeAllumee = () => interrupteurAllume(INTERRUPTEUR_HORLOGE);
 
-/** Propose la semaine visée, une seule fois (la semaine est marquée faite au journal dès qu'au moins un jour est parti au Studio). */
+/** Propose la semaine visée, une seule fois (la semaine est marquée faite au journal dès qu'au moins un jour est parti au Studio ; sinon `rien_envoye`, nouvel essai possible). */
 export async function lancerHorloge(): Promise<ResultatHorloge> {
   if (!(await horlogeAllumee())) return { lance: false, raison: "eteint", envoyees: 0 };
   if (await estArrete()) return { lance: false, raison: "arrete", envoyees: 0 };
   const lundi = await lundiVise();
   const cible = `horloge:${lundi}`;
-  return transaction(async () => {
-    // Deux déclenchements en même temps s'attendent l'un l'autre : le second voit la semaine déjà faite.
-    await requete(`SELECT pg_advisory_xact_lock(hashtext('horloge-semaine'))`);
-    const faite = await requete(`SELECT 1 AS n FROM journal WHERE sujet = 'horloge' AND cible = $1 LIMIT 1`, [cible]);
-    if (faite.length > 0) return { lance: false, raison: "deja_fait" as const, envoyees: 0 };
-    const r = await proposerLaSemaine(lundi);
-    if (r.envoyees > 0) await journaliser("horloge", "La semaine a été proposée automatiquement.", { cible, donnees: { envoyees: r.envoyees } });
-    return { lance: true, raison: "lance" as const, envoyees: r.envoyees };
-  });
+  // Verrou de session sur une connexion à part (jamais une grande transaction : les appels au Studio et les écritures de U-PLANIF restent indépendants).
+  const client = await pool().connect();
+  try {
+    const { rows: verrou } = await client.query<{ ok: boolean }>(`SELECT pg_try_advisory_lock(hashtext('horloge-semaine')) AS ok`);
+    if (verrou[0]?.ok !== true) return { lance: false, raison: "deja_fait", envoyees: 0 };
+    try {
+      const faite = await requete(`SELECT 1 AS n FROM journal WHERE sujet = 'horloge' AND cible = $1 LIMIT 1`, [cible]);
+      if (faite.length > 0) return { lance: false, raison: "deja_fait", envoyees: 0 };
+      const r = await proposerLaSemaine(lundi);
+      if (r.envoyees === 0) return { lance: false, raison: "rien_envoye", envoyees: 0 };
+      await journaliser("horloge", "La semaine a été proposée automatiquement.", { cible, donnees: { envoyees: r.envoyees } });
+      return { lance: true, raison: "lance", envoyees: r.envoyees };
+    } finally {
+      await client.query(`SELECT pg_advisory_unlock(hashtext('horloge-semaine'))`);
+    }
+  } finally {
+    client.release();
+  }
 }

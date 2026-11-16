@@ -2,6 +2,6 @@
 MAILTO=""
 30 2 * * * root /opt/usine-axion-ia/deploiement/sauvegarder.sh >> /var/log/usine-sauvegarde.log 2>&1
 
-# Horloge hebdomadaire (U-HORLOGE) : le lundi à 6 h UTC, l'application propose la semaine (sans IA, « à valider »). À poser dans /etc/cron.d/usine-horloge.
+# Horloge hebdomadaire (U-HORLOGE) : le lundi à 6 h UTC, l'application propose la semaine (sans IA, « à valider »). Même fichier de pose que ci-dessus (une seule copie dans /etc/cron.d).
 # Éteinte : HORLOGE_ACTIVE absent du fichier d'environnement, et interrupteur « horloge.semaine » éteint.
 0 6 * * 1 root /opt/usine-axion-ia/deploiement/proposer-semaine.sh >> /var/log/usine-horloge.log 2>&1
