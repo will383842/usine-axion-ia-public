@@ -43,7 +43,6 @@ const reponse = (surcharge: Record<string, unknown> = {}) => ({
 
 describe.skipIf(!url)("plafond automatique · en base, avec une doublure du Studio", () => {
   let repere = 0;
-  const reglage = async () => (await import("@/reglages/plafond-automatique")).lirePlafondAutomatique();
   const brut = async () => (await p.query("SELECT valeur FROM reglage WHERE cle = $1", [CLE])).rows[0]?.valeur;
   const journal = async () => (await p.query("SELECT sujet, message, cible, donnees FROM journal WHERE cible = $1 AND id > $2 ORDER BY id", [CLE, repere])).rows;
   const reperer = async () => {
@@ -90,7 +89,7 @@ describe.skipIf(!url)("plafond automatique · en base, avec une doublure du Stud
     expect(r).toEqual({ ok: true, plafond_cents: 2000, deja: false });
     expect(reglerPlafondDuStudio).toHaveBeenCalledTimes(1);
     expect(reglerPlafondDuStudio).toHaveBeenCalledWith(2000);
-    expect(await brut()).toMatchObject({ plafond_cents: 2000, version: 1 });
+    expect(await brut()).toEqual({ plafond_cents: 2000, accepte_le: expect.any(String), version: 1 });
     expect((await lirePlafondAutomatique())?.plafond_cents).toBe(2000);
     const j = await journal();
     expect(j).toHaveLength(1);
@@ -102,14 +101,16 @@ describe.skipIf(!url)("plafond automatique · en base, avec une doublure du Stud
   it("rejeu (deja) : ok, valeur inchangée", async () => {
     const { envoyerPlafondAutomatique } = await import("@/reglages/plafond-automatique");
     await envoyerPlafondAutomatique(2000);
+    const avantRejeu = await brut();
     reglerPlafondDuStudio.mockResolvedValue(reponse({ deja: true }));
     expect(await envoyerPlafondAutomatique(2000)).toEqual({ ok: true, plafond_cents: 2000, deja: true });
-    expect((await reglage())?.plafond_cents).toBe(2000);
+    expect(await brut()).toEqual(avantRejeu);
   });
 
   it("refus et pannes : bonne raison, réglage précédent gardé, une ligne de journal", async () => {
     const { envoyerPlafondAutomatique } = await import("@/reglages/plafond-automatique");
     await envoyerPlafondAutomatique(2000);
+    const avant = await brut();
     await reperer();
     const cas: Array<[string, () => void, string, number | undefined]> = [
       ["pas_branche", () => reglerPlafondDuStudio.mockResolvedValue({ envoye: false }), "pas_branche", undefined],
@@ -124,7 +125,7 @@ describe.skipIf(!url)("plafond automatique · en base, avec une doublure du Stud
       const r = await envoyerPlafondAutomatique(5000);
       expect(r, nom).toMatchObject({ ok: false, raison });
       if (statut) expect(r).toMatchObject({ statut });
-      expect((await reglage())?.plafond_cents, nom).toBe(2000);
+      expect(await brut(), nom).toEqual(avant);
     }
     expect(await journal()).toHaveLength(cas.length);
     // « Tout arrêter » : la passerelle n'est pas appelée.
@@ -132,7 +133,7 @@ describe.skipIf(!url)("plafond automatique · en base, avec une doublure du Stud
     await arret(true);
     expect(await envoyerPlafondAutomatique(5000)).toMatchObject({ ok: false, raison: "arret" });
     expect(reglerPlafondDuStudio).not.toHaveBeenCalled();
-    expect((await reglage())?.plafond_cents).toBe(2000);
+    expect(await brut()).toEqual(avant);
   });
 
   it("réponse inattendue : rien n'est noté accepté ; si le Studio dit allumé, alerte au journal", async () => {
