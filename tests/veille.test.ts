@@ -64,3 +64,47 @@ describe("veille · branchement", () => {
     expect(idx).not.toMatch(/src\/export|@\/export/);
   });
 });
+
+const url = process.env.DATABASE_URL;
+describe.skipIf(!url)("veille · en base (fictive)", () => {
+  it("la commande « reçue » restée sans suite et la ligne non proposée donnent les deux alertes ; elles disparaissent au retour de l'activité", async () => {
+    const { randomBytes } = await import("node:crypto");
+    const { Pool } = await import("pg");
+    const schema = `essai_${randomBytes(4).toString("hex")}`;
+    const admin = new Pool({ connectionString: url });
+    await admin.query(`CREATE SCHEMA ${schema}`);
+    await admin.end();
+    const p = new Pool({ connectionString: url, options: `-c search_path=${schema}` });
+    try {
+      const { utiliserPool } = await import("@/lib/base");
+      const { jouerMigrations } = await import("@/lib/migrations");
+      utiliserPool(p);
+      await jouerMigrations(p);
+      // Interrupteur absent de la base de départ : posé ici pour l'essai seulement.
+      await p.query(`INSERT INTO interrupteur (code, nom, description, allume) VALUES ('veille', 'Veille', 'essai', true) ON CONFLICT (code) DO UPDATE SET allume = true`);
+      const { alertesDuMoment, lireEntrees } = await import("@/veille");
+      expect(await alertesDuMoment()).toEqual([]);
+
+      const [a] = (await p.query(
+        `INSERT INTO calendrier_ligne (reseau, type_contenu, prevue_le, cree_le) VALUES
+           ('instagram', 'video', now() + interval '2 days', now() - interval '3 days'),
+           ('linkedin', 'texte', now() + interval '3 days', now() - interval '3 days') RETURNING id`,
+      )).rows;
+      await p.query(
+        `INSERT INTO commande_studio (cle, calendrier_ligne, reseau, compte, type_contenu, jour, instant, etat_envoi, etat_studio, envoyee_le)
+         VALUES ('cle-essai', $1, 'instagram', 'compte-essai', 'video', current_date + 2, now() + interval '2 days', 'envoyee', 'recue', now() - interval '2 days')`,
+        [a.id],
+);
+      const entrees = await lireEntrees();
+      expect(entrees.commandesSansReponse).toBe(1);
+      expect(entrees.lignesSansProposition).toBe(1); // la ligne b seule : a est déjà proposée
+      expect((await alertesDuMoment()).map((x) => x.code)).toEqual(["semaine-non-proposee", "commande-sans-reponse"]);
+
+      // Une proposition récente : la semaine est proposée, plus d'alerte « semaine non proposée ».
+      await p.query(`UPDATE commande_studio SET envoyee_le = now() - interval '1 hour', etat_studio = 'programmee' WHERE cle = 'cle-essai'`);
+      expect(await alertesDuMoment()).toEqual([]);
+    } finally {
+      await p.end();
+    }
+  });
+});

@@ -28,8 +28,8 @@ export async function lireEntrees(): Promise<EntreesVeille> {
          WHERE c.archive_le IS NULL AND c.etat = 'brouillon' AND c.prevue_le > now() AND c.prevue_le < now() + interval '7 days'
            AND NOT EXISTS (SELECT 1 FROM commande_studio s WHERE s.calendrier_ligne = c.id AND s.archive_le IS NULL AND s.etat_envoi IN ('envoyee', 'mise_de_cote_studio'))) AS plus_ancienne_sans_proposition,
        (SELECT max(envoyee_le) FROM commande_studio WHERE archive_le IS NULL) AS derniere_proposition,
-       (SELECT count(*) FROM commande_studio WHERE archive_le IS NULL AND etat_envoi = 'envoyee' AND etat_studio IS NULL) AS sans_reponse,
-       (SELECT min(envoyee_le) FROM commande_studio WHERE archive_le IS NULL AND etat_envoi = 'envoyee' AND etat_studio IS NULL) AS plus_ancienne_sans_reponse`,
+       (SELECT count(*) FROM commande_studio WHERE archive_le IS NULL AND etat_envoi = 'envoyee' AND (etat_studio IS NULL OR etat_studio = 'recue')) AS sans_reponse,
+       (SELECT min(envoyee_le) FROM commande_studio WHERE archive_le IS NULL AND etat_envoi = 'envoyee' AND (etat_studio IS NULL OR etat_studio = 'recue')) AS plus_ancienne_sans_reponse`,
   );
   return {
     lignesSansProposition: Number(r?.sans_proposition ?? 0),
@@ -40,10 +40,13 @@ export async function lireEntrees(): Promise<EntreesVeille> {
   };
 }
 
+async function calculer(maintenant: Date): Promise<Alerte[]> {
+  return alertesDeVeille(await lireEntrees(), maintenant);
+}
+
 /** Alertes du moment ; vide si l'interrupteur est éteint (rien n'est lu). */
 export async function alertesDuMoment(maintenant: Date = new Date()): Promise<Alerte[]> {
-  if (!(await veilleAllumee())) return [];
-  return alertesDeVeille(await lireEntrees(), maintenant);
+  return (await veilleAllumee()) ? calculer(maintenant) : [];
 }
 
 /**
@@ -60,11 +63,11 @@ async function deposerPourCockpit(alertes: Alerte[], maintenant: Date) {
   }
 }
 
-/** Cartes d'alerte pour « Ma journée » ; une carte disparaît seule quand l'activité revient. */
+/** Cartes d'alerte pour « Ma journée » ; une carte disparaît seule quand l'activité revient. Éteinte : aucune carte, et le cockpit reçoit un état vide. */
 export async function cartesDeLaVeille(): Promise<CarteVeille[]> {
   const maintenant = new Date();
-  const alertes = await alertesDuMoment(maintenant);
-  if (!(await veilleAllumee())) return [];
+  const allumee = await veilleAllumee();
+  const alertes = allumee ? await calculer(maintenant) : [];
   await deposerPourCockpit(alertes, maintenant);
   return cartesDeVeille(alertes);
 }

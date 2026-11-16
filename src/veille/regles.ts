@@ -15,7 +15,7 @@ export interface EntreesVeille {
   plusAncienneSansProposition: Date | null;
   /** Dernier envoi d'une proposition au Studio (tous réseaux). */
   derniereProposition: Date | null;
-  /** Commandes envoyées au Studio dont aucun état n'est revenu. */
+  /** Commandes envoyées au Studio dont aucun état n'est revenu (reçue seulement, ou rien). */
   commandesSansReponse: number;
   /** Envoi de la plus ancienne de ces commandes. */
   plusAncienneSansReponse: Date | null;
@@ -55,8 +55,8 @@ export function cartesDeVeille(alertes: Alerte[]): CarteVeille[] {
     a.code === "semaine-non-proposee"
       ? {
           cle: "calcul:veille-semaine-non-proposee",
-          titre: `Proposer la semaine : ${pluriel(a.nombre, "publication attend", "publications attendent")} depuis plus d'un jour`,
-          detail: "Aucune semaine n'a été proposée au Studio depuis plus de 24 h.",
+          titre: `Proposer la semaine : ${pluriel(a.nombre, "publication attend", "publications attendent")} depuis plus de ${SEUIL_HEURES} h`,
+          detail: `Aucune semaine n'a été proposée au Studio depuis plus de ${SEUIL_HEURES} h.`,
           bouton: "Voir ma semaine",
           lien: "/semaine",
           urgence: 70,
@@ -64,7 +64,7 @@ export function cartesDeVeille(alertes: Alerte[]): CarteVeille[] {
       : {
           cle: "calcul:veille-commande-sans-reponse",
           titre: `Relire l'état de ${pluriel(a.nombre, "publication proposée", "publications proposées")} au Studio`,
-          detail: "Le Studio n'a pas répondu depuis plus de 24 h.",
+          detail: `Le Studio n'a pas répondu depuis plus de ${SEUIL_HEURES} h.`,
           bouton: "Voir le calendrier",
           lien: "/calendrier",
           urgence: 75,
