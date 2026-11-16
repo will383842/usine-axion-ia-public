@@ -27,6 +27,7 @@ const LIGNES: Ligne[] = [
       { href: "/reglages/quotas", titre: "Quantités à produire" },
     ],
   },
+  { href: "/reglages/plafond", titre: "Plafond des achats automatiques", aide: "Ce que l'Usine pourra dépenser seule chaque mois, quand vous l'aurez autorisée." },
   { href: "/reglages/comptes", titre: "Mes comptes", aide: "Le lien du profil de chacun de vos comptes." },
   { href: "/reglages/oppositions", titre: "Personnes qui ont dit STOP", aide: "Les personnes qui ne veulent plus rien recevoir : on ne leur écrit plus jamais." },
   { href: "/reglages/mot-de-passe", titre: "Mon mot de passe", aide: "Changer le mot de passe de l'Usine." },
