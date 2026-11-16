@@ -1,6 +1,7 @@
 /** Passerelle sortante vers le Studio (L7-23). Éteinte par défaut : interrupteur « studio.sortant » allumé ET secret STUDIO_PORTE_SECRET (32 caractères au moins, distinct du secret entrant) requis. */
 import "server-only";
 import { interrupteurAllume } from "@/donnees";
+import { PLAFOND_AUTO_MAX_CENTS, corpsPlafondStudio } from "@/contrats";
 
 export const HOTE = "https://studio.axion-ia.com";
 export const INTERRUPTEUR_STUDIO = "studio.sortant";
@@ -41,6 +42,33 @@ export async function lireOccupesDuStudio(du: string, au: string): Promise<Repon
   const reponse = await fetch(`${HOTE}/api/usine/calendrier/occupes?du=${du}&au=${au}&contrat=2`, {
     method: "GET",
     headers: { authorization: `Bearer ${secret}` },
+    redirect: "error",
+  });
+  const texte = await reponse.text();
+  let json: unknown = null;
+  try {
+    json = texte ? JSON.parse(texte) : null;
+  } catch {
+    json = null;
+  }
+  return { envoye: true, statut: reponse.status, corps: json };
+}
+
+/**
+ * Envoie (PUT) le plafond des achats automatiques au Studio, en centimes entiers de 0 à PLAFOND_AUTO_MAX_CENTS (sinon lève, sans aucun appel).
+ * La porte exige l'état d'autonomie avec le plafond : il est écrit ici en littéral « éteint », jamais tiré d'un paramètre ni d'un réglage.
+ * Cette fonction n'allume jamais : allumer sera une fiche à part, sur ordre écrit du fondateur.
+ * Rend `{ envoye: false }`, sans aucun appel, tant que l'interrupteur ou le secret manque.
+ */
+export async function reglerPlafondDuStudio(plafondCents: number): Promise<ReponseStudio> {
+  if (!Number.isSafeInteger(plafondCents) || plafondCents < 0 || plafondCents > PLAFOND_AUTO_MAX_CENTS) throw new Error("plafond du Studio hors bornes");
+  const secret = process.env.STUDIO_PORTE_SECRET ?? "";
+  if (secret.length < SECRET_MIN || !(await interrupteurAllume(INTERRUPTEUR_STUDIO))) return { envoye: false };
+  const corps = corpsPlafondStudio.parse({ contrat: 2, automatique: false, plafond_automatique_cents: plafondCents });
+  const reponse = await fetch(`${HOTE}/api/usine/reglages/budget`, {
+    method: "PUT",
+    headers: { authorization: `Bearer ${secret}`, "content-type": "application/json" },
+    body: JSON.stringify(corps),
     redirect: "error",
   });
   const texte = await reponse.text();
