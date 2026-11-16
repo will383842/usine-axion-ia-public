@@ -1,0 +1,5 @@
+{
+  "corps": { "contrat": 2, "etape": "video", "decision": "valide", "empreinte": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "valide_par": "compte-usine", "valide_le": "2099-12-01T10:00:00.000Z" },
+  "faite": { "statut": 200, "corps": { "etat": "a_valider", "valideeLe": "2099-12-01T10:00:00.000Z", "deja": false } },
+  "deja": { "statut": 200, "corps": { "etat": "a_valider", "valideeLe": "2099-12-01T10:00:00.000Z", "deja": true } }
+}

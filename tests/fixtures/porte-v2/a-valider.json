@@ -1,0 +1,59 @@
+{
+  "a_valider": {
+    "statut": 200,
+    "corps": {
+      "etape": "video",
+      "etat": "a_valider",
+      "reseau": "linkedin",
+      "jour": "2099-12-10",
+      "instant": "2099-12-10T08:30:00.000Z",
+      "compteCible": "compte-fictif-1",
+      "media": { "type": "video", "id": "v-fictive" },
+      "textes": { "texte": "Texte fictif de publication.", "premierCommentaire": "Premier commentaire fictif." },
+      "empreinte": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  },
+  "deja_validee": {
+    "statut": 200,
+    "corps": {
+      "etape": "video",
+      "etat": "a_valider",
+      "reseau": "linkedin",
+      "jour": "2099-12-10",
+      "instant": "2099-12-10T08:30:00.000Z",
+      "compteCible": "compte-fictif-1",
+      "media": { "type": "video", "id": "v-fictive" },
+      "textes": { "texte": "Texte fictif de publication.", "premierCommentaire": "Premier commentaire fictif." },
+      "empreinte": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "valideeLe": "2099-12-01T10:00:00.000Z"
+    }
+  },
+  "sans_media": {
+    "statut": 200,
+    "corps": {
+      "etape": "video",
+      "etat": "recue",
+      "reseau": "linkedin",
+      "jour": "2099-12-10",
+      "instant": "2099-12-10T08:30:00.000Z",
+      "compteCible": "compte-fictif-1",
+      "media": null,
+      "textes": null,
+      "empreinte": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  },
+  "texte_piege": {
+    "statut": 200,
+    "corps": {
+      "etape": "video",
+      "etat": "a_valider",
+      "reseau": "linkedin",
+      "jour": "2099-12-10",
+      "instant": "2099-12-10T08:30:00.000Z",
+      "compteCible": "compte-fictif-1",
+      "media": { "type": "visuel", "id": "c-fictif" },
+      "textes": { "texte": "<script>alert('fictif')</script> Texte fictif.", "premierCommentaire": "<b>Commentaire fictif.</b>" },
+      "empreinte": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    }
+  }
+}
