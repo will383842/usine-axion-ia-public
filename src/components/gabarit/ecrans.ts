@@ -10,6 +10,7 @@ export interface EcranAllumable {
 }
 
 export const ECRANS_ALLUMABLES: readonly EcranAllumable[] = [
+  { code: "commandes.studio", nom: "À valider", href: "/a-valider", phrase: "Valider ou refuser ce que le Studio a préparé, avant toute mise en ligne. Allumé, vous pouvez aussi proposer une ligne du calendrier au Studio." },
   { code: "calendrier", nom: "Mon calendrier", href: "/calendrier", phrase: "Ce qui sort, quel jour, sur quel réseau : vos vidéos réparties par jour, avec les jours sans publication." },
   { code: "nouveautes", nom: "Nouveautés de la semaine", href: "/sujets?onglet=nouveautes", phrase: "Garder ou écarter les nouveautés de la semaine, chacune avec sa source." },
   { code: "commenter.allume", nom: "Ma communauté", href: "/commenter", phrase: "Voir chaque jour sept comptes chez qui laisser un commentaire. Rien n'est envoyé à votre place." },
@@ -30,7 +31,6 @@ export function ecranParCode(code: string): EcranAllumable | undefined {
 
 /** Une phrase simple pour les interrupteurs qui ne sont pas des écrans (cartes de « Ma journée », choix des vidéos, texte à coller). */
 const PHRASES_AUTRES: Record<string, string> = {
-  "commandes.studio": "Permet de proposer une ligne du calendrier au Studio et de relire son état. Rien ne part tout seul.",
   tirage: "Choisit les vidéos d'une commande sans jamais refaire un contenu déjà commandé ou déjà fabriqué.",
   "tirage.fin-rendez-vous": "Permet de choisir, pour une vidéo, une fin qui invite à réserver un rendez-vous.",
   "lots.paquet": "Montre, pour chaque vidéo, le texte à coller dans le studio.",
