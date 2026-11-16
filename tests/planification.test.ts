@@ -192,7 +192,7 @@ async function service(opts: { lignes?: Record<string, unknown>[]; lecture?: () 
   const selects: string[] = [];
   const lireOccupesDuStudio = vi.fn(opts.lecture ?? (async () => ({ envoye: true, statut: 200, corps: opts.occupes ?? [] })));
   const appelerStudio = vi.fn(async () => ({ envoye: true, statut: 201, corps: { entrees: [{ cle_proposition: "a", origine_date: "usine" }] } }));
-  const proposerAuStudio = vi.fn(async (_id: string) => ({ etat_envoi: "envoyee", message: "" }));
+  const proposerAuStudio = vi.fn<(id: string) => Promise<{ etat_envoi: string; message: string }>>(async () => ({ etat_envoi: "envoyee", message: "" }));
   const lignes = opts.lignes ?? [];
   vi.doMock("server-only", () => ({}));
   vi.doMock("@/passerelles/studio", () => ({ lireOccupesDuStudio, appelerStudio }));
@@ -242,6 +242,10 @@ describe("planification · le service touche seulement ce qui peut l'être", () 
         baseLigne("2", { etat: "publiee", deplacable: false }),
         baseLigne("3", { prevue_le: new Date("2000-01-01T09:00:00Z"), deplacable: false }),
         baseLigne("4"),
+        baseLigne("5", { commandee: true, deplacable: false }),
+        baseLigne("6", { commandee: true, deplacable: false, etat_studio: "programmee" }),
+        baseLigne("7", { commandee: true, deplacable: false, etat_studio: "publiee" }),
+        baseLigne("8", { commandee: true, deplacable: false, etat_studio: "echec" }),
       ],
     });
     await s.proposerLaSemaine(LUNDI);
@@ -249,6 +253,11 @@ describe("planification · le service touche seulement ce qui peut l'être", () 
     expect(s.ecritures.map((e) => (e[1] as unknown[])[0])).toEqual(["4"]);
     expect(String(s.ecritures[0][0])).toMatch(/etat = 'brouillon'/);
     expect(s.proposerAuStudio.mock.calls.map((c) => c[0])).toEqual(["4"]);
+    // Jamais de seconde publication : une ligne commandée non déplaçable (dont programmée, publiée, en échec côté Studio) ne repart pas.
+    for (const id of ["5", "6", "7", "8"]) {
+      expect(s.proposerAuStudio.mock.calls.map((c) => c[0])).not.toContain(id);
+      expect(JSON.stringify(s.appelerStudio.mock.calls)).not.toContain(cleCommande(id));
+    }
   });
 
   it("une date choisie, même déjà commandée, ne repart jamais en appel 4 ni ne bouge", async () => {

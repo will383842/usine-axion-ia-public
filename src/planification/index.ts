@@ -106,9 +106,9 @@ export async function proposerLaSemaine(lundi: string): Promise<ResultatSemaine>
             AND etat = 'brouillon' AND (etat_studio IS NULL OR etat_studio = 'en_attente') AND prevue_le > now()`, [p.ligne, p.instant]);
     }
     const proposes = new Set(tirage.propositions.map((p) => p.ligne));
-    // À envoyer : les lignes tirées maintenant et celles déjà commandées en brouillon (rejeu : le Studio répond « déjà », sans doublon).
+    // À envoyer : les lignes tirées maintenant et celles déjà commandées encore déplaçables (brouillon, état Studio vide ou en attente, à venir ; rejeu : le Studio répond « déjà », sans doublon).
     // Jamais une date choisie par le fondateur (l'appel 4 ne porte que la date par défaut de l'Usine), jamais une ligne programmée ou publiée.
-    const ids = lignes.filter((l) => !l.date_choisie && (proposes.has(l.id) || (l.commandee && l.etat === "brouillon"))).map((l) => l.id);
+    const ids = lignes.filter((l) => !l.date_choisie && (proposes.has(l.id) || (l.commandee && l.deplacable))).map((l) => l.id);
     return { reportees: tirage.reportees, aEnvoyer: ids };
   });
 
