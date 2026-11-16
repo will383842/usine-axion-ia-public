@@ -44,6 +44,7 @@ const reponse = (surcharge: Record<string, unknown> = {}) => ({
 describe.skipIf(!url)("plafond automatique · en base, avec une doublure du Studio", () => {
   let repere = 0;
   const reglage = async () => (await import("@/reglages/plafond-automatique")).lirePlafondAutomatique();
+  const brut = async () => (await p.query("SELECT valeur FROM reglage WHERE cle = $1", [CLE])).rows[0]?.valeur;
   const journal = async () => (await p.query("SELECT sujet, message, cible, donnees FROM journal WHERE cible = $1 AND id > $2 ORDER BY id", [CLE, repere])).rows;
   const reperer = async () => {
     repere = Number((await p.query("SELECT COALESCE(max(id), 0) AS m FROM journal")).rows[0].m);
@@ -80,7 +81,7 @@ describe.skipIf(!url)("plafond automatique · en base, avec une doublure du Stud
     }
     expect(reglerPlafondDuStudio).not.toHaveBeenCalled();
     expect(await journal()).toHaveLength(0);
-    expect(await reglage()).toBeNull();
+    expect(await brut()).toEqual({});
   });
 
   it("200 conforme : une passerelle appelée, réglage écrit, une ligne de journal", async () => {
@@ -89,7 +90,7 @@ describe.skipIf(!url)("plafond automatique · en base, avec une doublure du Stud
     expect(r).toEqual({ ok: true, plafond_cents: 2000, deja: false });
     expect(reglerPlafondDuStudio).toHaveBeenCalledTimes(1);
     expect(reglerPlafondDuStudio).toHaveBeenCalledWith(2000);
-    expect((await reglage())?.plafond_cents).toBe(2000);
+    expect(await brut()).toMatchObject({ plafond_cents: 2000, version: 1 });
     expect((await lirePlafondAutomatique())?.plafond_cents).toBe(2000);
     const j = await journal();
     expect(j).toHaveLength(1);
@@ -138,20 +139,20 @@ describe.skipIf(!url)("plafond automatique · en base, avec une doublure du Stud
     const { envoyerPlafondAutomatique } = await import("@/reglages/plafond-automatique");
     reglerPlafondDuStudio.mockResolvedValue(reponse({ automatique: true }));
     expect(await envoyerPlafondAutomatique(2000)).toMatchObject({ ok: false, raison: "reponse_inattendue" });
-    expect(await reglage()).toBeNull();
+    expect(await brut()).toEqual({});
     const j = await journal();
     expect(j.some((l) => /^Alerte : le Studio indique des achats automatiques allumés\.$/.test(l.message))).toBe(true);
     reglerPlafondDuStudio.mockResolvedValue(reponse({ plafond_automatique_cents: 1999 }));
     expect(await envoyerPlafondAutomatique(2000)).toMatchObject({ ok: false, raison: "reponse_inattendue" });
     reglerPlafondDuStudio.mockResolvedValue({ envoye: true, statut: 200, corps: "illisible" });
     expect(await envoyerPlafondAutomatique(2000)).toMatchObject({ ok: false, raison: "reponse_inattendue" });
-    expect(await reglage()).toBeNull();
+    expect(await brut()).toEqual({});
   });
 
   it("le plafond global du Studio n'est ni gardé ni journalisé", async () => {
     const { envoyerPlafondAutomatique } = await import("@/reglages/plafond-automatique");
     await envoyerPlafondAutomatique(2000);
-    const tout = JSON.stringify([await reglage(), await journal()]);
+    const tout = JSON.stringify([await brut(), await journal()]);
     expect(tout).not.toContain("777777");
     expect(tout).not.toMatch(/Bearer|secret/i);
   });
