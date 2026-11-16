@@ -6,6 +6,7 @@ import { exigerSession } from "@/services/auth";
 
 export interface EtatSemaine {
   message: string | null;
+  reportees: { ligne: string; raison: string }[];
 }
 
 /** Propose la semaine au Studio : geste explicite du fondateur, jamais automatique. */
@@ -13,5 +14,5 @@ export async function proposerLaSemaineAction(): Promise<EtatSemaine> {
   await exigerSession();
   const r = await proposerLaSemaine(await lundiVise());
   revalidatePath("/semaine");
-  return { message: r.message };
+  return { message: r.message, reportees: r.listeReportees };
 }

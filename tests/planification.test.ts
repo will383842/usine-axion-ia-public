@@ -74,6 +74,7 @@ describe("planification · le tirage", () => {
     const r = proposerSemaine(entrees([ligne("1")], { occupes: pleine, rythmes: { ...RYTHMES_DEFAUT, tiktok: { min: 1, max: 99 } } }));
     expect(r.propositions).toEqual([]);
     expect(r.reportees).toHaveLength(1);
+    expect(r.reportees[0].raison).toMatch(/Aucun créneau libre/);
   });
 
   it("respecte le rythme : pas plus que le milieu du rythme par semaine, créneaux du Studio compris", () => {
@@ -164,7 +165,7 @@ describe("planification · service sous « Tout arrêter » et interrupteur", ()
     vi.doMock("@/passerelles/studio", () => ({ lireOccupesDuStudio, appelerStudio }));
     vi.doMock("@/donnees", () => ({ interrupteurAllume: vi.fn(async () => false), journaliser: vi.fn() }));
     vi.doMock("@/arret", () => ({ sousArret: vi.fn(async () => ({ fait: false, raison: "arrete" })) }));
-    vi.doMock("@/commandes/service", () => ({ proposerAuStudio: vi.fn() }));
+    vi.doMock("@/commandes/service", () => ({ proposerAuStudio: vi.fn(), commandesAllumees: vi.fn(async () => true) }));
     vi.doMock("@/lib/base", () => ({ requete: vi.fn(), transaction: vi.fn() }));
     vi.doMock("@/reglages", () => ({ lireReglagesTirage: vi.fn(), lireQuotas: vi.fn() }));
     const { proposerLaSemaine } = await import("@/planification");
@@ -181,5 +182,121 @@ describe("planification · service sous « Tout arrêter » et interrupteur", ()
     expect(arret.message).toMatch(/arrêté/);
     expect(lireOccupesDuStudio).not.toHaveBeenCalled();
     expect(appelerStudio).not.toHaveBeenCalled();
+  });
+});
+
+/** Service avec une base et un Studio fictifs : rend les appels faits, pour vérifier ce qui part et ce qui s'écrit. */
+async function service(opts: { lignes?: Record<string, unknown>[]; lecture?: () => Promise<unknown>; commandes?: boolean; occupes?: unknown } = {}) {
+  vi.resetModules();
+  const ecritures: unknown[][] = [];
+  const selects: string[] = [];
+  const lireOccupesDuStudio = vi.fn(opts.lecture ?? (async () => ({ envoye: true, statut: 200, corps: opts.occupes ?? [] })));
+  const appelerStudio = vi.fn(async () => ({ envoye: true, statut: 201, corps: { entrees: [{ cle_proposition: "a", origine_date: "usine" }] } }));
+  const proposerAuStudio = vi.fn(async (_id: string) => ({ etat_envoi: "envoyee", message: "" }));
+  const lignes = opts.lignes ?? [];
+  vi.doMock("server-only", () => ({}));
+  vi.doMock("@/passerelles/studio", () => ({ lireOccupesDuStudio, appelerStudio }));
+  vi.doMock("@/donnees", () => ({ interrupteurAllume: vi.fn(async () => true), journaliser: vi.fn() }));
+  vi.doMock("@/arret", () => ({ sousArret: vi.fn(async (_n: string, f: () => Promise<unknown>) => ({ fait: true, valeur: await f() })) }));
+  vi.doMock("@/commandes/service", () => ({ proposerAuStudio, commandesAllumees: vi.fn(async () => opts.commandes ?? true) }));
+  vi.doMock("@/reglages", () => ({
+    lireReglagesTirage: vi.fn(async () => ({ rythmes: { ...RYTHMES_DEFAUT, tiktok: { min: 1, max: 7 } } })),
+    lireQuotas: vi.fn(async () => QUOTAS_DEFAUT),
+  }));
+  const requete = vi.fn(async (sql: string, params?: unknown[]) => {
+    if (/^\s*UPDATE/.test(sql)) {
+      ecritures.push([sql, params]);
+      const l = lignes.find((x) => x.id === params?.[0]);
+      if (l) l.prevue_le = params?.[1];
+      return [];
+    }
+    if (/FROM calendrier_ligne c/.test(sql)) {
+      selects.push(sql);
+      return lignes;
+    }
+    if (/FROM calendrier_ligne WHERE id/.test(sql)) return lignes.filter((x) => x.id === params?.[0]);
+    return [];
+  });
+  vi.doMock("@/lib/base", () => ({ requete, transaction: vi.fn(async (f: () => Promise<unknown>) => f()) }));
+  const { proposerLaSemaine } = await import("@/planification");
+  return { proposerLaSemaine, ecritures, selects, lireOccupesDuStudio, appelerStudio, proposerAuStudio };
+}
+const baseLigne = (id: string, s: Record<string, unknown> = {}) => ({
+  id,
+  reseau: "tiktok",
+  compte: "tiktok:compte-fictif-1",
+  type_contenu: "video",
+  prevue_le: instantDeParis("2099-03-02", "09:00"),
+  etat: "brouillon",
+  date_choisie: false,
+  commandee: false,
+  deplacable: true,
+  ...s,
+});
+
+describe("planification · le service touche seulement ce qui peut l'être", () => {
+  it("ne tire que les brouillons pas encore au Studio et à venir ; le reste de la semaine ne bouge ni ne part", async () => {
+    const s = await service({
+      lignes: [
+        baseLigne("1", { etat: "programmee", deplacable: false }),
+        baseLigne("2", { etat: "publiee", deplacable: false }),
+        baseLigne("3", { prevue_le: new Date("2000-01-01T09:00:00Z"), deplacable: false }),
+        baseLigne("4"),
+      ],
+    });
+    await s.proposerLaSemaine(LUNDI);
+    expect(s.selects[0]).toMatch(/c\.etat = 'brouillon' AND \(c\.etat_studio IS NULL OR c\.etat_studio = 'en_attente'\) AND c\.prevue_le > now\(\)/);
+    expect(s.ecritures.map((e) => (e[1] as unknown[])[0])).toEqual(["4"]);
+    expect(String(s.ecritures[0][0])).toMatch(/etat = 'brouillon'/);
+    expect(s.proposerAuStudio.mock.calls.map((c) => c[0])).toEqual(["4"]);
+  });
+
+  it("une date choisie, même déjà commandée, ne repart jamais en appel 4 ni ne bouge", async () => {
+    const s = await service({ lignes: [baseLigne("1", { date_choisie: true, commandee: true })] });
+    await s.proposerLaSemaine(LUNDI);
+    expect(s.ecritures).toEqual([]);
+    expect(s.proposerAuStudio).not.toHaveBeenCalled();
+    expect(s.appelerStudio).not.toHaveBeenCalled();
+  });
+
+  it("interrupteur des échanges éteint : ni lecture, ni écriture, ni envoi", async () => {
+    const s = await service({ lignes: [baseLigne("1")], commandes: false });
+    const r = await s.proposerLaSemaine(LUNDI);
+    expect(r.message).toMatch(/éteints/);
+    expect(s.lireOccupesDuStudio).not.toHaveBeenCalled();
+    expect(s.selects).toEqual([]);
+    expect(s.ecritures).toEqual([]);
+    expect(s.proposerAuStudio).not.toHaveBeenCalled();
+    expect(s.appelerStudio).not.toHaveBeenCalled();
+  });
+});
+
+describe("planification · les créneaux pris sont lus avant tout", () => {
+  it.each([
+    ["la lecture échoue", () => Promise.reject(new Error("réseau")), undefined],
+    ["la réponse est illisible", undefined, { x: 1 }],
+  ])("%s : aucune commande, aucun créneau, aucune écriture", async (_nom, lecture, occupes) => {
+    const s = await service({ lignes: [baseLigne("1")], lecture, occupes });
+    const r = await s.proposerLaSemaine(LUNDI);
+    expect(r.envoyees).toBe(0);
+    expect(r.message).toMatch(/pas pu lire/);
+    expect(s.proposerAuStudio).not.toHaveBeenCalled();
+    expect(s.appelerStudio).not.toHaveBeenCalled();
+    expect(s.ecritures).toEqual([]);
+  });
+
+  it("une relance de la même semaine ne crée aucun doublon : mêmes clés, aucune date déplacée", async () => {
+    const lignes = [baseLigne("1"), baseLigne("2")];
+    const s = await service({ lignes });
+    await s.proposerLaSemaine(LUNDI);
+    const premiers = s.appelerStudio.mock.calls.map((c) => JSON.stringify(c));
+    expect(premiers).toHaveLength(2);
+    const dates = lignes.map((l) => l.prevue_le);
+    const avant = s.ecritures.length;
+    for (const l of lignes) l.commandee = true; // ce que le Studio a reçu : désormais fixes
+    await s.proposerLaSemaine(LUNDI);
+    expect(s.ecritures).toHaveLength(avant);
+    expect(lignes.map((l) => l.prevue_le)).toEqual(dates);
+    expect(s.appelerStudio.mock.calls.slice(2).map((c) => JSON.stringify(c))).toEqual(premiers);
   });
 });

@@ -1,5 +1,5 @@
 /**
- * Le menu : sept lignes, chacune avec son nom et la phrase qui dit à quoi elle sert (menu latéral sur grand écran,
+ * Le menu : huit lignes, chacune avec son nom et la phrase qui dit à quoi elle sert (menu latéral sur grand écran,
  * « Plus » au téléphone). `codes` : les interrupteurs des écrans de la ligne ; la pastille « éteint » paraît quand
  * ils sont tous éteints.
  */
@@ -16,7 +16,8 @@ export const MENU: readonly EntreeMenu[] = [
   { href: "/", libelle: "Ma journée", phrase: "Ce que j'ai à faire aujourd'hui" },
   { href: "/a-valider", libelle: "À valider", phrase: "Ce que le Studio a préparé, à valider avant la mise en ligne", codes: ["commandes.studio"] },
   { href: "/lots", libelle: "Mes vidéos", phrase: "Commander des vidéos et suivre celles en cours", codes: ["lots"] },
-  { href: "/calendrier", libelle: "Mon calendrier", phrase: "Ce qui sort, quel jour, sur quel réseau", codes: ["calendrier"], aussi: ["/semaine"] },
+  { href: "/calendrier", libelle: "Mon calendrier", phrase: "Ce qui sort, quel jour, sur quel réseau", codes: ["calendrier"] },
+  { href: "/semaine", libelle: "Ma semaine", phrase: "Proposer au Studio les jours de publication de la semaine", codes: ["planification"] },
   {
     href: "/sujets",
     libelle: "Mes idées de sujets",
