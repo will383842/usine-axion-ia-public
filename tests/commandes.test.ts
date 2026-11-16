@@ -201,6 +201,19 @@ describe.skipIf(!url)("commandes · en base, avec une doublure du Studio", () =>
     expect(await etat(id)).toHaveLength(1);
   });
 
+  it("une ligne non envoyée dont le jour change est reproposée avec le nouveau jour et le nouvel instant", async () => {
+    const { proposerAuStudio } = await import("@/commandes/service");
+    const id = await nouvelleLigne();
+    appelerStudio.mockResolvedValueOnce({ envoye: true, statut: 500, corps: null });
+    expect((await proposerAuStudio(id)).etat_envoi).toBe("non_envoyee");
+    await p.query("UPDATE calendrier_ligne SET prevue_le = $2 WHERE id = $1", [id, "2099-12-12T09:15:00Z"]);
+    expect((await proposerAuStudio(id)).etat_envoi).toBe("envoyee");
+    const lignes = await p.query("SELECT jour::text AS jour, instant FROM commande_studio WHERE calendrier_ligne = $1", [id]);
+    expect(lignes.rows).toHaveLength(1);
+    expect(lignes.rows[0].jour).toBe("2099-12-12");
+    expect(new Date(lignes.rows[0].instant).toISOString()).toBe("2099-12-12T09:15:00.000Z");
+  });
+
   it("l'exception de la passerelle est rattrapée", async () => {
     const { proposerAuStudio } = await import("@/commandes/service");
     appelerStudio.mockRejectedValueOnce(new Error("réseau"));

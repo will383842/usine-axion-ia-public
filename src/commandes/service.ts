@@ -1,6 +1,6 @@
 /** U-COMMANDE · proposer une ligne du calendrier au Studio (appel 1), relire les états (appel 2). Éteint par défaut. */
 import "server-only";
-import { depots, interrupteurAllume, journaliser, type CommandeStudio } from "@/donnees";
+import { interrupteurAllume, journaliser, type CommandeStudio } from "@/donnees";
 import { requete, transaction } from "@/lib/base";
 import { alerteQuota, lireQuotas, TYPES_QUOTA, type Palier, type TypeQuota } from "@/reglages";
 import { envoyerCommande, lireCommande, type ResultatAppel } from "./client";
@@ -54,10 +54,13 @@ export async function proposerAuStudio(calendrierLigneId: string): Promise<Resul
   return transaction(async () => {
     await requete(
       `INSERT INTO commande_studio (cle, calendrier_ligne, lot_ligne, repere, reseau, compte, type_contenu, jour, instant)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (cle) DO NOTHING`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       ON CONFLICT (cle) DO UPDATE SET lot_ligne = excluded.lot_ligne, repere = excluded.repere, reseau = excluded.reseau, compte = excluded.compte,
+              type_contenu = excluded.type_contenu, jour = excluded.jour, instant = excluded.instant, modifie_le = now()
+        WHERE commande_studio.etat_envoi IN ('a_envoyer', 'non_envoyee')`,
       [cle, ligne.id, ligne.lot_ligne, corps.corps.repere ?? null, corps.corps.reseau, corps.corps.compteCible, ligne.type_contenu, corps.corps.jour, corps.corps.instant],
     );
-    const [existante] = await requete<CommandeStudio>(`SELECT * FROM commande_studio WHERE cle = $1 FOR UPDATE`, [cle]);
+    const [existante] = await requete<CommandeStudio>(`SELECT *, jour::text AS jour FROM commande_studio WHERE cle = $1 FOR UPDATE`, [cle]);
     if (MOTS_DEJA_PROPOSEE[existante.etat_envoi]) return { message: MOTS_DEJA_PROPOSEE[existante.etat_envoi], etat_envoi: existante.etat_envoi };
 
     const reponse = await envoyerCommande(corps.corps);
@@ -114,7 +117,7 @@ export async function relireDepuisStudio(max: number = LECTURES_MAX): Promise<{ 
 
 /** Commandes proposées, indexées par ligne du calendrier (écran du calendrier ; RC-17 les lira aussi). */
 export async function listerCommandes(): Promise<Map<string, CommandeStudio>> {
-  const lignes = await requete<CommandeStudio>(`SELECT * FROM commande_studio WHERE archive_le IS NULL`);
+  const lignes = await requete<CommandeStudio>(`SELECT *, jour::text AS jour FROM commande_studio WHERE archive_le IS NULL`);
   return new Map(lignes.map((c) => [String(c.calendrier_ligne), c]));
 }
 

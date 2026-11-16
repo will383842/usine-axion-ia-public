@@ -4,6 +4,7 @@ import { ajouterJours, calendrierAllume, lignesDuCalendrier, lundiDe, rappelDesP
 import { EnTete, EtatVide } from "@/components/gabarit/EnTete";
 import { commandesAllumees, listerCommandes, palierDeLigne } from "@/commandes/service";
 import { LIBELLE_ETAT_STUDIO } from "@/commandes/regles";
+import type { CommandeStudio } from "@/donnees";
 import { requete } from "@/lib/base";
 import { LIBELLE_FORMAT, LIBELLE_RESEAU } from "@/reglages/modele";
 import { EcranEteint } from "@/components/gabarit/EcranEteint";
@@ -29,7 +30,7 @@ export default async function Page() {
   const [lignes, trous, parts] = await Promise.all([lignesDuCalendrier(aujourd, ajouterJours(aujourd, HORIZON_JOURS)), trousAVenir(aujourd), rappelDesParts(aujourd)]);
   const jours = [...new Set(lignes.map((l) => l.jour))];
   const echangesAllumes = await commandesAllumees();
-  const commandes = echangesAllumes ? await listerCommandes() : new Map();
+  const commandes = echangesAllumes ? await listerCommandes() : new Map<string, CommandeStudio>();
   const paliers = new Map<string, string>();
   if (echangesAllumes) {
     for (const l of lignes) {
@@ -72,7 +73,9 @@ export default async function Page() {
               <ul className="flex flex-col gap-4">
                 {lignes
                   .filter((l) => l.jour === jour)
-                  .map((l) => (
+                  .map((l) => {
+                    const c = commandes.get(l.id);
+                    return (
                     <li key={l.id} className="flex flex-col gap-2">
                       <p className="font-semibold">
                         {LIBELLE_RESEAU[l.reseau]} · {NOM_TYPE[l.type_contenu] ?? l.type_contenu}
@@ -83,20 +86,15 @@ export default async function Page() {
                       <ChangerJour id={l.id} jour={l.jour} />
                       {echangesAllumes ? (
                         <div className="flex flex-col gap-1">
-                          {commandes.get(l.id) ? (
-                            <p>
-                              {commandes.get(l.id).etat_studio
-                                ? LIBELLE_ETAT_STUDIO[commandes.get(l.id).etat_studio as keyof typeof LIBELLE_ETAT_STUDIO]
-                                : `Pas encore envoyée : ${commandes.get(l.id).message ?? "réessayez."}`}
-                            </p>
-                          ) : null}
-                          {commandes.get(l.id)?.message && commandes.get(l.id).etat_studio ? <p className="text-texte-doux">{commandes.get(l.id).message}</p> : null}
+                          {c ? <p>{c.etat_studio ? LIBELLE_ETAT_STUDIO[c.etat_studio] : `Pas encore envoyée : ${c.message ?? "réessayez."}`}</p> : null}
+                          {c?.message && c.etat_studio ? <p className="text-texte-doux">{c.message}</p> : null}
                           {paliers.get(l.id) ? <p className="text-texte-doux">{paliers.get(l.id)}</p> : null}
-                          {!commandes.get(l.id) || commandes.get(l.id).etat_envoi === "non_envoyee" ? <ProposerAuStudio id={l.id} /> : null}
+                          {!c || c.etat_envoi === "non_envoyee" ? <ProposerAuStudio id={l.id} /> : null}
                         </div>
                       ) : null}
                     </li>
-                  ))}
+                    );
+                  })}
               </ul>
             </li>
           ))}
