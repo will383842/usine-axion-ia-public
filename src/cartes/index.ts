@@ -21,6 +21,7 @@ export interface CarteAffichee {
 }
 
 import { cartesDesChiffres } from "@/chiffres";
+import { cartesDeLaVeille } from "@/veille";
 
 const URGENCE_CALCULEE = { aFaire: 60, nouveautes: 40, metiers: 30 } as const;
 
@@ -86,6 +87,7 @@ async function cartesCalculees(): Promise<CarteAffichee[]> {
       });
   }
   for (const c of await cartesDuCalendrier()) cartes.push({ ...base, ...c });
+  for (const c of await cartesDeLaVeille()) cartes.push({ ...base, ...c });
   return cartes;
 }
 
