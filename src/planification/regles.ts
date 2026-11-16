@@ -234,5 +234,5 @@ export function lireOccupes(statut: number, corps: unknown): Occupe[] | null {
 }
 
 /** Réponse de l'appel 4 : accepté si le Studio rend 200 ou 201 avec la liste des entrées. */
-export const reponseCalendrier = z.object({ deja: z.boolean().optional(), entrees: z.array(z.object({ cle_proposition: z.string(), origine_date: z.enum(["usine", "williams"]) }).passthrough()) });
+export const reponseCalendrier = z.object({ deja: z.boolean().optional(), entrees: z.array(z.object({ cle_proposition: z.string(), origine_date: z.enum(["usine", "fondateur"]) }).passthrough()) });
 export const programmationAcceptee = (statut: number, corps: unknown) => (statut === 200 || statut === 201) && reponseCalendrier.safeParse(corps).success;
