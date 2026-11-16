@@ -49,6 +49,11 @@ export async function reprendreCommande(cle: string): Promise<ResultatReprise> {
   }
   const r = await proposerAuStudio(ligne.id); // même clé : le rejeu ne peut pas doubler la commande
   if (r.etat_envoi === "envoyee" || r.etat_envoi === "mise_de_cote_studio") {
+    if (r.message.startsWith("Déjà proposée")) {
+      // Une proposition concurrente a abouti entre-temps : rien n'a été envoyé par la reprise.
+      await note(cle, "Une commande déjà proposée au Studio n'a pas été renvoyée.", r.etat_envoi);
+      return { issue: "deja_envoyee", message: r.message };
+    }
     await note(cle, "Une commande interrompue a été reprise.", r.etat_envoi);
     return { issue: "reprise", message: r.message };
   }
@@ -66,9 +71,21 @@ export async function reprendreInterrompues(max: number = REPRISES_MAX): Promise
     [limite, MINUTES_AVANT_REPRISE, PHRASE_SANS_REPONSE],
   );
   let reprises = 0;
+  let annulees = 0;
+  let arret: string | null = null;
   for (const { cle } of lignes) {
     const r = await reprendreCommande(cle);
-    if (r.issue === "reprise" || r.issue === "annulee") reprises += 1;
+    if (r.issue === "reprise") reprises += 1;
+    else if (r.issue === "annulee") annulees += 1;
+    else if (r.message === PHRASE_SANS_REPONSE || r.message === PHRASE_ARRET) {
+      arret = r.message; // le Studio ne répond pas (ou tout est arrêté) : inutile d'insister sur les suivantes
+      break;
+    }
   }
-  return { reprises, message: reprises === 0 ? "Aucune commande à reprendre." : `${reprises} ${reprises === 1 ? "commande reprise" : "commandes reprises"}.` };
+  const fait = [
+    reprises > 0 ? `${reprises} ${reprises === 1 ? "commande reprise" : "commandes reprises"}` : null,
+    annulees > 0 ? `${annulees} ${annulees === 1 ? "annulée" : "annulées"}` : null,
+  ].filter(Boolean);
+  if (arret) return { reprises, message: fait.length ? `${fait.join(", ")}. ${arret}` : arret };
+  return { reprises, message: fait.length ? `${fait.join(", ")}.` : "Aucune commande à reprendre." };
 }

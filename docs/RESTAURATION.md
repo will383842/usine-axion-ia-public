@@ -21,6 +21,8 @@ Sans la clé de chiffrement, une sauvegarde est illisible : conservez-la dans un
 Les commandes proposées au Studio sont dans la base : une restauration les ramène dans l'état de la sauvegarde. Rien n'est renvoyé tout seul.
 - Déjà proposée (ou mise de côté par le Studio) : rien n'est refait, même si vous relancez.
 - Pas partie : elle reste « non envoyée » ; relancez-la depuis le calendrier.
-- Coupée sans réponse du Studio (« Le Studio ne répond pas ») ou restée « à envoyer » : une reprise la renvoie une seule fois (même identifiant, donc jamais en double), ou l'annule proprement si la ligne n'existe plus ou si la date est passée. Chaque reprise laisse une ligne au journal.
+- Studio sans réponse au moment de l'envoi (« Le Studio ne répond pas ») : une reprise la renvoie une seule fois (même identifiant, donc jamais en double), ou l'annule proprement si la ligne n'existe plus ou si la date est passée. Chaque reprise laisse une ligne au journal.
+- Commande coupée par un arrêt du serveur pendant l'envoi : aucune trace n'est gardée ; relancez-la depuis le calendrier : même identifiant, le Studio ne la compte pas deux fois.
+- Studio « pas encore branché » : rien n'est parti et la reprise ne s'en occupe pas ; relancez depuis le calendrier.
 - Pose du créneau après l'envoi : elle reste au passage hebdomadaire de la planification, la reprise ne la refait pas.
 La reprise suit l'interrupteur « Échanges avec le Studio » et « Tout arrêter » ; elle n'a pas encore de déclencheur : elle se lance quand le fondateur la branchera.
