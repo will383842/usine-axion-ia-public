@@ -78,7 +78,7 @@ describe("plafond-ecran · action serveur", () => {
 
   it("saisie refusée : message de bornes, rien n'est envoyé", async () => {
     const { enregistrerPlafondAutomatique } = await import("@/app/reglages/plafond/actions");
-    for (const s of ["", "-1", "100,01", "abc", "1e2", "20,555", "1000"]) {
+    for (const s of ["", "-1", "100,01", "abc", "1e2", "20,555", "1000", "1 0", "1\u00a00", " 1 0 "]) {
       expect(await enregistrerPlafondAutomatique(s), s).toEqual({
         ok: false,
         message: "Indiquez un montant entre 0 et 100 €, avec au plus deux chiffres après la virgule.",
@@ -128,6 +128,15 @@ describe("plafond-ecran · textes de l'écran", () => {
     const tout = sources().join("\n");
     expect(tout).not.toMatch(/\b(CRM|lead|batch|job|prompt|token|workflow|persona|pipeline|aimant|séquence|likez|Grenoble|Buffer)\b/i);
     expect(tout).not.toMatch(/\d+\s?€/);
+  });
+  it("dit avant l'envoi que le premier envoi accepté bascule le Studio à sens unique", () => {
+    const page = readFileSync(join(dossier, "page.tsx"), "utf8");
+    expect(page).toContain("au premier envoi accepté");
+    expect(page).toContain("à sens unique");
+    expect(page).toContain("piloté par l&apos;Usine");
+    expect(page).toContain("L&apos;Usine en automatique");
+    expect(page).toContain("devient sans effet");
+    expect(page.indexOf("à sens unique")).toBeLessThan(page.indexOf("<FormulairePlafond"));
   });
   it("la page lit l'interrupteur plafond.ecran et exige la session", () => {
     const page = readFileSync(join(dossier, "page.tsx"), "utf8");

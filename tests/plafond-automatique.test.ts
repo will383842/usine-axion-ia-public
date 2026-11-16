@@ -22,11 +22,16 @@ describe("plafond automatique · saisie en euros", () => {
     expect(lireSaisieEuros("20.50")).toBe(2050);
     expect(lireSaisieEuros(" 0 ")).toBe(0);
     expect(lireSaisieEuros("100")).toBe(10000);
-    expect(lireSaisieEuros("1 0")).toBe(1000);
+    expect(lireSaisieEuros("\u00a020,5\u202f")).toBe(2050);
+    expect(lireSaisieEuros("\u202f100\u00a0")).toBe(10000);
+    expect(lireSaisieEuros("\t 20\n")).toBe(2000);
     expect(PLAFOND_AUTO_MAX_CENTS).toBe(10000);
   });
   it("refuse tout le reste", () => {
     for (const m of ["", "-1", "+5", "100,01", "1e2", "20,555", "abc", "Infinity", "NaN", "1000"]) expect(lireSaisieEuros(m), m).toBeNull();
+  });
+  it("refuse les espaces internes (« 1 0 » n'est pas 10 €)", () => {
+    for (const m of ["1 0", " 1 0 ", "1\u00a00", "1\u202f0", "2 0,5", "20, 5", "20 ,5", "1\t0", "1 000"]) expect(lireSaisieEuros(m), JSON.stringify(m)).toBeNull();
   });
 });
 
