@@ -57,6 +57,7 @@ export const depots = {
   carte: creerDepot<T.Carte>({ table: "carte", cle: "id", colonnes: COLONNES_USINE.carte, archivage: "archive_le" }),
   compte_a_suivre: creerDepot<T.CompteASuivre>({ table: "compte_a_suivre", cle: "code", colonnes: COLONNES_USINE.compte_a_suivre, archivage: "archive_le" }),
   calendrier_ligne: creerDepot<T.CalendrierLigne>({ table: "calendrier_ligne", cle: "id", colonnes: COLONNES_USINE.calendrier_ligne, archivage: "archive_le" }),
+  commande_studio: creerDepot<T.CommandeStudio>({ table: "commande_studio", cle: "cle", colonnes: COLONNES_USINE.commande_studio, archivage: "archive_le" }),
   deja_fabrique: creerDepot<T.DejaFabrique>({ table: "deja_fabrique", cle: "id", colonnes: COLONNES_USINE.deja_fabrique, archivage: "archive_le" }),
   releve_mot: creerDepot<T.ReleveMot>({ table: "releve_mot", cle: "id", colonnes: COLONNES_USINE.releve_mot, archivage: "archive_le" }),
 };

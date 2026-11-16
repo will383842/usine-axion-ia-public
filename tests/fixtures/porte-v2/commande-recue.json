@@ -1,0 +1,4 @@
+{
+  "creee": { "statut": 201, "corps": { "etat": "recue", "deja": false } },
+  "deja": { "statut": 200, "corps": { "etat": "recue", "deja": true } }
+}

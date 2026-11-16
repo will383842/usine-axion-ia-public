@@ -1,0 +1,11 @@
+{
+  "arret": { "statut": 423, "corps": { "erreur": "Tout est arrêté.", "code": "tout_arrete" } },
+  "champ_invalide": { "statut": 400, "corps": { "erreur": "Champ inconnu.", "code": "champ_invalide" } },
+  "non_autorise": { "statut": 401, "corps": { "erreur": "Non autorisé.", "code": "non_autorise" } },
+  "introuvable": { "statut": 404, "corps": { "erreur": "Introuvable.", "code": "introuvable" } },
+  "version": { "statut": 426, "corps": { "erreur": "Version trop ancienne.", "code": "contrat_requis" } },
+  "trop_de_demandes": { "statut": 429, "corps": { "erreur": "Trop de demandes.", "code": "trop_de_demandes" } },
+  "panne": { "statut": 500, "corps": { "erreur": "Erreur.", "code": "erreur_interne" } },
+  "illisible": { "statut": 201, "corps": null },
+  "forme_inattendue": { "statut": 201, "corps": { "autre": "chose" } }
+}

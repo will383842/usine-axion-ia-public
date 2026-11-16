@@ -2,12 +2,15 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ajouterJours, calendrierAllume, lignesDuCalendrier, lundiDe, rappelDesParts, trousAVenir } from "@/calendrier";
 import { EnTete, EtatVide } from "@/components/gabarit/EnTete";
+import { commandesAllumees, listerCommandes, palierDeLigne } from "@/commandes/service";
+import { LIBELLE_ETAT_STUDIO } from "@/commandes/regles";
 import { requete } from "@/lib/base";
 import { LIBELLE_FORMAT, LIBELLE_RESEAU } from "@/reglages/modele";
 import { EcranEteint } from "@/components/gabarit/EcranEteint";
 import { exigerSession } from "@/services/auth";
 import { ChangerJour } from "./ChangerJour";
 import { PlacerNouveaux } from "./PlacerNouveaux";
+import { MettreAJourDepuisStudio, ProposerAuStudio } from "./ProposerAuStudio";
 
 export const metadata: Metadata = { title: "Mon calendrier" };
 export const dynamic = "force-dynamic";
@@ -25,12 +28,22 @@ export default async function Page() {
   const [{ j: aujourd }] = await requete<{ j: string }>(`SELECT to_char((now() AT TIME ZONE 'Europe/Paris')::date, 'YYYY-MM-DD') AS j`);
   const [lignes, trous, parts] = await Promise.all([lignesDuCalendrier(aujourd, ajouterJours(aujourd, HORIZON_JOURS)), trousAVenir(aujourd), rappelDesParts(aujourd)]);
   const jours = [...new Set(lignes.map((l) => l.jour))];
+  const echangesAllumes = await commandesAllumees();
+  const commandes = echangesAllumes ? await listerCommandes() : new Map();
+  const paliers = new Map<string, string>();
+  if (echangesAllumes) {
+    for (const l of lignes) {
+      const p = await palierDeLigne(l.reseau, l.type_contenu, l.jour);
+      if (p && p.palier > 0) paliers.set(l.id, `${p.palier} % du quota`);
+    }
+  }
 
   return (
     <section className="flex flex-col gap-6">
       <EnTete titre="Mon calendrier" phrase="Ce qui sort, quel jour, sur quel réseau : vos vidéos commandées, réparties selon vos rythmes. Changez le jour d'une vidéo si besoin." />
 
       <PlacerNouveaux />
+      {echangesAllumes && commandes.size > 0 ? <MettreAJourDepuisStudio /> : null}
 
       {trous.length > 0 ? (
         <div role="alert" className="flex flex-col gap-2 rounded-xl border border-terracotta bg-surface p-3">
@@ -68,6 +81,20 @@ export default async function Page() {
                         {l.metier ?? "Sans métier"}
                       </p>
                       <ChangerJour id={l.id} jour={l.jour} />
+                      {echangesAllumes ? (
+                        <div className="flex flex-col gap-1">
+                          {commandes.get(l.id) ? (
+                            <p>
+                              {commandes.get(l.id).etat_studio
+                                ? LIBELLE_ETAT_STUDIO[commandes.get(l.id).etat_studio as keyof typeof LIBELLE_ETAT_STUDIO]
+                                : `Pas encore envoyée : ${commandes.get(l.id).message ?? "réessayez."}`}
+                            </p>
+                          ) : null}
+                          {commandes.get(l.id)?.message && commandes.get(l.id).etat_studio ? <p className="text-texte-doux">{commandes.get(l.id).message}</p> : null}
+                          {paliers.get(l.id) ? <p className="text-texte-doux">{paliers.get(l.id)}</p> : null}
+                          {!commandes.get(l.id) || commandes.get(l.id).etat_envoi === "non_envoyee" ? <ProposerAuStudio id={l.id} /> : null}
+                        </div>
+                      ) : null}
                     </li>
                   ))}
               </ul>

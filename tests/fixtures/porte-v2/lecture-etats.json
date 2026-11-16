@@ -1,0 +1,11 @@
+{
+  "recue": { "etat": "recue", "jour": "2099-12-10", "instant": "2099-12-10T08:30:00.000Z" },
+  "mise_de_cote": { "etat": "mise_de_cote", "jour": "2099-12-10", "instant": "2099-12-10T08:30:00.000Z" },
+  "a_valider": { "etat": "a_valider", "jour": "2099-12-10", "instant": "2099-12-10T08:30:00.000Z" },
+  "programmee": { "etat": "programmee", "jour": "2099-12-10", "instant": "2099-12-10T08:30:00.000Z", "valideeLe": "2099-12-01T10:00:00.000Z" },
+  "publiee": { "etat": "publiee", "jour": "2099-12-10", "instant": "2099-12-10T08:30:00.000Z", "valideeLe": "2099-12-01T10:00:00.000Z" },
+  "refusee": { "etat": "refusee", "jour": "2099-12-10", "instant": "2099-12-10T08:30:00.000Z", "refuseLe": "2099-12-01T10:00:00.000Z" },
+  "echec": { "etat": "echec", "jour": "2099-12-10", "instant": "2099-12-10T08:30:00.000Z" },
+  "manquee": { "etat": "manquee", "jour": "2099-12-10", "instant": "2099-12-10T08:30:00.000Z" },
+  "archivee": { "etat": "archivee", "jour": "2099-12-10", "instant": "2099-12-10T08:30:00.000Z" }
+}

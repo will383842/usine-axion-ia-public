@@ -3,3 +3,4 @@ export * from "./identifiants";
 export * from "./echanges";
 export * from "./porte";
 export * from "./lien-suivi";
+export * from "./commande";
