@@ -10,9 +10,9 @@ export const CLE_PLAFOND_AUTO = "autonomie.plafond";
 
 const MOTIF_EUROS = /^\d{1,3}([.,]\d{1,2})?$/;
 
-/** Saisie en euros → centimes entiers, par la chaîne (jamais par un flottant). `null` si illisible ou hors de 0..borne. */
+/** Saisie en euros → centimes entiers, par la chaîne (jamais par un flottant). Espaces de début et de fin (insécables compris) acceptés, espaces internes refusés (« 1 0 » n'est pas 10 €). `null` si illisible ou hors de 0..borne. */
 export function lireSaisieEuros(texte: string): number | null {
-  const net = texte.replace(/[\s  ]/g, "");
+  const net = texte.replace(/^[\s\u00a0\u202f]+|[\s\u00a0\u202f]+$/g, "");
   if (!MOTIF_EUROS.test(net)) return null;
   const [euros, decimales = ""] = net.split(/[.,]/);
   const centimes = Number(euros) * 100 + Number(decimales.padEnd(2, "0"));

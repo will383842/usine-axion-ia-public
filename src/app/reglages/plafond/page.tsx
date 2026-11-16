@@ -48,6 +48,12 @@ export default async function Page() {
         <p className="font-semibold">Achats automatiques : éteints.</p>
         <p>Chaque dépense de l&apos;Usine vous demande votre accord. Vous seul pourrez les allumer.</p>
       </section>
+      <section className="rounded-xl border border-trait bg-surface p-4">
+        <p className="font-semibold">Avant d&apos;envoyer</p>
+        <p>
+          Bon à savoir : au premier envoi accepté, le Studio bascule à sens unique : le plafond est désormais piloté par l&apos;Usine, et l&apos;interrupteur « L&apos;Usine en automatique » de Studio &gt; Réglages devient sans effet.
+        </p>
+      </section>
       <FormulairePlafond initial={dernier ? enSaisie(dernier.plafond_cents) : "0"} aide={`Entre 0 et ${borne} €. 0 : l'Usine ne dépense rien seule.`} />
       <p className="text-texte-doux">Vos commandes faites à la main ne sont jamais bloquées.</p>
     </div>

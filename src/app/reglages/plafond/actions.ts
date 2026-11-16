@@ -27,7 +27,10 @@ function enClair(r: ResultatPlafond): { ok: boolean; message: string } {
   }
 }
 
-/** Envoie le plafond saisi en euros. Les achats automatiques ne sont jamais touchés : le service envoie toujours « éteint ». */
+/**
+ * Envoie le plafond saisi en euros. Cet écran n'allume jamais les achats automatiques : le service reçoit toujours « éteint ».
+ * Au premier envoi accepté, le Studio bascule à sens unique : le plafond est piloté par l'Usine et l'interrupteur de Studio > Réglages « L'Usine en automatique » devient sans effet.
+ */
 export async function enregistrerPlafondAutomatique(saisie: string): Promise<{ ok: boolean; message: string }> {
   await exigerSession();
   if (!(await interrupteurAllume("plafond.ecran"))) return { ok: false, message: "Cet écran est éteint." };
