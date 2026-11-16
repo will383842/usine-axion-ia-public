@@ -79,7 +79,7 @@ describe("à valider · partie pure", () => {
     const phrases = new Set<string>();
     for (const [nom, r] of Object.entries(erreurs)) {
       const issue = lireReponseValidation(r.statut, r.corps, "valide");
-      if (nom === "illisible" || nom === "forme_inattendue" || nom !== "version_perimee") expect(issue.fait).toBe(false);
+      expect(issue.fait).toBe(false);
       expect(issue.phrase).not.toMatch(MOTS_INTERDITS);
       const erreur = (r.corps as { erreur?: string } | null)?.erreur;
       if (erreur) expect(issue.phrase).not.toContain(erreur);

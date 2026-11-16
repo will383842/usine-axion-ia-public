@@ -43,9 +43,12 @@ export default async function Page() {
 
   const arrete = await estArrete();
   const calendrierStudio = `${URL_STUDIO}/calendrier`;
+  const noms = new Map(
+    (await requete<{ code: string; nom: string }>(`SELECT code, nom FROM compte WHERE code = ANY($1)`, [affichees.map((l) => l.compte)])).map((c) => [c.code, c.nom]),
+  );
   const cartes: DonneesCarte[] = [];
   for (const l of affichees) {
-    const base = { cle: l.cle, reseau: nomReseau(l.reseau), compte: l.compte, quand: quand(l.instant), lienCalendrierStudio: calendrierStudio };
+    const base = { cle: l.cle, reseau: nomReseau(l.reseau), compte: noms.get(l.compte) ?? "Compte du Studio", quand: quand(l.instant), lienCalendrierStudio: calendrierStudio };
     if (arrete) {
       cartes.push({ ...base, texte: null, premierCommentaire: null, empreinte: "", lienStudio: null, etat: "indisponible" });
       continue;
