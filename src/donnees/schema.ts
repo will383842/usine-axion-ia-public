@@ -54,6 +54,10 @@ export const COLONNES_USINE = {
   carte: ["id", "cle", "titre", "detail", "bouton", "lien", "urgence", "interrupteur", "origine", "echeance", "fait_le", "cree_le", "modifie_le", "archive_le"],
   compte_a_suivre: ["code", "reseau", "nom", "lien", "note", "propose_le", "fait_le", "cree_le", "modifie_le", "archive_le"],
   calendrier_ligne: ["id", "lot_ligne", "reseau", "compte", "type_contenu", "format", "prevue_le", "etat", "note", "cree_le", "modifie_le", "archive_le", "etat_studio", "etat_studio_le", "date_choisie"],
+  commande_studio: [
+    "cle", "calendrier_ligne", "lot_ligne", "repere", "reseau", "compte", "type_contenu", "jour", "instant", "etat_envoi", "etat_studio", "valide_le", "refuse_le",
+    "message", "envoyee_le", "relue_le", "cree_le", "modifie_le", "archive_le",
+  ],
   deja_fabrique: [
     "id", "type_contenu", "metier", "taille", "service", "douleur", "cas_usage", "sujet", "actualite", "format", "structure", "signature",
     "code_version", "fabrique_le", "note", "cree_le", "modifie_le", "archive_le",

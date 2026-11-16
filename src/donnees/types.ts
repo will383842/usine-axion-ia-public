@@ -199,6 +199,26 @@ export interface CalendrierLigne extends Archivable {
   note: string | null;
 }
 
+/** U-COMMANDE (migration 036) : une ligne du calendrier proposée au Studio, et l'état que le Studio en rend. */
+export interface CommandeStudio extends Archivable {
+  cle: string;
+  calendrier_ligne: string;
+  lot_ligne: string | null;
+  repere: string | null;
+  reseau: Reseau;
+  compte: string;
+  type_contenu: TypeContenu;
+  jour: string;
+  instant: Date;
+  etat_envoi: "a_envoyer" | "envoyee" | "mise_de_cote_studio" | "non_envoyee";
+  etat_studio: "recue" | "mise_de_cote" | "a_valider" | "programmee" | "publiee" | "refusee" | "echec" | "manquee" | "archivee" | null;
+  valide_le: Date | null;
+  refuse_le: Date | null;
+  message: string | null;
+  envoyee_le: Date | null;
+  relue_le: Date | null;
+}
+
 /** Contenu fait hors de l'Usine ou avant elle (migration 002) : sa signature n'est jamais tirée. */
 export interface DejaFabrique extends Archivable {
   id: string;

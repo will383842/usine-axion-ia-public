@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { ErreurCalendrier, changerLeJour, placerLesNouveaux } from "@/calendrier";
 import { LIBELLE_RESEAU } from "@/reglages/modele";
+import { proposerAuStudio, relireDepuisStudio } from "@/commandes/service";
 import { exigerSession } from "@/services/auth";
 
 export interface EtatDate {
@@ -30,4 +31,20 @@ export async function placerLesNouveauxContenus(): Promise<EtatDate> {
   const repos = auRepos.length > 0 ? ` Rythme à zéro pour ${auRepos.map((r) => LIBELLE_RESEAU[r]).join(", ")} : ces contenus n'ont pas de date (Réglages › Rythmes).` : "";
   if (ajoutees === 0) return { message: `Rien de nouveau à placer.${repos}` };
   return { message: `${ajoutees} ${ajoutees === 1 ? "contenu placé" : "contenus placés"}.${repos}` };
+}
+
+/** Propose une ligne du calendrier au Studio (geste du fondateur, jamais automatique). */
+export async function proposerAuStudioAction(id: string): Promise<EtatDate> {
+  await exigerSession();
+  const { message } = await proposerAuStudio(String(id));
+  revalidatePath("/calendrier");
+  return { message };
+}
+
+/** Relit l'état des lignes déjà proposées au Studio. */
+export async function relireDepuisStudioAction(): Promise<EtatDate> {
+  await exigerSession();
+  const { message } = await relireDepuisStudio();
+  revalidatePath("/calendrier");
+  return { message };
 }

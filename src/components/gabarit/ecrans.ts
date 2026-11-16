@@ -30,6 +30,7 @@ export function ecranParCode(code: string): EcranAllumable | undefined {
 
 /** Une phrase simple pour les interrupteurs qui ne sont pas des écrans (cartes de « Ma journée », choix des vidéos, texte à coller). */
 const PHRASES_AUTRES: Record<string, string> = {
+  "commandes.studio": "Permet de proposer une ligne du calendrier au Studio et de relire son état. Rien ne part tout seul.",
   tirage: "Choisit les vidéos d'une commande sans jamais refaire un contenu déjà commandé ou déjà fabriqué.",
   "tirage.fin-rendez-vous": "Permet de choisir, pour une vidéo, une fin qui invite à réserver un rendez-vous.",
   "lots.paquet": "Montre, pour chaque vidéo, le texte à coller dans le studio.",
