@@ -126,11 +126,11 @@ describe("flux de déploiement (.github/workflows/ci.yml)", () => {
     for (const e of ["Garde anti-fuite", "pnpm install --frozen-lockfile", "pnpm typecheck", "pnpm lint", "pnpm garde", "pnpm test", "pnpm build"]) expect(v).toContain(e);
   });
 
-  it("le déploiement est un job séparé, jamais sur une PR, sans interrupteur qui le saute en vert", () => {
+  it("le déploiement est un job séparé, jamais sur une PR, derrière l'interrupteur de dépôt", () => {
     const d = bloc("deployer");
     const condition = d.match(/\n    if: ([^\n]*)/)?.[1] ?? "";
-    expect(condition).toBe("github.event_name != 'pull_request' && github.ref == 'refs/heads/main'");
-    expect(condition).not.toContain("USINE_DEPLOY_ACTIF");
+    // Décision du pilote (17/11) : l'interrupteur de dépôt reste ; éteint = « skipped », allumé sans secrets = échec.
+    expect(condition).toBe("github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.USINE_DEPLOY_ACTIF == 'true'");
     expect(flux).toMatch(/on:[\s\S]*workflow_dispatch:/);
     expect(d).toContain("environment: usine-production");
   });
