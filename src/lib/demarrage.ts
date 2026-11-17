@@ -55,8 +55,8 @@ async function chargerLesBases(): Promise<string> {
       const dossierPresent = await stat(dossierBases()).then(() => true, () => false);
       if ((erreur as NodeJS.ErrnoException)?.code !== "ENOENT" || dossierPresent) lus = undefined;
       else {
-      console.log("[usine] bases : dossier bases/ absent, rien à charger (à poser en volume en lecture seule à côté de l'application).");
-      return "absentes";
+        console.log("[usine] bases : dossier bases/ absent, rien à charger (à poser en volume en lecture seule à côté de l'application).");
+        return "absentes";
       }
     }
     const r = await importerSiBesoin(lus);
