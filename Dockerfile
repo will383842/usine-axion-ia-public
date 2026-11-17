@@ -22,13 +22,14 @@ RUN pnpm build
 
 FROM node:22-bookworm-slim AS run
 WORKDIR /app
-# Version du code (sha court), donnée par la construction ; lue par /api/sante.
-ARG USINE_VERSION=inconnue
-ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0 USINE_VERSION=$USINE_VERSION
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0
 RUN useradd --uid 1001 --create-home usine
 COPY --from=build --chown=usine:usine /app/.next/standalone ./
 COPY --from=build --chown=usine:usine /app/.next/static ./.next/static
 COPY --from=build --chown=usine:usine /app/migrations ./migrations
+# Version du code (sha court), donnée par la construction ; lue par /api/sante. Après les COPY : le cache des couches reste valable.
+ARG USINE_VERSION=inconnue
+ENV USINE_VERSION=$USINE_VERSION
 USER usine
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=90s CMD node -e "fetch('http://127.0.0.1:3000/api/sante').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"

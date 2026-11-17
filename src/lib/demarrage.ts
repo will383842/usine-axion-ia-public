@@ -45,14 +45,19 @@ export async function demarrer(): Promise<{ bases?: Promise<string> }> {
 async function chargerLesBases(): Promise<string> {
   try {
     const { importerSiBesoin } = await import("@/import/automatique");
-    const { lireFichiersBases } = await import("@/import/importer");
+    const { lireFichiersBases, dossierBases } = await import("@/import/importer");
+    const { stat } = await import("node:fs/promises");
     let lus;
     try {
       lus = await lireFichiersBases();
     } catch (erreur) {
-      if ((erreur as NodeJS.ErrnoException)?.code !== "ENOENT") throw erreur;
+      // Seul le dossier lui-même absent compte comme « absent » ; tout autre échec de lecture passe par l'import, qui le journalise.
+      const dossierPresent = await stat(dossierBases()).then(() => true, () => false);
+      if ((erreur as NodeJS.ErrnoException)?.code !== "ENOENT" || dossierPresent) lus = undefined;
+      else {
       console.log("[usine] bases : dossier bases/ absent, rien à charger (à poser en volume en lecture seule à côté de l'application).");
       return "absentes";
+      }
     }
     const r = await importerSiBesoin(lus);
     console.log(`[usine] bases : ${r === "importees" ? "chargées" : r === "inchangees" ? "inchangées" : "erreur, voir Réglages"}.`);

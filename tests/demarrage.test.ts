@@ -9,11 +9,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const jouerMigrations = vi.fn(async () => ({ jouees: [], dejaJouees: [], modifiees: [] }));
 const lireFichiersBases = vi.fn();
+let dossier = join(process.cwd(), "dossier-qui-n-existe-pas");
 const importerSiBesoin = vi.fn(async () => "inchangees");
 vi.mock("@/lib/base", () => ({ pool: () => ({}), baseConfiguree: () => false, requete: vi.fn() }));
 vi.mock("next/server", () => ({ connection: async () => undefined }));
 vi.mock("@/lib/migrations", () => ({ jouerMigrations }));
-vi.mock("@/import/importer", () => ({ lireFichiersBases }));
+vi.mock("@/import/importer", () => ({ lireFichiersBases, dossierBases: () => dossier }));
 vi.mock("@/import/automatique", () => ({ importerSiBesoin }));
 
 const ENV = { ...process.env };
@@ -23,10 +24,15 @@ beforeEach(() => {
   vi.resetModules();
   jouerMigrations.mockClear();
   lireFichiersBases.mockReset();
+  dossier = join(process.cwd(), "dossier-qui-n-existe-pas");
   importerSiBesoin.mockClear();
 });
 afterEach(() => {
-  process.env = { ...ENV };
+  vi.unstubAllEnvs();
+  for (const k of ["DATABASE_URL", "SESSION_SECRET", "USINE_VERSION"]) {
+    if (ENV[k] === undefined) delete process.env[k];
+    else process.env[k] = ENV[k];
+  }
   vi.restoreAllMocks();
 });
 
@@ -62,6 +68,24 @@ describe("démarrage : dossier bases/ absent", () => {
     expect(importerSiBesoin).not.toHaveBeenCalled();
     expect(lignes(journal).some((l) => l.includes("[usine] bases : dossier bases/ absent"))).toBe(true);
     expect(lignes(erreur).join("\n")).not.toContain("ENOENT");
+  });
+});
+
+describe("démarrage : ENOENT autre que le dossier", () => {
+  it("un fichier qui disparaît n'est pas pris pour un dossier absent : l'import le journalise", async () => {
+    vi.stubEnv("NODE_ENV", "test");
+    process.env.DATABASE_URL = "postgres://exemple@example.com/x";
+    process.env.SESSION_SECRET = "x".repeat(32);
+    dossier = process.cwd();
+    lireFichiersBases.mockRejectedValue(Object.assign(new Error("ENOENT: lien cassé"), { code: "ENOENT" }));
+    vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+    const journal = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { demarrer } = await import("@/lib/demarrage");
+    const r = await demarrer();
+    await expect(r.bases).resolves.toBe("inchangees");
+    expect(importerSiBesoin).toHaveBeenCalledTimes(1);
+    expect(lignes(journal).join("\n")).not.toContain("dossier bases/ absent");
   });
 });
 
@@ -105,8 +129,7 @@ describe("flux de déploiement (.github/workflows/ci.yml)", () => {
   it("le déploiement est un job séparé, jamais sur une PR, sans interrupteur qui le saute en vert", () => {
     const d = bloc("deployer");
     const condition = d.match(/\n    if: ([^\n]*)/)?.[1] ?? "";
-    expect(condition).toContain("refs/heads/main");
-    expect(condition).not.toContain("pull_request ");
+    expect(condition).toBe("github.event_name != 'pull_request' && github.ref == 'refs/heads/main'");
     expect(condition).not.toContain("USINE_DEPLOY_ACTIF");
     expect(flux).toMatch(/on:[\s\S]*workflow_dispatch:/);
     expect(d).toContain("environment: usine-production");
