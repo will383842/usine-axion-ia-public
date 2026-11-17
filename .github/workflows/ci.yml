@@ -4,6 +4,8 @@ on:
   pull_request:
   push:
     branches: [main]
+  # Envoi à la main depuis main (le job `deployer` ne tourne jamais sur une PR).
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -68,7 +70,7 @@ jobs:
         run: echo "sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
       - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -77,21 +79,22 @@ jobs:
         with:
           context: .
           # Sur une PR : l'image se construit seulement ; sur main : elle est poussée.
-          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          push: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
           tags: |
             ghcr.io/will383842/usine-axion-ia-public:latest
             ghcr.io/will383842/usine-axion-ia-public:sha-${{ steps.court.outputs.sha }}
           build-args: |
             NEXT_SERVER_ACTIONS_ENCRYPTION_KEY=${{ secrets.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY }}
+            USINE_VERSION=sha-${{ steps.court.outputs.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
   deployer:
     name: Envoi au serveur
     needs: image
-    # Désactivé tant que le chemin de mise en ligne n'est pas fixé : sans la variable de dépôt
-    # USINE_DEPLOY_ACTIF = 'true', le job est « skipped » (jamais un faux vert).
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.USINE_DEPLOY_ACTIF == 'true'
+    # Jamais sur une PR : seulement sur main (fusion ou envoi à la main) ET variable de dépôt USINE_DEPLOY_ACTIF = 'true'
+    # (garde-fou posé par le fondateur ; éteint, le job est « skipped »). Allumé sans secrets de déploiement : ÉCHEC avec un message clair.
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.USINE_DEPLOY_ACTIF == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     # Un seul envoi à la fois vers le serveur, jamais interrompu.
@@ -116,7 +119,7 @@ jobs:
           set -euo pipefail
           # Sans clé, empreinte, hôte et compte : rien n'est envoyé (jamais d'empreinte acceptée au premier contact).
           if [ -z "$CLE" ] || [ -z "$EMPREINTE" ] || [ -z "$HOTE" ] || [ -z "$COMPTE" ]; then
-            echo "::error::Déploiement activé mais non réglé (clé, empreinte, hôte ou compte absent) : rien n'est envoyé."; exit 1
+            echo "::error::Échec : secrets de déploiement absents (clé, empreinte, hôte ou compte) dans l'environnement usine-production : rien n'est envoyé."; exit 1
           fi
           if [ "$COMPTE" = "root" ]; then echo "::error::Le compte de déploiement ne peut pas être root."; exit 1; fi
           dossier="$(mktemp -d)"

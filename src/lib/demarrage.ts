@@ -38,11 +38,28 @@ export async function demarrer(): Promise<{ bases?: Promise<string> }> {
   process.exit(1);
 }
 
-/** Les bases se chargent seules (base vide ou fichiers changés) ; une erreur est journalisée, jamais levée. */
+/**
+ * Les bases se chargent seules (base vide ou fichiers changés) ; une erreur est journalisée, jamais levée.
+ * Dossier `bases/` absent (volume non posé) : une ligne claire, aucun chargement, le serveur démarre avec des tables vides.
+ */
 async function chargerLesBases(): Promise<string> {
   try {
     const { importerSiBesoin } = await import("@/import/automatique");
-    const r = await importerSiBesoin();
+    const { lireFichiersBases, dossierBases } = await import("@/import/importer");
+    const { stat } = await import("node:fs/promises");
+    let lus;
+    try {
+      lus = await lireFichiersBases();
+    } catch (erreur) {
+      // Seul le dossier lui-même absent compte comme « absent » ; tout autre échec de lecture passe par l'import, qui le journalise.
+      const dossierPresent = await stat(dossierBases()).then(() => true, () => false);
+      if ((erreur as NodeJS.ErrnoException)?.code !== "ENOENT" || dossierPresent) lus = undefined;
+      else {
+        console.log("[usine] bases : dossier bases/ absent, rien à charger (à poser en volume en lecture seule à côté de l'application).");
+        return "absentes";
+      }
+    }
+    const r = await importerSiBesoin(lus);
     console.log(`[usine] bases : ${r === "importees" ? "chargées" : r === "inchangees" ? "inchangées" : "erreur, voir Réglages"}.`);
     return r;
   } catch (erreur) {
