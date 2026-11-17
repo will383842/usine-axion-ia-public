@@ -92,9 +92,9 @@ jobs:
   deployer:
     name: Envoi au serveur
     needs: image
-    # Jamais sur une PR : seulement sur main (fusion ou envoi à la main). Sans secrets de déploiement, le job
-    # finit en ÉCHEC avec un message clair (jamais un faux vert, jamais « skipped »).
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    # Jamais sur une PR : seulement sur main (fusion ou envoi à la main) ET variable de dépôt USINE_DEPLOY_ACTIF = 'true'
+    # (garde-fou posé par le fondateur ; éteint, le job est « skipped »). Allumé sans secrets de déploiement : ÉCHEC avec un message clair.
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.USINE_DEPLOY_ACTIF == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     # Un seul envoi à la fois vers le serveur, jamais interrompu.
