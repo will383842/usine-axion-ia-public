@@ -1,4 +1,4 @@
-/** Contrôle de santé (public) : le serveur répond ; l'état de la base est donné à titre indicatif. */
+/** Contrôle de santé (public) : le serveur répond ; l'état de la base est donné à titre indicatif ; version du code (posée à la construction de l'image). Ni secret ni sha des bases. */
 import { connection } from "next/server";
 import { baseConfiguree, requete } from "@/lib/base";
 import { empreinteBases } from "@/lib/empreinte-bases";
@@ -14,5 +14,5 @@ export async function GET() {
       base = "injoignable";
     }
   }
-  return Response.json({ etat: "ok", base, bases: empreinteBases }, { headers: { "cache-control": "no-store" } });
+  return Response.json({ etat: "ok", version: process.env.USINE_VERSION || "inconnue", base, bases: empreinteBases }, { headers: { "cache-control": "no-store" } });
 }

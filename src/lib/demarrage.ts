@@ -38,11 +38,23 @@ export async function demarrer(): Promise<{ bases?: Promise<string> }> {
   process.exit(1);
 }
 
-/** Les bases se chargent seules (base vide ou fichiers changés) ; une erreur est journalisée, jamais levée. */
+/**
+ * Les bases se chargent seules (base vide ou fichiers changés) ; une erreur est journalisée, jamais levée.
+ * Dossier `bases/` absent (volume non posé) : une ligne claire, aucun chargement, le serveur démarre avec des tables vides.
+ */
 async function chargerLesBases(): Promise<string> {
   try {
     const { importerSiBesoin } = await import("@/import/automatique");
-    const r = await importerSiBesoin();
+    const { lireFichiersBases } = await import("@/import/importer");
+    let lus;
+    try {
+      lus = await lireFichiersBases();
+    } catch (erreur) {
+      if ((erreur as NodeJS.ErrnoException)?.code !== "ENOENT") throw erreur;
+      console.log("[usine] bases : dossier bases/ absent, rien à charger (à poser en volume en lecture seule à côté de l'application).");
+      return "absentes";
+    }
+    const r = await importerSiBesoin(lus);
     console.log(`[usine] bases : ${r === "importees" ? "chargées" : r === "inchangees" ? "inchangées" : "erreur, voir Réglages"}.`);
     return r;
   } catch (erreur) {

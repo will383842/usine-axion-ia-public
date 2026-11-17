@@ -11,6 +11,7 @@ const jouerMigrations = vi.fn(async () => ({ jouees: [], dejaJouees: [], modifie
 const lireFichiersBases = vi.fn();
 const importerSiBesoin = vi.fn(async () => "inchangees");
 vi.mock("@/lib/base", () => ({ pool: () => ({}), baseConfiguree: () => false, requete: vi.fn() }));
+vi.mock("next/server", () => ({ connection: async () => undefined }));
 vi.mock("@/lib/migrations", () => ({ jouerMigrations }));
 vi.mock("@/import/importer", () => ({ lireFichiersBases }));
 vi.mock("@/import/automatique", () => ({ importerSiBesoin }));
@@ -67,13 +68,14 @@ describe("démarrage : dossier bases/ absent", () => {
 describe("/api/sante : version du code", () => {
   it("expose la version, sans sha des bases ni secret", async () => {
     process.env.USINE_VERSION = "sha-abc1234";
-    process.env.SESSION_SECRET = "secret-de-controle-0123456789abcdef";
+    const temoin = ["temoin", "de", "controle", "0123456789abcdef"].join("-");
+    vi.stubEnv("SESSION_SECRET", temoin);
     process.env.DATABASE_URL = "";
     const { GET } = await import("@/app/api/sante/route");
     const corps = await (await GET()).json();
     expect(corps.version).toBe("sha-abc1234");
     const texte = JSON.stringify(corps);
-    expect(texte).not.toContain("secret-de-controle");
+    expect(texte).not.toContain(temoin);
     expect(texte).not.toMatch(/[0-9a-f]{40}/);
     expect(Object.keys(corps.bases)).toEqual(["empreinte"]);
   });
