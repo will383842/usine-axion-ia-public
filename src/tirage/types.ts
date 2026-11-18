@@ -33,6 +33,18 @@ export interface FormatTirage {
   en_service: boolean;
 }
 
+/**
+ * Une case de mesures reçue en paramètre (L8-18) : ce que ce type de contenu a donné sur ce réseau.
+ * `score` : de 0 (rien de bon) à 1 (très bon) ; `effectif` : nombre de contenus mesurés dans la case.
+ * Aucun identifiant de personne. Rien n'arrive seul : l'appelant les injecte, `tirer()` ne les lit nulle part.
+ */
+export interface MesureTirage {
+  type_contenu: TypeContenu;
+  reseau: Reseau;
+  effectif: number;
+  score: number;
+}
+
 export interface ReglagesTirage {
   /** Réseaux du lot ; TikTok et LinkedIn ne sont jamais cochés d'office. */
   reseaux: Reseau[];
@@ -58,6 +70,13 @@ export interface ReglagesTirage {
   /** Graine du hasard (même graine, mêmes bases, même historique : même tirage). */
   graine?: number;
   maintenant?: Date;
+  /**
+   * Interrupteur `TIRAGE_POIDS_MESURES` (éteint par défaut, lu par `chargerReglages`). Éteint ou absent : les mesures
+   * sont ignorées, le poids vaut 1 et le tirage est celui d'avant (L8-18).
+   */
+  poidsMesures?: boolean;
+  /** Mesures injectées (jamais lues ici) ; sans effet tant que `poidsMesures` n'est pas allumé. */
+  mesures?: MesureTirage[];
 }
 
 /** Ce qui a déjà été commandé (lignes de lot, toutes, même refusées ou archivées) ou fabriqué hors de l'Usine. */
@@ -112,6 +131,8 @@ export interface LigneTiree {
   /** Mot de la fin, pour les réseaux dont la fin est au mot. */
   mots: Partial<Record<Reseau, string>>;
   signature: string;
+  /** Pourquoi cette ligne, en français simple. Présent seulement quand `poidsMesures` est allumé (L8-18). */
+  pourquoi?: string;
 }
 
 export interface ResultatTirage {

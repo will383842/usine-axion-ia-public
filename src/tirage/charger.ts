@@ -16,6 +16,12 @@ export const INTERRUPTEUR_TIRAGE = "tirage";
 export const INTERRUPTEUR_FIN_RENDEZ_VOUS = "tirage.fin-rendez-vous";
 /** Interrupteur du registre des mots (T04) : éteint, aucun mot n'est branché. */
 const INTERRUPTEUR_MOTS = "mots";
+/** Interrupteur des poids de mesures (L8-18) : éteint par défaut ; seules les valeurs « 1 » et « true » l'allument. */
+export const INTERRUPTEUR_POIDS_MESURES = "TIRAGE_POIDS_MESURES";
+export function poidsMesuresAllume(env: Record<string, string | undefined> = process.env): boolean {
+  const v = env[INTERRUPTEUR_POIDS_MESURES];
+  return v === "1" || v === "true";
+}
 export const REGLAGE_DELAI_CAS = "tirage.delai_cas_jours";
 export const DELAI_CAS_DEFAUT = 30;
 /** Réseaux cochés d'office : jamais TikTok, LinkedIn ni YouTube Shorts (Zernio refuse YouTube, aucune chaîne reliée). */
@@ -108,6 +114,9 @@ export async function chargerReglages(bases: BasesTirage, donnes: Partial<Reglag
     repetitionsPermises: donnes.repetitionsPermises,
     graine: donnes.graine,
     maintenant: donnes.maintenant,
+    // L8-18 : l'interrupteur ne vient que de l'environnement ; les mesures, que de l'appelant (aucune lecture ici).
+    poidsMesures: poidsMesuresAllume(),
+    mesures: donnes.mesures,
   };
 }
 

@@ -13,13 +13,42 @@
 import { lireListe, type Reseau, type TypeContenu } from "@/contrats";
 import { choisirFin, compterFin, FENETRE_FINS_JOURS, typesDeContenu, type Appel, type CompteFins } from "./fins";
 import { signature } from "./signature";
-import type { BasesTirage, HistoriqueTirage, LigneTiree, ReglagesTirage, ResultatTirage } from "./types";
+import type { BasesTirage, HistoriqueTirage, LigneTiree, MesureTirage, ReglagesTirage, ResultatTirage } from "./types";
 
 const JOUR = 86_400_000;
 export const PART_MAX_STRUCTURE = 0.4;
 /** Familles d'accroche jamais tirées pour le public Clients ; « actualité » est réservée aux nouveautés. */
 const FAMILLE_ACTUALITE = "actualité";
 const FAMILLES_HORS_CLIENTS = new Set(["recrutement"]);
+
+// L8-18 · valeurs proposées par le pilotage, à valider par le fondateur (statut : hypothèse).
+/** Poids le plus bas d'une mesure : proposition du pilotage, à valider par le fondateur. */
+export const POIDS_MIN = 1;
+/** Poids le plus haut d'une mesure : proposition du pilotage, à valider par le fondateur. */
+export const POIDS_MAX = 1.5;
+/** Part des lignes tirées sans tenir compte des mesures : proposition du pilotage, à valider par le fondateur. */
+export const PART_EXPLORATION = 0.2;
+/** Une case de mesures de moins de 3 contenus n'est jamais utilisée : proposition du pilotage, à valider par le fondateur. */
+export const SEUIL_EFFECTIF = 3;
+
+/**
+ * Poids d'un type de contenu sur un réseau, de `POIDS_MIN` à `POIDS_MAX` (le score de 0 à 1 le place entre les deux).
+ * Vaut 1 : interrupteur éteint, aucune mesure, case de moins de `SEUIL_EFFECTIF` contenus ou score illisible.
+ */
+export function poidsDesMesures(allume: boolean, mesures: readonly MesureTirage[] | undefined, type: TypeContenu, reseau: Reseau): number {
+  if (!allume) return 1;
+  const case_ = mesures?.find((x) => x.type_contenu === type && x.reseau === reseau && x.effectif >= SEUIL_EFFECTIF);
+  if (!case_ || !Number.isFinite(case_.score)) return 1;
+  const score = Math.min(1, Math.max(0, case_.score));
+  return Math.min(POIDS_MAX, Math.max(POIDS_MIN, POIDS_MIN + (POIDS_MAX - POIDS_MIN) * score));
+}
+
+/** Rang (à partir de 0) d'une ligne tirée sans tenir compte des mesures : une ligne sur cinq, régulièrement. */
+function estExploration(rang: number): boolean {
+  return Math.floor((rang + 1) * PART_EXPLORATION + 1e-9) > Math.floor(rang * PART_EXPLORATION + 1e-9);
+}
+
+const virgule = (x: number) => x.toFixed(1).replace(".", ",");
 
 interface Combinaison {
   metier: string | null;
@@ -127,6 +156,14 @@ export function tirer(n: number, reglages: ReglagesTirage, historique: Historiqu
     poidsFormat.set(f.code, somme * 0.5 ** (refusFormat.get(f.code) ?? 0));
   }
   const formats = bases.formats.filter((f) => reseauxDuFormat.has(f.code));
+  // L8-18 : facteur des mesures par format (le meilleur de ses réseaux) ; vide tant que l'interrupteur est éteint.
+  const mesuresAllumees = reglages.poidsMesures === true;
+  const facteurFormat = new Map<string, number>();
+  if (mesuresAllumees) {
+    for (const f of formats) {
+      facteurFormat.set(f.code, Math.max(1, ...(reseauxDuFormat.get(f.code) ?? []).map((r) => poidsDesMesures(true, reglages.mesures, f.type_contenu, r))));
+    }
+  }
 
   // Accroches par famille et par type de contenu.
   const accrochesPour = (type: TypeContenu, actualite: boolean) => {
@@ -249,7 +286,9 @@ export function tirer(n: number, reglages: ReglagesTirage, historique: Historiqu
       const actualite = choisirPondere(grouper(liste, (c) => c.actualite, () => 1), hasard);
       liste = liste.filter((c) => c.actualite === actualite);
     }
-    const format = choisirPondere(grouper(liste, (c) => c.format, (k) => poidsFormat.get(k) ?? 0), hasard);
+    const exploration = mesuresAllumees && estExploration(lignes.length);
+    const facteur = (k: string) => (mesuresAllumees && !exploration ? (facteurFormat.get(k) ?? 1) : 1);
+    const format = choisirPondere(grouper(liste, (c) => c.format, (k) => (poidsFormat.get(k) ?? 0) * facteur(k)), hasard);
     liste = liste.filter((c) => c.format === format);
     const structure = choisirPondere(grouper(liste, (c) => c.structure, () => 1), hasard);
     const choisie = liste.find((c) => c.structure === structure);
@@ -289,6 +328,7 @@ export function tirer(n: number, reglages: ReglagesTirage, historique: Historiqu
       fins,
       mots,
       signature: choisie.signature,
+      ...(mesuresAllumees ? { pourquoi: exploration ? "tiré au hasard (exploration)" : facteur(choisie.format) > 1 ? `poids ${virgule(facteur(choisie.format))} : bonnes mesures sur ce type et ce réseau` : "poids 1 : pas assez de mesures sur ce type et ce réseau" } : {}),
     });
     prises.add(choisie.signature);
     noterCas(choisie.cas_usage, choisie.format, maintenant);
