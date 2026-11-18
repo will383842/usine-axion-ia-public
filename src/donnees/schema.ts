@@ -44,7 +44,7 @@ export const COLONNES_USINE = {
   lot_ligne: [
     "id", "lot", "rang", "type_contenu", "format", "public", "metier", "taille", "service", "douleur", "cas_usage", "sujet", "actualite",
     "accroche", "structure", "reseaux", "fins", "repere", "cout_max_eur", "paquet", "etat", "code_version", "refus", "cree_le", "modifie_le", "archive_le",
-    "signature",
+    "signature", "sur_le_site", "sur_le_site_retire_le",
   ],
   cadeau: ["code", "nom", "document", "version", "etat", "valide_le", "cree_le", "modifie_le", "archive_le"],
   mot: ["code", "mot", "cadeau", "outil", "automatisations", "ordre", "cree_le", "modifie_le", "archive_le"],
