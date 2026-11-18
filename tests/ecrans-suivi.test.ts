@@ -250,6 +250,13 @@ describe.skipIf(!url)("écrans de suivi · base", () => {
       expect((await p.query("SELECT sur_le_site FROM lot_ligne WHERE id = 'L1-3'")).rows[0].sur_le_site).toBe(false);
       html = await rendre(ECRANS[3].charger as () => Promise<Page>);
       expect(html).toContain("L1-1");
+      // Interrupteur « suivi » éteint : l'action ne change rien (ni la ligne, ni le journal).
+      await p.query("UPDATE interrupteur SET allume = false WHERE code = 'suivi'");
+      const nj = (await p.query("SELECT count(*)::int AS n FROM journal WHERE sujet = 'site'")).rows[0].n;
+      await surLeSite("L1-1", true);
+      expect((await p.query("SELECT sur_le_site FROM lot_ligne WHERE id = 'L1-1'")).rows[0].sur_le_site).toBe(false);
+      expect((await p.query("SELECT count(*)::int AS n FROM journal WHERE sujet = 'site'")).rows[0].n).toBe(nj);
+      await p.query("UPDATE interrupteur SET allume = true WHERE code = 'suivi'");
     });
   });
 });
