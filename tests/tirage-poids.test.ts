@@ -127,8 +127,16 @@ describe("L8-18 · allumé : exploration, graine, pourquoi", () => {
     const r = allume(MESURES_IMAGE);
     for (const l of r.lignes) {
       expect(typeof l.pourquoi).toBe("string");
-      expect(l.pourquoi).toMatch(/^(tiré au hasard \(exploration\)|poids 1,\d : bonnes mesures sur ce type et ce réseau|poids 1 : pas assez de mesures sur ce type et ce réseau)$/);
+      expect(l.pourquoi).toMatch(/^(tiré au hasard \(exploration\)|poids 1,[1-5] : bonnes mesures sur ce type et ce réseau|poids 1 : (pas assez de mesures|mesures moyennes) sur ce type et ce réseau)$/);
     }
-    expect(r.lignes.some((l) => /^poids 1,\d : /.test(l.pourquoi ?? ""))).toBe(true);
+    expect(r.lignes.some((l) => /^poids 1,[1-5] : /.test(l.pourquoi ?? ""))).toBe(true);
+  });
+
+  it("dit la vérité sur chaque cas : mesures moyennes, mesures trop rares, score très faible mais positif", () => {
+    const dits = (mesures: MesureTirage[]) => new Set(allume(mesures).lignes.filter((l) => l.pourquoi !== "tiré au hasard (exploration)").map((l) => l.pourquoi));
+    const nulles = ["video", "image"].flatMap((t) => ["instagram", "facebook"].map((r) => m(t as MesureTirage["type_contenu"], r as MesureTirage["reseau"], 10, 0)));
+    expect([...dits(nulles)]).toEqual(["poids 1 : mesures moyennes sur ce type et ce réseau"]);
+    expect([...dits(nulles.map((x) => ({ ...x, effectif: 2 })))]).toEqual(["poids 1 : pas assez de mesures sur ce type et ce réseau"]);
+    expect([...dits(nulles.map((x) => ({ ...x, score: 0.02 })))]).toEqual(["poids 1,1 : bonnes mesures sur ce type et ce réseau"]);
   });
 });

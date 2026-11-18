@@ -43,12 +43,18 @@ export function poidsDesMesures(allume: boolean, mesures: readonly MesureTirage[
   return Math.min(POIDS_MAX, Math.max(POIDS_MIN, POIDS_MIN + (POIDS_MAX - POIDS_MIN) * score));
 }
 
+/** Vrai quand une case de mesures est utilisable (assez de contenus, score lisible) pour ce type et ce réseau. */
+function caseUtilisable(mesures: readonly MesureTirage[] | undefined, type: TypeContenu, reseau: Reseau): boolean {
+  return Boolean(mesures?.some((x) => x.type_contenu === type && x.reseau === reseau && x.effectif >= SEUIL_EFFECTIF && Number.isFinite(x.score)));
+}
+
 /** Rang (à partir de 0) d'une ligne tirée sans tenir compte des mesures : une ligne sur cinq, régulièrement. */
 function estExploration(rang: number): boolean {
   return Math.floor((rang + 1) * PART_EXPLORATION + 1e-9) > Math.floor(rang * PART_EXPLORATION + 1e-9);
 }
 
-const virgule = (x: number) => x.toFixed(1).replace(".", ",");
+/** Au dixième, arrondi vers le haut : un poids au-dessus de 1 ne s'écrit jamais « 1,0 ». */
+const virgule = (x: number) => (Math.ceil(x * 10 - 1e-9) / 10).toFixed(1).replace(".", ",");
 
 interface Combinaison {
   metier: string | null;
@@ -159,8 +165,10 @@ export function tirer(n: number, reglages: ReglagesTirage, historique: Historiqu
   // L8-18 : facteur des mesures par format (le meilleur de ses réseaux) ; vide tant que l'interrupteur est éteint.
   const mesuresAllumees = reglages.poidsMesures === true;
   const facteurFormat = new Map<string, number>();
+  const formatsMesures = new Set<string>();
   if (mesuresAllumees) {
     for (const f of formats) {
+      if ((reseauxDuFormat.get(f.code) ?? []).some((r) => caseUtilisable(reglages.mesures, f.type_contenu, r))) formatsMesures.add(f.code);
       facteurFormat.set(f.code, Math.max(1, ...(reseauxDuFormat.get(f.code) ?? []).map((r) => poidsDesMesures(true, reglages.mesures, f.type_contenu, r))));
     }
   }
@@ -328,7 +336,7 @@ export function tirer(n: number, reglages: ReglagesTirage, historique: Historiqu
       fins,
       mots,
       signature: choisie.signature,
-      ...(mesuresAllumees ? { pourquoi: exploration ? "tiré au hasard (exploration)" : facteur(choisie.format) > 1 ? `poids ${virgule(facteur(choisie.format))} : bonnes mesures sur ce type et ce réseau` : "poids 1 : pas assez de mesures sur ce type et ce réseau" } : {}),
+      ...(mesuresAllumees ? { pourquoi: exploration ? "tiré au hasard (exploration)" : facteur(choisie.format) > 1 ? `poids ${virgule(facteur(choisie.format))} : bonnes mesures sur ce type et ce réseau` : formatsMesures.has(choisie.format) ? "poids 1 : mesures moyennes sur ce type et ce réseau" : "poids 1 : pas assez de mesures sur ce type et ce réseau" } : {}),
     });
     prises.add(choisie.signature);
     noterCas(choisie.cas_usage, choisie.format, maintenant);
