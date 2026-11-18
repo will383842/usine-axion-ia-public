@@ -115,6 +115,8 @@ describe.skipIf(!url)("écrans de suivi · base", () => {
     expect(c.rows).toHaveLength(2);
     const i = await p.query("SELECT allume FROM interrupteur WHERE code = 'suivi'");
     expect(i.rows).toEqual([{ allume: false }]);
+    const v = await p.query("SELECT allume FROM interrupteur WHERE code = 'veille'");
+    expect(v.rows).toEqual([{ allume: false }]);
   });
 
   it("éteint : les six pages disent qu'elles sont éteintes et ne lisent aucune donnée", async () => {
