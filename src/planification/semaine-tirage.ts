@@ -34,10 +34,9 @@ export const PHRASES = {
   aucun_format: "Aucun format vidéo n'est en service dans les bases.",
   rythme_zero: "Tous vos réseaux sont au repos (rythme à zéro) : réglez un rythme dans Réglages.",
   reseau_non_propose: "YouTube n'est pas proposé pour l'instant : choisissez Instagram, Facebook, TikTok ou LinkedIn.",
-  manque_sujets: (n: number, sur: number) =>
-    `${n} proposition${n > 1 ? "s" : ""} sur ${sur} créneaux : l'Usine n'a pas trouvé assez de sujets neufs. Allumez d'autres métiers dans « Mes métiers » (et validez leur fiche) pour en recevoir davantage.`,
-  manque_fins: (n: number, sur: number) =>
-    `${n} proposition${n > 1 ? "s" : ""} sur ${sur} créneaux : il manque, dans les bases, une phrase de fin pour certains réseaux. Ajoutez-en aux bases, puis redemandez la semaine.`,
+  manque_tete: (n: number, sur: number) => `${n} proposition${n > 1 ? "s" : ""} sur ${sur} créneaux : `,
+  manque_sujets: "l'Usine n'a pas trouvé assez de sujets neufs. Allumez d'autres métiers dans « Mes métiers » (et validez leur fiche) pour en recevoir davantage.",
+  manque_fins: (reseaux: string) => `il manque, dans les bases, une phrase de fin pour ${reseaux}. Ajoutez-en aux bases, puis redemandez la semaine.`,
   cas_repete: "Ce cas d'usage revient déjà dans la semaine : il n'y en avait pas assez de différents.",
   semaine_pleine: "La semaine est déjà pleine selon vos rythmes : rien de plus à proposer.",
   semaine_passee: "Cette semaine est passée : choisissez une semaine à venir.",
@@ -253,7 +252,13 @@ export async function tirerLaSemaine(lundi: string, reseaux: readonly Reseau[] |
     throw new ErreurPorte(409, "semaine_pleine", PHRASES.semaine_pleine);
   }
   // Jamais de créneau abandonné en silence : s'il en reste sans sujet, la réponse le dit, avec le geste à faire.
-  const manque = restants.length > tirees.length ? (libres.length < restants.length ? PHRASES.manque_sujets : PHRASES.manque_fins)(tirees.length, restants.length) : undefined;
+  // La vraie raison, réseau par réseau : un créneau resté vide sur un réseau sans phrase de fin manque de fin, pas de sujets.
+  const posees = new Set(placements.map((x) => x.creneau));
+  const videsParReseau = restants.filter((_, k) => !posees.has(k)).map((c) => c.reseau);
+  const sansFin = [...new Set(videsParReseau)].filter((r) => !libres.some((s) => s.fins[r]));
+  const sansSujet = videsParReseau.some((r) => !sansFin.includes(r));
+  const raisons = [...(sansFin.length ? [PHRASES.manque_fins(nommer(sansFin).join(", "))] : []), ...(sansSujet ? [PHRASES.manque_sujets] : [])];
+  const manque = restants.length > tirees.length && raisons.length ? PHRASES.manque_tete(toutes.length, deCalendrier.length + restants.length) + raisons.join(" Et ") : undefined;
   const messages = [message, manque].filter((m): m is string => Boolean(m));
   return { propositions: toutes, ...(messages.length ? { message: messages.join(" ") } : {}) };
 }

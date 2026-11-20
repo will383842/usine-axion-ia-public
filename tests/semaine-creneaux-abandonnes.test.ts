@@ -90,4 +90,20 @@ describe.skipIf(!url)("semaine · aucun créneau abandonné en silence", () => {
     const e = await erreur();
     expect(e?.code).toBe("aucun_sujet");
   });
+  it("fin absente pour Facebook : le message nomme la vraie raison (la fin), jamais le manque de sujets", async () => {
+    await valider(1);
+    await p.query("UPDATE appel SET reseaux = 'instagram' WHERE code = 'fin-if-question'");
+    const r = await semaine();
+    expect(r.message).toMatch(/phrase de fin pour Facebook/);
+    expect(r.message).not.toMatch(/sujets neufs/);
+  });
+
+  it("le compte du message compte aussi les lignes du calendrier renvoyées", async () => {
+    await valider(0);
+    const { instantDeParis } = await import("@/planification/regles");
+    await p.query("INSERT INTO calendrier_ligne (reseau, compte, type_contenu, prevue_le) VALUES ('instagram', 'instagram:essai', 'video', $1)", [instantDeParis("2026-11-24", "09:00")]);
+    const r = await semaine();
+    expect(r.propositions).toHaveLength(2);
+    expect(r.message).toMatch(/^2 propositions sur /);
+  });
 });
