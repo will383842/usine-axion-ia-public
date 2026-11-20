@@ -82,6 +82,8 @@ export interface EntreesSemaine {
   quotas: QuotasParReseau;
   occupes: Occupe[];
   maintenant: Date;
+  /** Semaine tirée à la demande : un jour de plus pour chaque publication avant d'empiler deux le même jour (par défaut : non, la règle de « Ma semaine » ne change pas). */
+  etaler?: boolean;
 }
 
 /** Une ligne du calendrier telle que le tirage la lit (sélection de `SQL_LIGNES_SEMAINE`). */
@@ -195,7 +197,7 @@ export function proposerSemaine(e: EntreesSemaine): { propositions: Proposition[
         if (instant.getTime() <= e.maintenant.getTime()) continue;
         if ((pris.get(l.reseau) ?? []).some((d) => proche(d, instant))) continue;
         // Étaler : peu de publications ce jour-là sur ce réseau, pas de même type la veille ou le lendemain, puis le plus tôt.
-        const note = memeJourReseau * 100 + (adjacent ? 1000 : 0) + rang;
+        const note = e.etaler ? memeJourReseau * 1000 + (adjacent ? 100 : 0) + rang : memeJourReseau * 100 + (adjacent ? 1000 : 0) + rang;
         if (!meilleur || note < meilleur.note) meilleur = { jour, instant, note };
         break;
       }

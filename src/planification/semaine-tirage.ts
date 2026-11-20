@@ -15,7 +15,7 @@ import { ErreurPorte, phraseAucunFormat, tirerSujets } from "@/porte";
 import { lireQuotas, lireReglagesTirage } from "@/reglages";
 import { LIBELLE_RESEAU, type RythmesParReseau } from "@/reglages/modele";
 import { RESEAUX_PAR_DEFAUT } from "@/tirage/charger";
-import { SQL_LIGNES_SEMAINE, instantDeParis, isoParis, jourParis, lignesDeLaSemaine, proposerSemaine, type LigneBase, type LigneSemaine } from "./regles";
+import { ECART_MINUTES, HEURES, SQL_LIGNES_SEMAINE, instantDeParis, isoParis, jourParis, lignesDeLaSemaine, proposerSemaine, type LigneBase, type LigneSemaine } from "./regles";
 
 export const POURQUOI_PROPOSITION = "Un créneau libre qui respecte le rythme et les quantités du réseau.";
 
@@ -24,9 +24,14 @@ export const PHRASES = {
   aucun_metier_allume:
     "Aucun métier n'est allumé dans l'Usine : allumez au moins un métier dans « Mes métiers » (si l'écran est éteint : Réglages › Interrupteurs › Écran « Métiers »), puis redemandez la semaine.",
   aucun_compte: "Aucun compte actif pour ces réseaux dans les bases : ajoutez un compte Instagram ou Facebook aux bases, puis redemandez la semaine.",
-  aucun_sujet: "L'Usine n'a trouvé aucun sujet neuf pour cette semaine : ",
+  aucun_sujet:
+    "L'Usine n'a trouvé aucun sujet neuf pour cette semaine : ceux des métiers allumés sont déjà fabriqués ou retenus, ou il manque des cas d'usage dans les bases. Allumez un autre métier dans « Mes métiers », puis redemandez la semaine.",
+  aucun_sujet_sans_fin: (reseaux: string) =>
+    `L'Usine n'a trouvé aucun sujet neuf pour cette semaine : il manque, dans les bases, une phrase de fin pour ${reseaux}. Ajoutez-en une aux bases, puis redemandez la semaine.`,
   aucun_format: "Aucun format vidéo n'est en service dans les bases.",
   rythme_zero: "Tous vos réseaux sont au repos (rythme à zéro) : réglez un rythme dans Réglages.",
+  reseau_non_propose: "YouTube n'est pas proposé pour l'instant : choisissez Instagram, Facebook, TikTok ou LinkedIn.",
+  cas_repete: "Ce cas d'usage revient déjà dans la semaine : il n'y en avait pas assez de différents.",
   semaine_pleine: "La semaine est déjà pleine selon vos rythmes : rien de plus à proposer.",
   semaine_passee: "Cette semaine est passée : choisissez une semaine à venir.",
 } as const;
@@ -62,10 +67,10 @@ export function lignesVirtuelles(reseaux: readonly Reseau[], rythmes: RythmesPar
 
 const jjmm = (jour: string) => `${jour.slice(8, 10)}/${jour.slice(5, 7)}`;
 
-/** Le titre du dernier contenu déjà fabriqué de la même famille de sujet : « « … », fabriqué le 12/11 ». Absent si rien ne ressemble. */
+/** Le titre du dernier contenu déjà fabriqué (ou seulement retenu) de la même famille de sujet : « « … », fabriqué le 12/11 » ou « retenu le 12/11 ». Absent si rien ne ressemble. */
 export async function ressembleA(famille: string, lundi: string): Promise<string | undefined> {
-  const [l] = await requete<{ titre: string | null; fabrique_le: Date }>(
-    `SELECT coalesce(c.titre, s.titre) AS titre, d.fabrique_le
+  const [l] = await requete<{ titre: string | null; fabrique_le: Date; retenu: boolean }>(
+    `SELECT coalesce(c.titre, s.titre) AS titre, d.fabrique_le, coalesce(d.note LIKE 'Retenu au studio%', false) AS retenu
        FROM deja_fabrique d
        LEFT JOIN cas_usage c ON c.code = d.cas_usage
        LEFT JOIN sujet s ON s.code = d.sujet
@@ -75,10 +80,36 @@ export async function ressembleA(famille: string, lundi: string): Promise<string
     [famille, lundi, ajouterJours(lundi, 6)],
   );
   if (!l?.titre) return undefined;
-  return `« ${l.titre} », fabriqué le ${jjmm(jourParis(new Date(l.fabrique_le)))}`;
+  return `« ${l.titre} », ${l.retenu ? "retenu" : "fabriqué"} le ${jjmm(jourParis(new Date(l.fabrique_le)))}`;
 }
 
 const nommer = (rs: string[]) => rs.map((r) => (LIBELLE_RESEAU as Record<string, string>)[r] ?? r);
+
+/** Le titre montré pour un sujet : celui du cas d'usage, sinon de la nouveauté, sinon du sujet. */
+const titreDe = (s: SujetPropose): string | undefined => s.cas_usage?.titre ?? s.actualite?.titre ?? s.sujet?.titre ?? undefined;
+/** Ce qui identifie « le même cas » : le titre montré (sans casse ni espaces en trop), sinon le code. */
+const identiteDe = (s: SujetPropose): string => (titreDe(s) ?? s.cas_usage?.code ?? s.actualite?.code ?? s.sujet?.code ?? s.signature).trim().toLowerCase();
+
+/**
+ * Un sujet par créneau, dans l'ordre des créneaux. D'abord un cas d'usage (un titre) au plus une fois dans la semaine, tous réseaux confondus,
+ * et seulement un sujet qui a une fin pour le réseau du créneau ; puis, s'il n'y en avait pas assez, les cas déjà vus (marqués `repete`).
+ * Un créneau sans aucun sujet possible reste sans sujet. Rien de tiré ici : le choix ne dépend que de l'ordre.
+ */
+export function affecterSujets(creneaux: readonly { reseau: Reseau }[], sujets: readonly SujetPropose[], titresPris: Iterable<string> = []): { sujet: SujetPropose; repete: boolean; creneau: number }[] {
+  const pris = new Set<number>();
+  const titres = new Set<string>(titresPris);
+  const sortie: ({ sujet: SujetPropose; repete: boolean } | undefined)[] = creneaux.map(() => undefined);
+  const prendre = (i: number, unique: boolean) => {
+    const k = sujets.findIndex((s, n) => !pris.has(n) && s.fins[creneaux[i].reseau] && (!unique || !titres.has(identiteDe(s))));
+    if (k < 0) return;
+    pris.add(k);
+    sortie[i] = { sujet: sujets[k], repete: titres.has(identiteDe(sujets[k])) };
+    titres.add(identiteDe(sujets[k]));
+  };
+  for (let i = 0; i < creneaux.length; i++) prendre(i, true);
+  for (let i = 0; i < creneaux.length; i++) if (!sortie[i]) prendre(i, false);
+  return sortie.flatMap((x, creneau) => (x ? [{ ...x, creneau }] : []));
+}
 
 interface Creneau {
   jour: string;
@@ -95,9 +126,10 @@ export async function tirerLaSemaine(lundi: string, reseaux: readonly Reseau[] |
   const dimanche = ajouterJours(lundi, 6);
   if (dimanche < jourParis(maintenant)) throw new ErreurPorte(409, "semaine_passee", PHRASES.semaine_passee);
 
-  const demandes = (reseaux ?? RESEAUX_PAR_DEFAUT).filter((r) => !RESEAUX_ECARTES.includes(r));
+  const demandees = (reseaux ?? RESEAUX_PAR_DEFAUT).filter((r) => !RESEAUX_ECARTES.includes(r));
+  if (!demandees.length) throw new ErreurPorte(409, "rythme_zero", PHRASES.reseau_non_propose);
   const [{ rythmes }, quotas] = await Promise.all([lireReglagesTirage(), lireQuotas()]);
-  const actifs = demandes.filter((r) => parSemaine(rythmes[r]) > 0);
+  const actifs = demandees.filter((r) => parSemaine(rythmes[r]) > 0);
   if (!actifs.length) throw new ErreurPorte(409, "rythme_zero", PHRASES.rythme_zero);
 
   const [{ n: metiers }] = await requete<{ n: number }>("SELECT count(*)::int AS n FROM metier WHERE allume AND etat <> 'retire'");
@@ -112,24 +144,42 @@ export async function tirerLaSemaine(lundi: string, reseaux: readonly Reseau[] |
   // L'instant du tirage est minuit de Paris : la grille et les sujets ne bougent pas pendant la journée.
   const minuit = minuitParis(maintenant);
   const lignes = await requete<LigneBase>(SQL_LIGNES_SEMAINE, [lundi, dimanche]);
-  const reelles = lignesDeLaSemaine(lignes).filter((l) => !reseaux || reseaux.includes(l.reseau));
+  const reelles = lignesDeLaSemaine(lignes).filter((l) => demandees.includes(l.reseau));
   const virtuelles = lignesVirtuelles(avecCompte, rythmes, comptes);
-  const { propositions } = proposerSemaine({ lundi, lignes: [...reelles, ...virtuelles], rythmes, quotas, occupes: [], maintenant: minuit });
+  const { propositions } = proposerSemaine({ lundi, lignes: [...reelles, ...virtuelles], rythmes, quotas, occupes: [], maintenant: minuit, etaler: true });
   const dePassage = new Set(virtuelles.map((v) => v.id));
 
-  // Les créneaux tirés (virtuels), triés par (jour, heure, réseau) : le sujet de rang i va au créneau i.
-  const creneaux: Creneau[] = propositions
-    .filter((p) => dePassage.has(p.ligne))
-    .map((p) => ({ jour: p.jour, reseau: p.reseau, instant: p.instant }))
-    .sort((a, b) => a.instant.getTime() - b.instant.getTime() || a.reseau.localeCompare(b.reseau))
-    .slice(0, SEMAINE_SUJETS_MAX);
+  // Instants déjà pris par réseau (lignes fixes et propositions) : un créneau d'aujourd'hui déjà passé est reporté à une heure libre d'aujourd'hui.
+  const occupes = new Map<string, Date[]>();
+  const poser = (r: string, d: Date) => occupes.set(r, [...(occupes.get(r) ?? []), d]);
+  for (const l of reelles) if (l.fixe) poser(l.reseau, l.instant);
+  for (const p of propositions) poser(p.reseau, p.instant);
+  const aujourdhui = jourParis(maintenant);
+  const libre = (r: string, instant: Date, sauf: Date) => !(occupes.get(r) ?? []).some((d) => d.getTime() !== sauf.getTime() && Math.abs(d.getTime() - instant.getTime()) < ECART_MINUTES * 60_000);
+
+  // Les créneaux tirés (virtuels), jamais déjà passés, triés par (heure, réseau) : le sujet de rang i va au créneau i.
+  const grille = propositions.filter((p) => dePassage.has(p.ligne));
+  const creneaux: Creneau[] = [];
+  for (const p of grille) {
+    let instant = p.instant;
+    if (instant.getTime() <= maintenant.getTime() && p.jour === aujourdhui) {
+      const h = HEURES.find((x) => instantDeParis(aujourdhui, x).getTime() > maintenant.getTime() && libre(p.reseau, instantDeParis(aujourdhui, x), p.instant));
+      if (!h) continue;
+      instant = instantDeParis(aujourdhui, h);
+      poser(p.reseau, instant);
+    }
+    if (instant.getTime() <= maintenant.getTime()) continue;
+    creneaux.push({ jour: p.jour, reseau: p.reseau, instant });
+  }
+  creneaux.sort((a, b) => a.instant.getTime() - b.instant.getTime() || a.reseau.localeCompare(b.reseau));
+  creneaux.splice(SEMAINE_SUJETS_MAX);
 
   // Lignes déjà au calendrier (déplaçables) : comme avant, sans sujet.
   const deCalendrier: LigneSemainePorte[] = propositions
     .filter((p) => !dePassage.has(p.ligne) && p.instant.getTime() > maintenant.getTime())
     .map((p) => ({ cle: cleSemaine(lundi, p.ligne), jour: p.jour, reseau: p.reseau, type: p.type_contenu as TypeContenu, heure: isoParis(p.instant).slice(11, 16), pourquoi: POURQUOI_PROPOSITION }));
 
-  // Sujets déjà retenus pour cette semaine : ils restent hors de l'historique (le tirage garde sa suite), leur créneau est retiré à la sortie.
+  // Sujets déjà retenus pour cette semaine : ils restent hors de l'historique (le tirage garde sa suite) ; leur créneau (même jour et réseau, sinon le dernier du réseau) est retiré.
   const retenus = await requete<{ signature: string; vise_le: string; vise_reseau: Reseau }>(
     `SELECT signature, vise_le::text, vise_reseau FROM deja_fabrique WHERE archive_le IS NULL AND vise_le BETWEEN $1::date AND $2::date AND vise_reseau IS NOT NULL ORDER BY id`,
     [lundi, dimanche],
@@ -137,19 +187,21 @@ export async function tirerLaSemaine(lundi: string, reseaux: readonly Reseau[] |
 
   let sujets: SujetPropose[] = [];
   if (creneaux.length) {
+    // On tire plus de sujets que de créneaux : un même cas d'usage ne passe qu'une fois dans la semaine, et chaque créneau veut un sujet qui a une fin sur son réseau.
     const r = await tirerSujets(
-      { n: creneaux.length, type_contenu: "video", reseaux: avecCompte, graine: graineDeLaSemaine(lundi) },
+      { n: Math.min(creneaux.length * 3, 60), type_contenu: "video", reseaux: avecCompte, graine: graineDeLaSemaine(lundi) },
       { maintenant: minuit, ecarter: retenus.map((x) => x.signature) },
     );
     sujets = r.lignes;
     if (!sujets.length) {
-      const raison = r.pourquoi[0]?.message ?? "";
-      if (raison === phraseAucunFormat("video")) throw new ErreurPorte(409, "aucun_format", PHRASES.aucun_format);
-      throw new ErreurPorte(409, "aucun_sujet", `${PHRASES.aucun_sujet}${raison}`.trim());
+      const raison = r.pourquoi.map((x) => x.message);
+      if (raison[0] === phraseAucunFormat("video")) throw new ErreurPorte(409, "aucun_format", PHRASES.aucun_format);
+      if (raison.some((m) => m.startsWith("Aucune fin possible"))) throw new ErreurPorte(409, "aucun_sujet", PHRASES.aucun_sujet_sans_fin(nommer(avecCompte).join(", ")));
+      throw new ErreurPorte(409, "aucun_sujet", PHRASES.aucun_sujet);
     }
   }
 
-  // À la sortie seulement : créneaux passés, créneaux sans sujet, créneaux déjà retenus.
+  // Créneaux déjà pris par un sujet retenu : retirés, sans toucher aux autres. Le sujet retenu lui-même n'est pas reproposé (ni son cas d'usage).
   const pris = new Set<number>();
   for (const x of retenus) {
     let i = creneaux.findIndex((c, k) => !pris.has(k) && c.reseau === x.vise_reseau && c.jour === x.vise_le);
@@ -157,11 +209,15 @@ export async function tirerLaSemaine(lundi: string, reseaux: readonly Reseau[] |
     if (i >= 0) pris.add(i);
   }
   const dejaRetenues = new Set(retenus.map((x) => x.signature));
+  const restants = creneaux.filter((_, k) => !pris.has(k));
+  const titresRetenus = sujets.filter((s) => dejaRetenues.has(s.signature)).map(identiteDe);
+  const libres = sujets.filter((s) => !dejaRetenues.has(s.signature));
+  const placements = affecterSujets(restants, libres, titresRetenus);
+
   const familles = new Map<string, Promise<string | undefined>>();
   const tirees: LigneSemainePorte[] = [];
-  for (const [i, c] of creneaux.entries()) {
-    const s = sujets[i];
-    if (!s || pris.has(i) || c.instant.getTime() <= maintenant.getTime() || dejaRetenues.has(s.signature)) continue;
+  for (const { sujet: s, repete, creneau } of placements) {
+    const c = restants[creneau];
     const famille = s.sujet?.code;
     if (famille && !familles.has(famille)) familles.set(famille, ressembleA(famille, lundi));
     const ressemble = famille ? await familles.get(famille) : undefined;
@@ -172,8 +228,8 @@ export async function tirerLaSemaine(lundi: string, reseaux: readonly Reseau[] |
       reseau: c.reseau,
       type: "video",
       heure: isoParis(c.instant).slice(11, 16),
-      titre: s.cas_usage?.titre ?? s.actualite?.titre ?? s.sujet?.titre ?? undefined,
-      pourquoi: `${libelle ? `${libelle} · ` : ""}Un créneau libre qui respecte votre rythme (${parSemaine(rythmes[c.reseau])} par semaine).`,
+      titre: titreDe(s),
+      pourquoi: `${libelle ? `${libelle} · ` : ""}Un créneau libre qui respecte votre rythme (${parSemaine(rythmes[c.reseau])} par semaine).${repete ? ` ${PHRASES.cas_repete}` : ""}`,
       ...(ressemble ? { ressemble_a: ressemble } : {}),
       sujet: s,
     });
@@ -181,8 +237,8 @@ export async function tirerLaSemaine(lundi: string, reseaux: readonly Reseau[] |
 
   const toutes = [...deCalendrier, ...tirees];
   if (!toutes.length) {
-    const toutesPassees = creneaux.length > 0 && creneaux.every((c) => c.instant.getTime() <= maintenant.getTime());
-    if (toutesPassees) throw new ErreurPorte(409, "semaine_passee", PHRASES.semaine_passee);
+    if (!creneaux.length && grille.length) throw new ErreurPorte(409, "semaine_passee", PHRASES.semaine_passee);
+    if (restants.length && libres.length) throw new ErreurPorte(409, "aucun_sujet", PHRASES.aucun_sujet_sans_fin(nommer(avecCompte).join(", ")));
     throw new ErreurPorte(409, "semaine_pleine", PHRASES.semaine_pleine);
   }
   return { propositions: toutes, ...(message ? { message } : {}) };

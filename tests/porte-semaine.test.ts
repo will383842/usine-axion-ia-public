@@ -266,15 +266,15 @@ describe.skipIf(!url)("porte · semaine · sur une vraie base", () => {
     expect(lireCommeLeStudio(corps)).toHaveLength(12);
   });
 
-  it("2 · deux appels au même instant, puis à 8 h et 10 h le même jour : mêmes sujets et mêmes clés, hors créneaux passés", async () => {
+  it("2 · deux appels au même instant : la même semaine ; à 8 h et 10 h le même jour : mêmes sujets, aucun créneau passé, aucun perdu", async () => {
     const a = await semaine(AVANT);
     expect(await semaine(AVANT)).toEqual(a);
     const huit = await semaine(instantDeParis(LUNDI, "08:00"));
     const dix = await semaine(instantDeParis(LUNDI, "10:00"));
-    expect(huit.propositions.length).toBeGreaterThan(dix.propositions.length);
-    expect(dix.propositions).toEqual(huit.propositions.filter((l) => !(l.jour === LUNDI && l.heure! <= "10:00")));
-    // 8 h : même chose qu'avant le jour (rien n'est passé).
-    expect(huit.propositions.map((l) => l.cle).sort()).toEqual(a.propositions.filter((l) => !(l.jour === LUNDI && l.heure! <= "08:00")).map((l) => l.cle).sort());
+    expect(huit.propositions).toHaveLength(12);
+    expect(dix.propositions).toHaveLength(12);
+    expect(dix.propositions.some((l) => l.jour === LUNDI && l.heure! <= "10:00")).toBe(false);
+    expect(dix.propositions.map((l) => l.sujet!.signature).sort()).toEqual(huit.propositions.map((l) => l.sujet!.signature).sort());
   });
 
   it("3 · seules des requêtes SELECT, aucun journal, aucune ligne écrite (aucun appel sortant : la garde du dépôt le vérifie)", async () => {
@@ -332,7 +332,9 @@ describe.skipIf(!url)("porte · semaine · sur une vraie base", () => {
     const sujet = await erreurDe();
     expect(sujet?.statut).toBe(409);
     expect(sujet?.code).toBe("aucun_sujet");
-    expect(sujet?.phrase).toMatch(/^L'Usine n'a trouvé aucun sujet neuf pour cette semaine : \S/);
+    expect(sujet?.phrase).toBe(
+      "L'Usine n'a trouvé aucun sujet neuf pour cette semaine : ceux des métiers allumés sont déjà fabriqués ou retenus, ou il manque des cas d'usage dans les bases. Allumez un autre métier dans « Mes métiers », puis redemandez la semaine.",
+    );
     await p.query("UPDATE cas_usage SET etat = 'valide'");
 
     await p.query("UPDATE format_video SET etat = 'propose'");
@@ -416,6 +418,92 @@ describe.skipIf(!url)("porte · semaine · sur une vraie base", () => {
     expect(reprise).toBeDefined();
     expect(reprise?.sujet).toBeUndefined();
     expect(JSON.stringify(r)).not.toMatch(/"compte"/);
+  });
+
+  const titres = (r: Reponse) => r.propositions.map((l) => l.titre);
+
+  it("R1 · un même cas d'usage (même titre) n'apparaît qu'une fois dans la semaine, tous réseaux confondus", async () => {
+    await p.query("UPDATE metier SET allume = false WHERE code <> 'essai.un'");
+    const r = await semaine();
+    expect(r.propositions).toHaveLength(12);
+    expect(new Set(titres(r)).size).toBe(12);
+    for (const l of r.propositions) expect(l.pourquoi).not.toContain("revient déjà");
+  });
+
+  it("R1 bis · pas assez de cas différents : les cas reviennent, et le champ pourquoi le dit", async () => {
+    await p.query("UPDATE metier SET allume = false WHERE code <> 'essai.un'");
+    await p.query("UPDATE cas_usage SET etat = 'propose' WHERE code NOT IN ('essai.un.audit.c01', 'essai.un.audit.c02', 'essai.un.audit.c03')");
+    const r = await semaine();
+    expect(r.propositions.length).toBeGreaterThan(3);
+    expect(new Set(titres(r)).size).toBe(3);
+    const repetes = r.propositions.filter((l) => l.pourquoi!.includes("Ce cas d'usage revient déjà dans la semaine"));
+    expect(repetes).toHaveLength(r.propositions.length - 3);
+  });
+
+  it("R2 · un sujet retenu le lundi pour mercredi Instagram, demande du mardi : seule sa place disparaît", async () => {
+    const mardi = instantDeParis("2099-03-03", "08:00");
+    const sans = await semaine(mardi);
+    const lundi = await semaine(instantDeParis(LUNDI, "08:00"));
+    const choisie = lundi.propositions.find((l) => l.reseau === "instagram" && l.jour === "2099-03-04")!;
+    expect(choisie).toBeDefined();
+    await retenir(choisie.sujet!, { jour: choisie.jour, reseau: choisie.reseau });
+    const avec = await semaine(mardi);
+    expect(avec.propositions).toHaveLength(sans.propositions.length - 1);
+    expect(avec.propositions.some((l) => l.sujet!.signature === choisie.sujet!.signature)).toBe(false);
+    expect(avec.propositions.some((l) => l.reseau === "instagram" && l.jour === "2099-03-04")).toBe(sans.propositions.filter((l) => l.reseau === "instagram" && l.jour === "2099-03-04").length > 1);
+  });
+
+  it("R3 · la grille Instagram est répartie : au plus une publication par jour avec 6 par semaine", async () => {
+    const r = await semaine();
+    const jours = r.propositions.filter((l) => l.reseau === "instagram").map((l) => l.jour);
+    expect(jours).toHaveLength(6);
+    expect(new Set(jours).size).toBe(6);
+  });
+
+  it("R4 · semaine en cours : jamais de créneau passé, et celui du jour est reporté à une heure libre", async () => {
+    const jeudi = "2099-03-05";
+    const tot = await semaine(instantDeParis(jeudi, "08:00"));
+    const tard = await semaine(instantDeParis(jeudi, "10:00"));
+    expect(tot.propositions.filter((l) => l.jour === jeudi && l.heure === "09:00").length).toBeGreaterThan(0);
+    expect(tard.propositions.some((l) => l.jour === jeudi && l.heure! <= "10:00")).toBe(false);
+    expect(tard.propositions).toHaveLength(tot.propositions.length);
+    expect(tard.propositions.filter((l) => l.jour === jeudi).every((l) => l.heure === "12:30" || l.heure === "18:00")).toBe(true);
+  });
+
+  it("R5 · sans `reseaux`, une ligne déplaçable d'un autre réseau (TikTok) n'est pas proposée", async () => {
+    await p.query("INSERT INTO compte (code, reseau, identifiant, nature, nom, actif, etat) VALUES ('tiktok:essai', 'tiktok', 'essai', 'page', 'Compte fictif', true, 'valide')");
+    await p.query(`INSERT INTO calendrier_ligne (reseau, compte, type_contenu, prevue_le) VALUES ('tiktok', 'tiktok:essai', 'video', $1)`, [instantDeParis("2099-03-05", "09:00")]);
+    const r = await semaine();
+    expect(r.propositions.some((l) => l.reseau === "tiktok")).toBe(false);
+    expect(r.propositions).toHaveLength(12);
+  });
+
+  it("R6 · phrases en français simple : fin manquante, YouTube seul, « retenu le »", async () => {
+    await p.query("UPDATE appel SET etat = 'propose'");
+    const sansFin = await erreurDe();
+    expect(sansFin).toEqual({
+      statut: 409,
+      code: "aucun_sujet",
+      phrase: "L'Usine n'a trouvé aucun sujet neuf pour cette semaine : il manque, dans les bases, une phrase de fin pour Instagram, Facebook. Ajoutez-en une aux bases, puis redemandez la semaine.",
+    });
+    await p.query("UPDATE appel SET etat = 'valide'");
+
+    const { lireSemaineProposee } = await import("@/planification/lecture");
+    const yt = await lireSemaineProposee(LUNDI, ["youtube"], AVANT).then(() => null, (e: { statut: number; code: string; message: string }) => ({ statut: e.statut, code: e.code, phrase: e.message }));
+    expect(yt).toEqual({ statut: 409, code: "rythme_zero", phrase: "YouTube n'est pas proposé pour l'instant : choisissez Instagram, Facebook, TikTok ou LinkedIn." });
+
+    await p.query(`INSERT INTO deja_fabrique (type_contenu, metier, service, cas_usage, format, structure, signature, fabrique_le, note) VALUES ('video', 'essai.un', 'audit', 'essai.un.audit.c01', 'tableau-anime', 'scène vécue', 'sig-retenue-1', '2099-02-12T10:00:00Z', 'Retenu au studio : 0042-AV-TT')`);
+    const r = await semaine();
+    const l = r.propositions.find((x) => x.sujet?.sujet?.code === "essai.famille-1");
+    expect(l?.ressemble_a).toBe("« Cas essai.un audit 1 », retenu le 12/02");
+  });
+
+  it("R7 · un créneau ne porte jamais un sujet sans fin pour son réseau", async () => {
+    await p.query("UPDATE appel SET reseaux = 'facebook'");
+    const r = await semaine();
+    expect(r.propositions.length).toBeGreaterThan(0);
+    for (const l of r.propositions) expect(l.sujet!.fins[l.reseau as "facebook"], `${l.reseau} ${l.jour}`).toBeDefined();
+    expect(r.propositions.some((l) => l.reseau === "instagram")).toBe(false);
   });
 });
 
