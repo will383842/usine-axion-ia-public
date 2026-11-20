@@ -1,11 +1,14 @@
 /**
- * U-PORTE-SEMAINE · POST /api/porte/planification/semaine : accès (404, 401), validation (400 en français), forme lisible par le Studio,
- * lecture seule (aucune écriture, aucun envoi, aucun appel sortant), arrêt respecté, proxy. Base et Studio fictifs, données fictives.
+ * POST /api/porte/planification/semaine : accès (404, 401), validation (400 en français), « Tout arrêter » (409, base non lue), proxy ;
+ * puis, sur une vraie base (DATABASE_URL), le tirage à la demande : forme lue par le Studio, même réponse pour deux demandes identiques,
+ * lecture seule, interrupteurs éteints, les 409 en français, sujets déjà fabriqués ou retenus, lignes fixes, réseau sans compte.
+ * Base, Studio et données fictifs : rien de réel.
  */
 import { randomBytes } from "node:crypto";
 import { Pool } from "pg";
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { estUnLundi } from "@/contrats";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { estUnLundi, type LigneSemainePorte, type SujetPropose } from "@/contrats";
+import { signature } from "@/tirage";
 import { instantDeParis } from "@/planification/regles";
 import { RYTHMES_DEFAUT } from "@/reglages/modele";
 import { QUOTAS_DEFAUT } from "@/reglages/quotas";
@@ -13,19 +16,6 @@ import { estPublic } from "@/proxy";
 
 const SECRET = "secret-d-essai-de-la-porte-0123456789";
 const LUNDI = "2099-03-02";
-
-const ligne = (id: string, s: Record<string, unknown> = {}) => ({
-  id,
-  reseau: "tiktok",
-  compte: "tiktok:compte-fictif-1",
-  type_contenu: "video",
-  prevue_le: instantDeParis(LUNDI, "09:00"),
-  etat: "brouillon",
-  date_choisie: false,
-  commandee: false,
-  deplacable: true,
-  ...s,
-});
 
 /**
  * Copie fidèle de la lecture complète du Studio : `lireSemaineUsine` (src/services/usine-porte.ts) puis le filtre de `proposerSemaine`
@@ -59,9 +49,9 @@ function lireCommeLeStudio(corps: unknown, debut: string = LUNDI) {
   return sortie;
 }
 
-async function monter(opts: { lignes?: Record<string, unknown>[]; arrete?: boolean } = {}) {
+async function monter(opts: { arrete?: boolean } = {}) {
   vi.resetModules();
-  const requete = vi.fn(async () => opts.lignes ?? []);
+  const requete = vi.fn(async () => []);
   const estArrete = vi.fn(async () => opts.arrete ?? false);
   const journaliser = vi.fn();
   const appelerStudio = vi.fn();
@@ -71,7 +61,7 @@ async function monter(opts: { lignes?: Record<string, unknown>[]; arrete?: boole
   vi.doMock("server-only", () => ({}));
   vi.doMock("@/arret", () => ({ estArrete, sousArret: vi.fn() }));
   vi.doMock("@/lib/base", () => ({ requete, transaction }));
-  vi.doMock("@/donnees", () => ({ journaliser, interrupteurAllume: vi.fn(async () => false) }));
+  vi.doMock("@/donnees", async (original) => ({ ...(await original<object>()), journaliser, interrupteurAllume: vi.fn(async () => false) }));
   vi.doMock("@/passerelles/studio", () => ({ appelerStudio, lireOccupesDuStudio }));
   vi.doMock("@/commandes/service", () => ({ proposerAuStudio, commandesAllumees: vi.fn(async () => true) }));
   vi.doMock("@/reglages", () => ({
@@ -154,99 +144,64 @@ describe("porte · semaine · validation", () => {
   });
 });
 
-describe("porte · semaine · réponse", () => {
-  it("rend { propositions } lisible par le Studio : clé, jour de la semaine, réseau, type, heure, raison ; rien de plus ; aucune donnée de personne", async () => {
+describe("porte · semaine · « Tout arrêter »", () => {
+  it("409 `arrete` avec sa phrase, et la base n'est pas lue", async () => {
     process.env.USINE_PORTE_SECRET = SECRET;
-    const m = await monter({ lignes: [ligne("1"), ligne("2"), ligne("3", { reseau: "instagram", compte: "instagram:compte-fictif-2" })] });
+    const m = await monter({ arrete: true });
     const r = await m.POST(demande({ debut: LUNDI }));
-    expect(r.status).toBe(200);
-    const corps = (await r.json()) as { propositions: Record<string, string>[] };
-    expect(Object.keys(corps)).toEqual(["propositions"]);
-    expect(corps.propositions).toHaveLength(3);
-    for (const p of corps.propositions) {
-      expect(Object.keys(p).sort()).toEqual(["cle", "heure", "jour", "pourquoi", "reseau", "type"]);
-      expect(p.cle).toMatch(/^[0-9a-f]{64}$/);
-      expect(p.jour >= LUNDI && p.jour <= "2099-03-08").toBe(true);
-      expect(p.heure).toMatch(/^\d{2}:\d{2}$/);
-    }
-    expect(new Set(corps.propositions.map((p) => p.cle)).size).toBe(3);
-    expect(lireCommeLeStudio(corps)).toHaveLength(3);
-    expect(JSON.stringify(corps)).not.toMatch(/compte-fictif|tiktok:|instagram:/);
-    // Même demande, même réponse à instant égal (clés stables, aucun hasard, rien n'a bougé) : `maintenant` n'est pas figé ici, mais les lignes sont dans l'avenir.
-    expect(await (await m.POST(demande({ debut: LUNDI }))).json()).toEqual(corps);
-  });
-
-  it("`texte` et `story` sont rendus par l'Usine (rien n'est filtré) mais le Studio, lui, les écarte : on le constate ici", async () => {
-    process.env.USINE_PORTE_SECRET = SECRET;
-    const m = await monter({ lignes: [ligne("1"), ligne("2", { type_contenu: "texte" }), ligne("3", { type_contenu: "story" })] });
-    const corps = (await (await m.POST(demande({ debut: LUNDI }))).json()) as { propositions: { type: string }[] };
-    expect(corps.propositions.map((p) => p.type).sort()).toEqual(["story", "texte", "video"]);
-    expect(lireCommeLeStudio(corps).map((p) => p.type)).toEqual(["video"]);
-  });
-
-  it("le filtre de réseaux ne garde que ces réseaux ; semaine vide : liste vide", async () => {
-    process.env.USINE_PORTE_SECRET = SECRET;
-    const m = await monter({ lignes: [ligne("1"), ligne("3", { reseau: "instagram" })] });
-    const filtre = (await (await m.POST(demande({ debut: LUNDI, reseaux: ["instagram"] }))).json()) as { propositions: { reseau: string }[] };
-    expect(filtre.propositions.map((p) => p.reseau)).toEqual(["instagram"]);
-    const vide = await monter();
-    expect(await (await vide.POST(demande({ debut: LUNDI }))).json()).toEqual({ propositions: [] });
-  });
-
-  it("ne bouge pas un jour fixé ni une ligne déjà au Studio : ils ne sont pas reproposés", async () => {
-    process.env.USINE_PORTE_SECRET = SECRET;
-    const m = await monter({ lignes: [ligne("1", { date_choisie: true }), ligne("2", { commandee: true }), ligne("3", { deplacable: false })] });
-    expect(await (await m.POST(demande({ debut: LUNDI }))).json()).toEqual({ propositions: [] });
-  });
-
-  it("« Tout arrêter » : aucune proposition, une phrase, et la base n'est pas lue", async () => {
-    process.env.USINE_PORTE_SECRET = SECRET;
-    const m = await monter({ lignes: [ligne("1")], arrete: true });
-    const r = await m.POST(demande({ debut: LUNDI }));
-    expect(r.status).toBe(200);
-    expect(await r.json()).toEqual({ propositions: [], arrete: true, message: "Tout est arrêté : rien n'est parti." });
+    expect(r.status).toBe(409);
+    expect(await r.json()).toEqual({ code: "arrete", erreur: "Tout est arrêté dans l'Usine : aucune semaine n'est proposée. Rallumez depuis « Tout arrêter » dans l'Usine." });
     expect(m.requete).not.toHaveBeenCalled();
-  });
-});
-
-describe("porte · semaine · lecture seule", () => {
-  it("n'écrit rien (que des SELECT), ne journalise pas, ne commande rien, n'appelle pas le Studio (passerelles)", async () => {
-    process.env.USINE_PORTE_SECRET = SECRET;
-    const m = await monter({ lignes: [ligne("1"), ligne("2")] });
-    expect((await m.POST(demande({ debut: LUNDI }))).status).toBe(200);
-    expect(m.requete).toHaveBeenCalled();
-    for (const [sql] of m.requete.mock.calls as unknown as [string][]) expect(sql, sql).toMatch(/^\s*SELECT\b/);
-    for (const [sql] of m.requete.mock.calls as unknown as [string][]) expect(sql).not.toMatch(/\b(INSERT|UPDATE|DELETE|TRUNCATE|DROP|pg_advisory)/i);
-    expect(m.transaction).not.toHaveBeenCalled();
     expect(m.journaliser).not.toHaveBeenCalled();
-    expect(m.proposerAuStudio).not.toHaveBeenCalled();
-    expect(m.appelerStudio).not.toHaveBeenCalled();
-    expect(m.lireOccupesDuStudio).not.toHaveBeenCalled();
-  });
-
-  it("ne dépend pas de l'interrupteur de planification : éteint, la route répond quand même", async () => {
-    process.env.USINE_PORTE_SECRET = SECRET;
-    const m = await monter({ lignes: [ligne("1")] }); // interrupteurAllume simulé toujours faux
-    expect(((await (await m.POST(demande({ debut: LUNDI }))).json()) as { propositions: unknown[] }).propositions).toHaveLength(1);
   });
 });
 
 const url = process.env.DATABASE_URL;
+const SERVICES = ["formation", "audit", "coaching", "integration"];
+const FAMILLES = ["scène vécue", "constat partagé", "contre-pied", "énumération", "idée reçue corrigée"];
+const METIERS = ["essai.un", "essai.deux", "essai.trois"];
+const AVANT = new Date("2099-03-01T10:00:00Z");
+
+type Reponse = { propositions: LigneSemainePorte[]; message?: string };
 
 describe.skipIf(!url)("porte · semaine · sur une vraie base", () => {
   const schema = `essai_${randomBytes(4).toString("hex")}`;
   let p: Pool;
+  let requetes: string[] = [];
+
   beforeAll(async () => {
     const admin = new Pool({ connectionString: url });
     await admin.query(`CREATE SCHEMA ${schema}`);
     await admin.end();
-    p = new Pool({ connectionString: url, options: `-c search_path=${schema}` });
+    // Une seule connexion : chaque essai tourne dans une transaction annulée à la fin (aucune suppression, rien ne passe d'un essai à l'autre).
+    p = new Pool({ connectionString: url, options: `-c search_path=${schema}`, max: 1 });
     vi.resetModules();
     for (const m of ["@/arret", "@/lib/base", "@/donnees", "@/passerelles/studio", "@/commandes/service", "@/reglages"]) vi.doUnmock(m);
     const { utiliserPool } = await import("@/lib/base");
     utiliserPool(p);
     const { jouerMigrations } = await import("@/lib/migrations");
     await jouerMigrations(p);
+    await p.query("INSERT INTO secteur (code, nom) VALUES ('essai', 'Secteur d''essai')");
+    for (const [i, s] of SERVICES.entries()) await p.query("INSERT INTO service (code, nom, ordre) VALUES ($1, $1, $2) ON CONFLICT (code) DO NOTHING", [s, i]);
+    await p.query("INSERT INTO sujet (code, titre) VALUES ('essai.famille-1', 'Famille d''essai')");
+    for (const code of METIERS) {
+      await p.query("INSERT INTO metier (code, secteur, nom, allume, etat) VALUES ($1, 'essai', $2, true, 'valide')", [code, `Métier ${code}`]);
+      for (const s of SERVICES) {
+        await p.query("INSERT INTO douleur (code, cible, services, dite, etat) VALUES ($1, $2, $3, 'Une douleur dite.', 'valide')", [`${code}.d${SERVICES.indexOf(s) + 1}`, code, s]);
+        for (const k of [1, 2, 3]) {
+          await p.query("INSERT INTO cas_usage (code, cible, service, titre, source, sujet, etat) VALUES ($1, $2, $3, $4, 'https://exemple.example.com/source', $5, 'valide')", [
+            `${code}.${s}.c0${k}`, code, s, `Cas ${code} ${s} ${k}`, code === "essai.un" ? "essai.famille-1" : null,
+          ]);
+        }
+      }
+    }
+    for (const t of ["TPE", "PME", "ETI", "GE"]) await p.query("INSERT INTO taille (code, nom, poids, actif) VALUES ($1, $1, '1', 'oui')", [t]);
+    for (const [i, f] of FAMILLES.entries()) await p.query("INSERT INTO accroche (code, famille, types_contenu, modele, etat) VALUES ($1, $2, 'video ; carrousel', 'Un modèle.', 'valide')", [`accroche.essai-${i}`, f]);
+    await p.query("INSERT INTO format_video (code, nom, statut, en_lot, etat) VALUES ('tableau-anime', 'Tableau animé', 'actif', 'oui', 'valide')");
+    await p.query("INSERT INTO appel (code, reseaux, cible, type_contenu, type, objectif, dit, etat) VALUES ('fin-if-question', 'instagram ; facebook', 'clients', 'video ; carrousel', 'question', 'QUESTION', 'Et chez vous ?', 'valide')");
+    for (const r of ["instagram", "facebook"]) {
+      await p.query("INSERT INTO compte (code, reseau, identifiant, nature, nom, actif, etat) VALUES ($1, $2, $3, 'page', 'Compte fictif', true, 'valide')", [`${r}:essai`, r, "essai"]);
+    }
   });
   afterAll(async () => {
     await p?.end();
@@ -254,27 +209,231 @@ describe.skipIf(!url)("porte · semaine · sur une vraie base", () => {
     await admin.query(`DROP SCHEMA ${schema} CASCADE`);
     await admin.end();
   });
+  beforeEach(async () => {
+    process.env.USINE_PORTE_SECRET = SECRET;
+    await p.query("BEGIN");
+  });
+  afterEach(async () => {
+    await p.query("ROLLBACK");
+  });
 
-  it("calendrier_ligne et commande_studio sont inchangées après l'appel, la réponse est lue par le Studio", async () => {
-    const instant = instantDeParis(LUNDI, "09:00");
-    await p.query(`INSERT INTO compte (code, reseau, identifiant, nature, nom) VALUES ('tiktok:compte-fictif-1', 'tiktok', 'compte-fictif-1', 'profil', 'Compte fictif')`);
-    const l1 = await p.query(`INSERT INTO calendrier_ligne (reseau, compte, type_contenu, prevue_le) VALUES ('tiktok', 'tiktok:compte-fictif-1', 'video', $1) RETURNING id`, [instant]);
-    await p.query(`INSERT INTO calendrier_ligne (reseau, compte, type_contenu, prevue_le) VALUES ('tiktok', 'tiktok:compte-fictif-1', 'carrousel', $1)`, [instantDeParis(LUNDI, "12:00")]);
-    await p.query(
-      `INSERT INTO commande_studio (cle, calendrier_ligne, reseau, compte, type_contenu, jour, instant, etat_envoi, etat_studio) VALUES ('cle-essai-1', $1, 'tiktok', 'tiktok:compte-fictif-1', 'video', $2, $3, 'envoyee', 'recue')`,
-      [l1.rows[0].id, LUNDI, instant],
-    );
-    const instantane = async () => ({
-      lignes: (await p.query(`SELECT * FROM calendrier_ligne ORDER BY id`)).rows,
-      commandes: (await p.query(`SELECT * FROM commande_studio ORDER BY cle`)).rows,
-      journal: (await p.query(`SELECT count(*)::int AS n FROM journal`)).rows,
-    });
-    const avant = await instantane();
-    expect(avant.lignes).toHaveLength(2);
+  const semaine = async (maintenant: Date = AVANT, reseaux?: never[]) => {
     const { lireSemaineProposee } = await import("@/planification/lecture");
-    const reponse = await lireSemaineProposee(LUNDI, undefined, new Date("2099-01-01T00:00:00Z"));
-    expect(reponse.propositions).toHaveLength(1); // la ligne déjà commandée reste fixe, l'autre est proposée
-    expect(lireCommeLeStudio(JSON.parse(JSON.stringify(reponse)))).toHaveLength(1);
-    expect(await instantane()).toEqual(avant);
+    return JSON.parse(JSON.stringify(await lireSemaineProposee(LUNDI, reseaux, maintenant))) as Reponse;
+  };
+  const erreurDe = async (maintenant: Date = AVANT) => {
+    const { lireSemaineProposee } = await import("@/planification/lecture");
+    return lireSemaineProposee(LUNDI, undefined, maintenant).then(
+      () => null,
+      (e: { statut: number; code: string; message: string }) => ({ statut: e.statut, code: e.code, phrase: e.message }),
+    );
+  };
+  const retenir = async (s: SujetPropose, vise?: { jour: string; reseau: string }) => {
+    const { POST } = await import("@/app/api/porte/sujets/retenir/route");
+    const r = await POST(
+      new Request("http://localhost/api/porte/sujets/retenir", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${SECRET}` },
+        body: JSON.stringify({ signature: s.signature, parts: s.parts, type_contenu: s.type_contenu, reference_studio: "0042-AV-TT", ...vise }),
+      }),
+    );
+    expect(r.status).toBe(200);
+  };
+
+  it("1 · semaine vide, un métier allumé, Instagram et Facebook : 12 propositions lues par le Studio, sans compte", async () => {
+    const { POST } = await import("@/app/api/porte/planification/semaine/route");
+    const r = await POST(demande({ debut: LUNDI }));
+    expect(r.status).toBe(200);
+    const texte = await r.text();
+    const corps = JSON.parse(texte) as Reponse;
+    expect(Object.keys(corps)).toEqual(["propositions"]);
+    expect(corps.propositions).toHaveLength(12);
+    for (const l of corps.propositions) {
+      expect(l.jour >= LUNDI && l.jour <= "2099-03-08").toBe(true);
+      expect(["09:00", "12:30", "18:00"]).toContain(l.heure);
+      expect(l.type).toBe("video");
+      expect(l.titre?.length).toBeGreaterThan(0);
+      expect(l.cle).toMatch(/^[0-9a-f]{64}$/);
+      expect(l.pourquoi).toMatch(/^Métier essai\.\w+ · Un créneau libre qui respecte votre rythme \(6 par semaine\)\.$/);
+      expect(l.sujet && l.sujet.signature === signature(l.sujet.parts)).toBe(true);
+      expect(l.sujet?.type_contenu).toBe("video");
+      expect(l.sujet?.reseaux).toEqual(["instagram", "facebook"]);
+      expect(Object.keys(l)).not.toContain("compte");
+    }
+    expect(new Set(corps.propositions.map((l) => l.cle)).size).toBe(12);
+    expect(corps.propositions.filter((l) => l.reseau === "instagram")).toHaveLength(6);
+    expect(texte).not.toMatch(/"compte"|instagram:essai|facebook:essai/);
+    expect(lireCommeLeStudio(corps)).toHaveLength(12);
+  });
+
+  it("2 · deux appels au même instant, puis à 8 h et 10 h le même jour : mêmes sujets et mêmes clés, hors créneaux passés", async () => {
+    const a = await semaine(AVANT);
+    expect(await semaine(AVANT)).toEqual(a);
+    const huit = await semaine(instantDeParis(LUNDI, "08:00"));
+    const dix = await semaine(instantDeParis(LUNDI, "10:00"));
+    expect(huit.propositions.length).toBeGreaterThan(dix.propositions.length);
+    expect(dix.propositions).toEqual(huit.propositions.filter((l) => !(l.jour === LUNDI && l.heure! <= "10:00")));
+    // 8 h : même chose qu'avant le jour (rien n'est passé).
+    expect(huit.propositions.map((l) => l.cle).sort()).toEqual(a.propositions.filter((l) => !(l.jour === LUNDI && l.heure! <= "08:00")).map((l) => l.cle).sort());
+  });
+
+  it("3 · seules des requêtes SELECT, aucun journal, aucune ligne écrite (aucun appel sortant : la garde du dépôt le vérifie)", async () => {
+    const compte = async () => (await p.query("SELECT (SELECT count(*) FROM deja_fabrique) + (SELECT count(*) FROM lot) + (SELECT count(*) FROM lot_ligne) + (SELECT count(*) FROM calendrier_ligne) + (SELECT count(*) FROM commande_studio) + (SELECT count(*) FROM journal) AS n")).rows[0].n;
+    const avant = await compte();
+    const sauve = p.query.bind(p);
+    requetes = [];
+    const espion = vi.spyOn(p, "query").mockImplementation(((sql: unknown, ...reste: unknown[]) => {
+      requetes.push(typeof sql === "string" ? sql : (sql as { text: string }).text);
+      return (sauve as (...a: unknown[]) => unknown)(sql, ...reste);
+    }) as never);
+    try {
+      expect((await semaine()).propositions).toHaveLength(12);
+    } finally {
+      espion.mockRestore();
+    }
+    expect(requetes.length).toBeGreaterThan(0);
+    for (const sql of requetes) {
+      expect(sql, sql).toMatch(/^\s*SELECT\b/);
+      expect(sql).not.toMatch(/\b(INSERT|UPDATE|DELETE|TRUNCATE|DROP|pg_advisory)\b/i);
+    }
+    expect(await compte()).toBe(avant);
+  });
+
+  it("4 · tirage, lots, calendrier, planification, métiers éteints : la réponse reste 200", async () => {
+    const { interrupteurAllume } = await import("@/donnees");
+    for (const code of ["tirage", "lots", "calendrier", "planification", "metiers"]) expect(await interrupteurAllume(code)).toBe(false);
+    const { POST } = await import("@/app/api/porte/planification/semaine/route");
+    expect((await POST(demande({ debut: LUNDI }))).status).toBe(200);
+  });
+
+  it("5 · chaque manque : 409, son code, sa phrase en français", async () => {
+    await p.query("UPDATE metier SET allume = false");
+    expect(await erreurDe()).toEqual({
+      statut: 409,
+      code: "aucun_metier_allume",
+      phrase: "Aucun métier n'est allumé dans l'Usine : allumez au moins un métier dans « Mes métiers » (si l'écran est éteint : Réglages › Interrupteurs › Écran « Métiers »), puis redemandez la semaine.",
+    });
+    await p.query("UPDATE metier SET allume = true");
+
+    await p.query("UPDATE compte SET actif = false");
+    expect(await erreurDe()).toEqual({
+      statut: 409,
+      code: "aucun_compte",
+      phrase: "Aucun compte actif pour ces réseaux dans les bases : ajoutez un compte Instagram ou Facebook aux bases, puis redemandez la semaine.",
+    });
+    await p.query("UPDATE compte SET actif = true");
+
+    const zero = { min: 0, max: 0 };
+    await p.query(`INSERT INTO reglage (cle, valeur) VALUES ('rythmes', $1)`, [JSON.stringify({ instagram: zero, facebook: zero })]);
+    expect(await erreurDe()).toEqual({ statut: 409, code: "rythme_zero", phrase: "Tous vos réseaux sont au repos (rythme à zéro) : réglez un rythme dans Réglages." });
+    await p.query("UPDATE reglage SET valeur = '{}' WHERE cle = 'rythmes'");
+
+    await p.query("UPDATE cas_usage SET etat = 'propose'");
+    const sujet = await erreurDe();
+    expect(sujet?.statut).toBe(409);
+    expect(sujet?.code).toBe("aucun_sujet");
+    expect(sujet?.phrase).toMatch(/^L'Usine n'a trouvé aucun sujet neuf pour cette semaine : \S/);
+    await p.query("UPDATE cas_usage SET etat = 'valide'");
+
+    await p.query("UPDATE format_video SET etat = 'propose'");
+    expect(await erreurDe()).toEqual({ statut: 409, code: "aucun_format", phrase: "Aucun format vidéo n'est en service dans les bases." });
+    await p.query("UPDATE format_video SET etat = 'valide'");
+
+    const passee = await erreurDe(new Date("2099-03-20T10:00:00Z"));
+    expect(passee).toEqual({ statut: 409, code: "semaine_passee", phrase: "Cette semaine est passée : choisissez une semaine à venir." });
+    // Par la route : le corps rendu au Studio est { erreur, code }.
+    await p.query("UPDATE metier SET allume = false");
+    const { POST } = await import("@/app/api/porte/planification/semaine/route");
+    const r = await POST(demande({ debut: LUNDI }));
+    expect(r.status).toBe(409);
+    expect(await r.json()).toMatchObject({ code: "aucun_metier_allume", erreur: expect.stringContaining("Aucun métier n'est allumé") });
+  });
+
+  it("5 bis · semaine déjà pleine selon les rythmes : 409 semaine_pleine", async () => {
+    for (const r of ["instagram", "facebook"]) {
+      for (let i = 0; i < 6; i++) {
+        await p.query(`INSERT INTO calendrier_ligne (reseau, compte, type_contenu, prevue_le, date_choisie) VALUES ($1, $2, 'video', $3, true)`, [r, `${r}:essai`, instantDeParis(`2099-03-0${2 + i}`, "12:30")]);
+      }
+    }
+    expect(await erreurDe()).toEqual({ statut: 409, code: "semaine_pleine", phrase: "La semaine est déjà pleine selon vos rythmes : rien de plus à proposer." });
+  });
+
+  it("6 · un sujet déjà fabriqué n'est jamais proposé", async () => {
+    const a = await semaine();
+    const vus = a.propositions.slice(0, 5).map((l) => l.sujet!);
+    for (const s of vus) await retenir(s);
+    const b = await semaine();
+    const interdites = new Set(vus.map((s) => s.signature));
+    expect(b.propositions.length).toBeGreaterThan(0);
+    for (const l of b.propositions) expect(interdites.has(l.sujet!.signature)).toBe(false);
+  });
+
+  it("7 · deux lignes fixes Instagram : seulement quatre créneaux Instagram tirés", async () => {
+    for (const j of ["02", "04"]) {
+      await p.query(`INSERT INTO calendrier_ligne (reseau, compte, type_contenu, prevue_le, date_choisie) VALUES ('instagram', 'instagram:essai', 'video', $1, true)`, [instantDeParis(`2099-03-${j}`, "12:30")]);
+    }
+    const r = await semaine();
+    expect(r.propositions.filter((l) => l.reseau === "instagram")).toHaveLength(4);
+    expect(r.propositions.filter((l) => l.reseau === "facebook")).toHaveLength(6);
+    // Les créneaux pris par les lignes fixes ne sont pas reproposés.
+    expect(r.propositions.some((l) => l.reseau === "instagram" && (l.jour === "2099-03-02" || l.jour === "2099-03-04") && l.heure === "12:30")).toBe(false);
+  });
+
+  it("8 · un sujet retenu avec jour et réseau de la semaine : son créneau disparaît, les autres gardent clé et sujet", async () => {
+    const a = await semaine();
+    const choisie = a.propositions[3];
+    await retenir(choisie.sujet!, { jour: choisie.jour, reseau: choisie.reseau });
+    const b = await semaine();
+    expect(b.propositions).toHaveLength(11);
+    expect(b.propositions.some((l) => l.cle === choisie.cle)).toBe(false);
+    expect(b.propositions).toEqual(a.propositions.filter((l) => l.cle !== choisie.cle));
+    // Sans jour ni réseau, un sujet retenu n'est pas un créneau pris : seul le sujet est écarté.
+  });
+
+  it("9 · un réseau sans compte actif : ses créneaux sont absents, et `message` le dit", async () => {
+    await p.query("UPDATE compte SET actif = false WHERE reseau = 'facebook'");
+    const r = await semaine();
+    expect(r.propositions.every((l) => l.reseau === "instagram")).toBe(true);
+    expect(r.propositions).toHaveLength(6);
+    expect(r.message).toBe("Facebook n'est pas proposé : aucun compte actif.");
+    expect(lireCommeLeStudio(r)).toHaveLength(6);
+  });
+
+  it("`ressemble_a` : le titre du dernier contenu déjà fabriqué de la même famille, avec sa date ; absent sinon", async () => {
+    await p.query(`INSERT INTO deja_fabrique (type_contenu, metier, service, cas_usage, format, structure, signature, fabrique_le) VALUES ('video', 'essai.un', 'audit', 'essai.un.audit.c01', 'tableau-anime', 'scène vécue', 'sig-ancienne-1', '2099-02-12T10:00:00Z')`);
+    const r = await semaine();
+    const deLaFamille = r.propositions.filter((l) => l.sujet?.sujet?.code === "essai.famille-1");
+    expect(deLaFamille.length).toBeGreaterThan(0);
+    for (const l of deLaFamille) expect(l.ressemble_a).toBe("« Cas essai.un audit 1 », fabriqué le 12/02");
+    for (const l of r.propositions.filter((x) => !x.sujet?.sujet)) expect(l.ressemble_a).toBeUndefined();
+  });
+
+  it("des lignes déjà au calendrier restent proposées comme avant : clé de la ligne, aucun sujet", async () => {
+    const l = await p.query(`INSERT INTO calendrier_ligne (reseau, compte, type_contenu, prevue_le) VALUES ('instagram', 'instagram:essai', 'video', $1) RETURNING id::text`, [instantDeParis("2099-03-05", "09:00")]);
+    const r = await semaine();
+    const { cleSemaine } = await import("@/planification/lecture");
+    const reprise = r.propositions.find((x) => x.cle === cleSemaine(LUNDI, l.rows[0].id));
+    expect(reprise).toBeDefined();
+    expect(reprise?.sujet).toBeUndefined();
+    expect(JSON.stringify(r)).not.toMatch(/"compte"/);
+  });
+});
+
+describe("porte · semaine · pièces pures", () => {
+  it("la graine ne dépend que du lundi ; minuit de Paris ; créneaux virtuels triés après les vraies lignes", async () => {
+    vi.doMock("server-only", () => ({}));
+    const { graineDeLaSemaine, minuitParis, lignesVirtuelles, cleTirage } = await import("@/planification/semaine-tirage");
+    expect(graineDeLaSemaine(LUNDI)).toBe(graineDeLaSemaine(LUNDI));
+    expect(graineDeLaSemaine(LUNDI)).not.toBe(graineDeLaSemaine("2099-03-09"));
+    expect(graineDeLaSemaine(LUNDI)).toBeGreaterThanOrEqual(0);
+    expect(graineDeLaSemaine(LUNDI)).toBeLessThanOrEqual(2 ** 31 - 1);
+    expect(minuitParis(new Date("2099-03-04T17:45:00Z")).toISOString()).toBe("2099-03-03T23:00:00.000Z");
+    expect(minuitParis(new Date("2099-07-04T21:30:00Z")).toISOString()).toBe("2099-07-03T22:00:00.000Z");
+    const v = lignesVirtuelles(["instagram", "tiktok", "facebook"], { ...RYTHMES_DEFAUT, instagram: { min: 2, max: 2 }, facebook: { min: 1, max: 1 } }, { instagram: "instagram:essai", facebook: "facebook:essai" });
+    expect(v.map((l) => l.id)).toEqual(["v-instagram-01", "v-instagram-02", "v-facebook-01"]);
+    expect(v.every((l) => l.type_contenu === "video" && !l.fixe)).toBe(true);
+    expect(["12", "7"].every((id) => id.localeCompare("v-instagram-01", "en", { numeric: true }) < 0)).toBe(true);
+    expect(cleTirage(LUNDI, "instagram", "sig")).toMatch(/^[0-9a-f]{64}$/);
+    expect(cleTirage(LUNDI, "instagram", "sig")).not.toBe(cleTirage(LUNDI, "facebook", "sig"));
   });
 });

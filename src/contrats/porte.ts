@@ -210,6 +210,4 @@ export interface LigneSemainePorte {
 export interface ReponseSemaine {
   propositions: LigneSemainePorte[];
   message?: string;
-  /** Ancien : « Tout arrêter » en `200`. Plus rendu une fois la PR « tirage de la semaine » fusionnée, qui retire ce champ. */
-  arrete?: true;
 }
