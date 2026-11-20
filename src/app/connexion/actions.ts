@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import { suiteSure } from "@/lib/suite-sure";
 import {
   commencerSecondCode,
+  entrerCodeCourriel,
+  renvoyerCodeCourriel,
   entrerCodeSecours,
   entrerSecondCode,
   enregistrerSecondCode,
@@ -71,4 +73,19 @@ export async function codeSecours(_avant: EtatConnexion, formulaire: FormData): 
   const r = await entrerCodeSecours(String(formulaire.get("code") ?? ""));
   if (!r.ok) return { message: r.message };
   redirect(versSecondCode(formulaire.get("suite")));
+}
+
+// SCC-3 · Second code par courriel (session partielle exigée : services/auth.ts).
+
+export type EtatRenvoi = { message: string | null; envoye?: boolean };
+
+export async function codeCourriel(_avant: EtatConnexion, formulaire: FormData): Promise<EtatConnexion> {
+  const r = await entrerCodeCourriel(String(formulaire.get("code") ?? ""));
+  if (!r.ok) return { message: r.message };
+  redirect(suiteSure(formulaire.get("suite")));
+}
+
+export async function renvoyerCode(): Promise<EtatRenvoi> {
+  const r = await renvoyerCodeCourriel();
+  return r.ok ? { message: "Un nouveau code vient de partir.", envoye: true } : { message: r.message };
 }

@@ -12,7 +12,7 @@
    `SELECT suspendre_code_courriel('Will', 'session du PC', '<nom de la session qui la fait>');`
    (ou `'de vive voix'` à la place de `'session du PC'`). Elle archive la mise en service en cours, éteint « Second code par courriel », archive les codes non utilisés, remet à zéro les essais du compte et note la suspension (qui, quand, quelle session) dans `second_code_courriel_suspension`. Elle peut être rejouée sans dégât. Aucune ligne n'est supprimée.
 3. Se connecter avec le mot de passe seul.
-4. Corriger la configuration du courriel sur le serveur (fournisseur, région, clé, adresse d'expédition) : ce sont des valeurs du fichier d'environnement, posées par le fondateur lui-même, jamais par le dépôt ni par une PR.
+4. Corriger la configuration du courriel sur le serveur (fournisseur, clé, adresse d'expédition) : ce sont des valeurs du fichier d'environnement, posées par le fondateur lui-même, jamais par le dépôt ni par une PR.
 5. Refaire l'essai de mise en service depuis Réglages › Second code.
 
 ## À savoir

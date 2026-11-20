@@ -55,7 +55,7 @@ describe.skipIf(!url)("interrupteurs de connexion", () => {
   });
 
   it("TOTP sans téléphone : refusé, rien n'est écrit, rien au journal", async () => {
-    await expect(changerInterrupteur(TOTP, true)).rejects.toThrow("Aucun téléphone n'est enregistré.");
+    expect(await changerInterrupteur(TOTP, true)).toEqual({ ok: false, message: "Aucun téléphone n'est enregistré." });
     expect(await etat(TOTP)).toBe(false);
     expect(await journal()).toBe(0);
   });
@@ -63,14 +63,14 @@ describe.skipIf(!url)("interrupteurs de connexion", () => {
   it("TOTP avec un téléphone confirmé : accepté", async () => {
     const [{ id }] = (await p.query(`INSERT INTO second_code (secret_chiffre, confirme_le) VALUES ('x', now()) RETURNING id::text AS id`)).rows;
     bocal.set(NOM_COOKIE_SESSION, await signerJeton({ jti: "s", rc: true, sc: id }, 3600));
-    await changerInterrupteur(TOTP, true);
+    expect(await changerInterrupteur(TOTP, true)).toEqual({ ok: true });
     expect(await etat(TOTP)).toBe(true);
     expect(await journal()).toBe(1);
     await p.query(`UPDATE interrupteur SET allume = false WHERE code = $1`, [TOTP]);
   });
 
   it("courriel par le bouton : refusé", async () => {
-    await expect(changerInterrupteur(COURRIEL, true)).rejects.toThrow();
+    expect((await changerInterrupteur(COURRIEL, true)).ok).toBe(false);
     expect(await etat(COURRIEL)).not.toBe(true);
   });
 });

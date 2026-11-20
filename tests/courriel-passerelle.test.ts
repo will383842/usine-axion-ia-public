@@ -29,13 +29,11 @@ describe("passerelle courriel", () => {
     expect(JSON.parse(appels[0].init.body)).toEqual({ sender: { email: "expediteur-essai@example.com" }, to: [{ email: "dest-essai@example.com" }], subject: "Objet", textContent: "Corps" });
   });
 
-  it("zeptomail : hôte selon la région (eu ou com), jeton Zoho-enczapikey", async () => {
+  it("zeptomail : seul l'hôte documenté (.com), jeton Zoho-enczapikey ; une ancienne variable de région ne change rien", async () => {
     process.env.COURRIEL_FOURNISSEUR = "zeptomail";
     process.env.COURRIEL_REGION = "eu";
     await envoyerCourriel("dest-essai@example.com", "Objet", "Corps");
-    process.env.COURRIEL_REGION = "com";
-    await envoyerCourriel("dest-essai@example.com", "Objet", "Corps");
-    expect(appels.map((a) => a.url)).toEqual(["https://api.zeptomail.eu/v1.1/email", "https://api.zeptomail.com/v1.1/email"]);
+    expect(appels.map((a) => a.url)).toEqual(["https://api.zeptomail.com/v1.1/email"]);
     expect(appels[0].init.headers.authorization).toBe("Zoho-enczapikey cle-d-essai");
     expect(JSON.parse(appels[0].init.body)).toEqual({
       from: { address: "expediteur-essai@example.com" },
@@ -48,9 +46,8 @@ describe("passerelle courriel", () => {
   it("variable absente ou inconnue, région inconnue, clé ou expéditeur absent : aucun appel", async () => {
     const rien = { envoye: false, statut: 0 };
     expect(await envoyerCourriel("d@example.com", "o", "c")).toEqual(rien);
-    for (const [f, r] of [["autre", ""], ["zeptomail", ""], ["zeptomail", "us"]]) {
+    for (const f of ["autre", ""]) {
       process.env.COURRIEL_FOURNISSEUR = f;
-      process.env.COURRIEL_REGION = r;
       expect(await envoyerCourriel("d@example.com", "o", "c")).toEqual(rien);
     }
     process.env.COURRIEL_FOURNISSEUR = "brevo";

@@ -44,6 +44,14 @@ const ACTIONS_DE_CONNEXION: Record<string, { garde: string; corps: string }> = {
     garde: "entrerSecondCode", // exige la session partielle
     corps: 'const r = await entrerSecondCode(String(formulaire.get("code") ?? "")); if (!r.ok) return { message: r.message }; redirect(suiteSure(formulaire.get("suite")));',
   },
+  codeCourriel: {
+    garde: "entrerCodeCourriel", // exige la session partielle
+    corps: 'const r = await entrerCodeCourriel(String(formulaire.get("code") ?? "")); if (!r.ok) return { message: r.message }; redirect(suiteSure(formulaire.get("suite")));',
+  },
+  renvoyerCode: {
+    garde: "renvoyerCodeCourriel", // exige la session partielle
+    corps: 'const r = await renvoyerCodeCourriel(); return r.ok ? { message: "Un nouveau code vient de partir.", envoye: true } : { message: r.message };',
+  },
   codeSecours: {
     garde: "entrerCodeSecours", // exige la session partielle
     corps: 'const r = await entrerCodeSecours(String(formulaire.get("code") ?? "")); if (!r.ok) return { message: r.message }; redirect(versSecondCode(formulaire.get("suite")));',

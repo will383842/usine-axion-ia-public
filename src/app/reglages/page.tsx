@@ -31,6 +31,7 @@ const LIGNES: Ligne[] = [
   { href: "/reglages/comptes", titre: "Mes comptes", aide: "Le lien du profil de chacun de vos comptes." },
   { href: "/reglages/oppositions", titre: "Personnes qui ont dit STOP", aide: "Les personnes qui ne veulent plus rien recevoir : on ne leur écrit plus jamais." },
   { href: "/reglages/mot-de-passe", titre: "Mon mot de passe", aide: "Changer le mot de passe de l'Usine." },
+  { href: "/reglages/second-code", titre: "Second code par courriel", aide: "Essayer l'envoi d'un code à votre adresse habituelle ; s'il réussit, il s'allume." },
 ];
 
 const TECHNICIEN: Ligne[] = [
