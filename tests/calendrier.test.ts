@@ -86,3 +86,70 @@ describe.skipIf(!url)("calendrier · changerLeJour en base", () => {
     expect(r.j).toBe(jourDans(5));
   });
 });
+
+const schemaCompte = `essai_${randomBytes(4).toString("hex")}`;
+
+describe.skipIf(!url)("calendrier · compte actif des lignes", () => {
+  let q: Pool;
+  beforeAll(async () => {
+    const admin = new Pool({ connectionString: url });
+    await admin.query(`CREATE SCHEMA ${schemaCompte}`);
+    await admin.end();
+    q = new Pool({ connectionString: url, options: `-c search_path=${schemaCompte}` });
+    const { utiliserPool } = await import("@/lib/base");
+    const { jouerMigrations } = await import("@/lib/migrations");
+    utiliserPool(q);
+    await jouerMigrations(q);
+    await q.query("UPDATE interrupteur SET allume = true WHERE code = 'calendrier'");
+  });
+  afterAll(async () => {
+    await q?.end();
+  });
+
+  const compte = (code: string, reseau: string, nature: string, actif = true, etat = "valide") =>
+    q.query(`INSERT INTO compte (code, reseau, identifiant, nature, nom, actif, etat) VALUES ($1, $2, $3, $4, 'Compte fictif', $5, $6)`, [code, reseau, code.split(":")[1], nature, actif, etat]);
+  const commande = async (n: number, reseaux: string[]) => {
+    await q.query(`INSERT INTO lot (id, numero, nombre, plafond_eur, etat) VALUES ('L${n}', ${n}, 3, 5, 'commande')`);
+    await q.query(`INSERT INTO lot_ligne (id, lot, rang, type_contenu, reseaux, repere) VALUES ('L${n}-1', 'L${n}', 1, 'video', $1, 'usine:L${n}-1')`, [reseaux]);
+  };
+  const lire = async (ligne: string) => (await q.query(`SELECT reseau, compte FROM calendrier_ligne WHERE lot_ligne = $1 ORDER BY reseau`, [ligne])).rows;
+
+  it("le placement remplit le compte actif du réseau ; une page passe avant un profil, puis l'ordre du code ; sans compte actif la ligne est créée quand même", async () => {
+    await compte("instagram:profil-b", "instagram", "profil");
+    await compte("instagram:page-z", "instagram", "page");
+    await compte("instagram:page-a", "instagram", "page");
+    await compte("facebook:inactif", "facebook", "page", false);
+    await compte("linkedin:retire", "linkedin", "page", true, "retire");
+    await commande(801, ["instagram", "facebook", "linkedin"]);
+    const { placerLesNouveaux } = await import("@/calendrier");
+    expect((await placerLesNouveaux()).ajoutees).toBe(3);
+    expect(await lire("L801-1")).toEqual([
+      { reseau: "facebook", compte: null },
+      { reseau: "instagram", compte: "instagram:page-a" },
+      { reseau: "linkedin", compte: null },
+    ]);
+  });
+
+  it("la migration 043 ne touche ni une ligne archivée, ni une ligne déjà au Studio, ni une ligne qui a déjà un compte", async () => {
+    const { readFileSync } = await import("node:fs");
+    await compte("tiktok:page-a", "tiktok", "page");
+    await compte("tiktok:page-b", "tiktok", "page");
+    const ins = async (colonnes: string, valeurs: string) =>
+      (await q.query(`INSERT INTO calendrier_ligne (reseau, type_contenu, prevue_le${colonnes}) VALUES ('tiktok', 'video', now() + interval '4 days'${valeurs}) RETURNING id::text`)).rows[0].id as string;
+    const libre = await ins("", "");
+    const archivee = await ins(", archive_le", ", now()");
+    const auStudio = await ins(", etat_studio", ", 'en_attente'");
+    const dejaCompte = await ins(", compte", ", 'tiktok:page-b'");
+    const avant = (await q.query(`SELECT id::text, compte, archive_le, etat_studio, modifie_le FROM calendrier_ligne WHERE id::text = ANY($1) ORDER BY id`, [[archivee, auStudio, dejaCompte]])).rows;
+    const sql = readFileSync("migrations/043-compte-des-lignes.sql", "utf8");
+    await q.query(sql);
+    await q.query(sql); // rejouable
+    const compteDe = async (id: string) => (await q.query(`SELECT compte FROM calendrier_ligne WHERE id::text = $1`, [id])).rows[0].compte;
+    expect(await compteDe(libre)).toBe("tiktok:page-a");
+    expect(await compteDe(archivee)).toBeNull();
+    expect(await compteDe(auStudio)).toBeNull();
+    expect(await compteDe(dejaCompte)).toBe("tiktok:page-b");
+    const apres = (await q.query(`SELECT id::text, compte, archive_le, etat_studio, modifie_le FROM calendrier_ligne WHERE id::text = ANY($1) ORDER BY id`, [[archivee, auStudio, dejaCompte]])).rows;
+    expect(apres).toEqual(avant);
+  });
+});

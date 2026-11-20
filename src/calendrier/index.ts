@@ -3,6 +3,7 @@ import "server-only";
 import { interrupteurAllume, journaliser } from "@/donnees";
 import { requete, transaction } from "@/lib/base";
 import type { Reseau, TypeContenu } from "@/contrats";
+import { comptesActifs } from "./compte-actif";
 import { lireReglagesTirage } from "@/reglages";
 import { FORMATS_PART, type FormatPart } from "@/reglages/modele";
 import {
@@ -67,12 +68,13 @@ export async function placerLesNouveaux(): Promise<{ ajoutees: number; auRepos: 
     );
     if (aPlacer.length === 0) return { ajoutees: 0, auRepos: [] };
     const { placements, sansPlace } = repartir(aPlacer, rythmes, await dejaPrevu(depuis), depuis);
+    const comptes = await comptesActifs();
     const infos = new Map(aPlacer.map((a) => [`${a.ligne}|${a.reseau}`, a]));
     for (const p of placements) {
       const a = infos.get(`${p.ligne}|${p.reseau}`)!;
       await requete(
-        `INSERT INTO calendrier_ligne (lot_ligne, reseau, type_contenu, format, prevue_le) VALUES ($2, $3, $4, $5, ${SQL_INSTANT}) ON CONFLICT DO NOTHING`,
-        [p.jour, p.ligne, p.reseau, a.type_contenu, a.format],
+        `INSERT INTO calendrier_ligne (lot_ligne, reseau, type_contenu, format, compte, prevue_le) VALUES ($2, $3, $4, $5, $6, ${SQL_INSTANT}) ON CONFLICT DO NOTHING`,
+        [p.jour, p.ligne, p.reseau, a.type_contenu, a.format, comptes[p.reseau] ?? null],
       );
     }
     if (placements.length) await journaliser("calendrier", `${placements.length} contenu(s) placé(s) dans le calendrier selon vos rythmes.`);
