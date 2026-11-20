@@ -36,6 +36,12 @@ const MESSAGE_TOTP_ALLUME = "Éteignez d'abord « Second code à la connexion »
 
 type Echec = { ok: false; message: string };
 
+/** Phrases fixes du journal : distinctes pour le code de connexion et le code de mise en service. */
+const PHRASES = {
+  connexion: { envoye: "Code de connexion envoyé.", accepte: "Code de connexion accepté.", impossible: "Envoi du code impossible" },
+  mise_en_service: { envoye: "Code de mise en service envoyé.", accepte: "Code de mise en service accepté.", impossible: "Envoi du code de mise en service impossible" },
+} as const;
+
 const empreinteSession = (jti: string) => empreinte(`jeton:${jti}`);
 
 function codeAleatoire(): string {
@@ -84,10 +90,10 @@ export async function emettreCode(but: ButCode, jti: string): Promise<{ ok: true
   );
   if (!r.envoye) {
     await requete("UPDATE second_code_courriel SET archive_le = now() WHERE id = $1 AND archive_le IS NULL", [emission.id]);
-    await journaliser("connexion", `Envoi du code impossible (statut ${r.statut}).`);
+    await journaliser("connexion", `${PHRASES[but].impossible} (statut ${r.statut}).`);
     return { ok: false, message: MESSAGE_ENVOI_IMPOSSIBLE };
   }
-  await journaliser("connexion", "Code de connexion envoyé.");
+  await journaliser("connexion", PHRASES[but].envoye);
   return { ok: true };
 }
 
@@ -112,7 +118,7 @@ export async function verifierCode(but: ButCode, code: string, jti: string): Pro
     const saisi = code.replace(/\s/g, "");
     if (/^[0-9]{8}$/.test(saisi) && memeEmpreinte(empreinteCodeCourriel(saisi), l.empreinte_code)) {
       await requete("UPDATE second_code_courriel SET utilise_le = now() WHERE id = $1", [l.id]);
-      await journaliser("connexion", "Code de connexion accepté.");
+      await journaliser("connexion", PHRASES[but].accepte);
       return { ok: true };
     }
     await requete("UPDATE second_code_courriel SET essais = essais + 1, archive_le = CASE WHEN essais + 1 >= $2 THEN now() ELSE archive_le END WHERE id = $1", [
@@ -130,7 +136,18 @@ export async function verifierCode(but: ButCode, code: string, jti: string): Pro
  */
 export async function mettreEnService(code: string, jti: string): Promise<{ ok: true; id: string } | Echec> {
   return transaction<{ ok: true; id: string } | Echec>(async () => {
+    // Les deux interrupteurs sont verrouillés (même ordre que changerInterrupteur) : l'allumage simultané de l'application
+    // par le bouton attend la fin de cette transaction, et la vérification qui suit ne peut plus être dépassée.
+    await requete("SELECT 1 FROM interrupteur WHERE code = ANY($1) ORDER BY code FOR UPDATE", [[INTERRUPTEUR_SECOND_CODE, INTERRUPTEUR_COURRIEL]]);
     if (await allume(INTERRUPTEUR_SECOND_CODE)) return { ok: false, message: MESSAGE_TOTP_ALLUME };
+    // Aucun code de mise en service en cours pour cette session : refus SANS compter. Sinon un cookie seul, sans mot de
+    // passe ni code envoyé, userait le compteur du compte et enfermerait le fondateur dehors.
+    const [attendu] = await requete(
+      `SELECT 1 FROM second_code_courriel
+        WHERE session = $1 AND but = 'mise_en_service' AND utilise_le IS NULL AND archive_le IS NULL AND expire_le > now()`,
+      [empreinteSession(jti)],
+    );
+    if (!attendu) return { ok: false, message: MESSAGE_CODE_REFUSE };
     const v = await verifierCode("mise_en_service", code, jti);
     if (!v.ok) return v;
     await requete("UPDATE second_code_courriel_service SET archive_le = now() WHERE archive_le IS NULL");

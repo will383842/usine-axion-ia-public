@@ -4,6 +4,8 @@
  * mot de passe coupe toutes les sessions ouvertes, sans table de sessions.
  * N-26 : `sc` est le téléphone dont le second code a été vérifié. Sans lui, la session n'est que partielle et
  * n'ouvre que /connexion (src/auth/session.ts) ; archiver le téléphone coupe toutes les sessions qui le portent.
+ * SCC-3 : `scm` est la mise en service du second code par courriel (src/auth/exigence.ts) ; en mode courriel, une session
+ * n'est complète que si `scm` égale la mise en service confirmée non archivée.
  * La session partielle porte en plus `etape: "mdp"` (exigée, avec une durée d'au plus 15 min) : un jeton d'avant
  * N-26 (ni `sc` ni `etape`, jusqu'à 30 jours) ne vaut ni session partielle ni session complète.
  */
@@ -21,6 +23,7 @@ export interface ContenuJeton {
   rc: boolean; // rester connecté
   iat?: number;
   sc?: string; // N-26 : téléphone dont le second code a été vérifié (absent : session partielle)
+  scm?: string; // SCC-3 : mise en service du second code par courriel vérifiée
   etape?: "mdp"; // N-26 : session partielle (mot de passe accepté, second code attendu)
   exp?: number;
 }
@@ -38,7 +41,7 @@ export async function empreinteMotDePasse(hashB64?: string): Promise<string> {
 }
 
 export async function signerJeton(contenu: ContenuJeton, dureeSec: number, maintenantSec = Math.floor(Date.now() / 1000)): Promise<string> {
-  return new SignJWT({ rc: contenu.rc, mp: await empreinteMotDePasse(), ...(contenu.sc ? { sc: contenu.sc } : {}), ...(contenu.etape ? { etape: contenu.etape } : {}) })
+  return new SignJWT({ rc: contenu.rc, mp: await empreinteMotDePasse(), ...(contenu.sc ? { sc: contenu.sc } : {}), ...(contenu.scm ? { scm: contenu.scm } : {}), ...(contenu.etape ? { etape: contenu.etape } : {}) })
     .setProtectedHeader({ alg: "HS256" })
     .setJti(contenu.jti)
     .setIssuedAt(maintenantSec)
@@ -90,6 +93,7 @@ export async function verifierJeton(jeton: string | undefined): Promise<ContenuJ
       rc: payload.rc === true,
       iat: typeof payload.iat === "number" ? payload.iat : undefined,
       sc: typeof payload.sc === "string" && payload.sc ? payload.sc : undefined,
+      scm: typeof payload.scm === "string" && payload.scm ? payload.scm : undefined,
       etape: payload.etape === "mdp" ? "mdp" : undefined,
       exp: typeof payload.exp === "number" ? payload.exp : undefined,
     };

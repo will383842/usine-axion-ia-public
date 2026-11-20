@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { etatConnexion } from "@/services/auth";
+import { FormulaireCodeCourriel } from "./FormulaireCodeCourriel";
 import { FormulaireConnexion } from "./FormulaireConnexion";
 import { FormulaireEnregistrement } from "./FormulaireEnregistrement";
 import { FormulairePremiereOuverture } from "./FormulairePremiereOuverture";
@@ -41,6 +42,12 @@ export default async function PageConnexion({ searchParams }: PageProps<"/connex
         <>
           <h1 className="text-3xl font-bold">Votre code</h1>
           <FormulaireSecondCode suite={retour} />
+        </>
+      )}
+      {etat === "code-courriel" && (
+        <>
+          <h1 className="text-3xl font-bold">Votre code</h1>
+          <FormulaireCodeCourriel suite={retour} />
         </>
       )}
       {etat === "fermee" && <h1 className="text-3xl font-bold">L&apos;Usine n&apos;est pas encore ouverte.</h1>}
