@@ -6,14 +6,16 @@ import { allumerCompte } from "./actions";
 export function BoutonCompte({
   code,
   actif,
+  nom,
 }: {
   code: string;
   actif: boolean;
+  nom: string;
 }) {
   return (
     <Annulable
-      libelle={actif ? "Éteindre" : "Allumer"}
-      message={actif ? "Compte éteint." : "Compte allumé."}
+      libelle={`${actif ? "Éteindre" : "Rendre actif"} · ${nom}`}
+      message={actif ? "Compte éteint." : "Compte actif."}
       className={actif ? "bouton-second" : "bouton"}
       action={() => allumerCompte(code, !actif)}
     />

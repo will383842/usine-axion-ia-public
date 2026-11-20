@@ -320,7 +320,7 @@ describe.skipIf(!url)("porte · semaine · sur une vraie base", () => {
       statut: 409,
       code: "aucun_compte",
       phrase:
-        "Aucun compte n'est actif pour ces réseaux : allumez un compte Instagram ou Facebook dans Réglages › « Mes comptes » (si la section est éteinte : Réglages › Interrupteurs › « Allumer ou éteindre un compte »), puis redemandez la semaine.",
+        "Aucun compte n'est actif pour ces réseaux. Réglages › Mes comptes : rendez actif un compte Instagram ou Facebook, puis redemandez la semaine.",
     });
     await p.query("UPDATE compte SET actif = true");
 

@@ -40,4 +40,6 @@ export const COMPTES_DEPART: CompteDepart[] = [
 ];
 
 export const SOURCE_SERVICES = "CONTRATS-ECHANGE.md § 1 (service.code)";
-export const SOURCE_COMPTES = "Buffer, six comptes reliés au 12/10 ; CONTRATS-ECHANGE.md § 1 (compte.code)";
+/** Libellé neutre du diffuseur (le nom de l'outil a changé) : posé sur les nouveaux comptes, et sur les anciens par la migration 046. */
+export const PUBLIEUR_DEPART = "diffuseur";
+export const SOURCE_COMPTES = "Six comptes de départ reliés au 12/10 ; CONTRATS-ECHANGE.md § 1 (compte.code)";

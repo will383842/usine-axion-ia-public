@@ -6,7 +6,9 @@ import { exigerSession } from "@/services/auth";
 import { enregistrerLiensProfil } from "../actions";
 import { Bloc, Entete, Retour } from "../Champs";
 import { BoutonCompte } from "./BoutonCompte";
+import { FormulaireCompte } from "./FormulaireCompte";
 import { INTERRUPTEUR_COMPTES } from "./interrupteur";
+import { avertissementDernierActif } from "./saisie";
 
 export const metadata: Metadata = { title: "Mes comptes" };
 export const dynamic = "force-dynamic";
@@ -64,11 +66,11 @@ export default async function Page({
       </form>
       {comptes.length > 0 ? (
         <section className="flex flex-col gap-4">
-          <h2 className="text-2xl font-bold">Comptes allumés</h2>
+          <h2 className="text-2xl font-bold">Comptes actifs</h2>
           {allumage ? (
             <>
               <p className="text-texte-doux">
-                Seul un compte allumé est pris pour proposer votre semaine.
+                Un compte actif peut recevoir des propositions de la semaine.
                 Chacun est éteint tant que vous n&apos;y avez pas touché.
               </p>
               {comptes
@@ -90,10 +92,16 @@ export default async function Page({
                       </p>
                     </div>
                     <div>
-                      <BoutonCompte code={c.code} actif={c.actif} />
+                      <BoutonCompte code={c.code} actif={c.actif} nom={c.nom ?? c.identifiant} />
                     </div>
+                    {avertissementDernierActif(comptes, c.code) ? (
+                      <p role="note" className="rounded-lg bg-terracotta-doux px-3 py-2 font-semibold text-terracotta-fonce">
+                        {avertissementDernierActif(comptes, c.code)}
+                      </p>
+                    ) : null}
                   </div>
                 ))}
+              <FormulaireCompte />
             </>
           ) : (
             <div className="flex flex-col gap-3 rounded-2xl border border-trait bg-surface p-4">
