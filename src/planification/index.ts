@@ -9,7 +9,6 @@ import { interrupteurAllume, journaliser } from "@/donnees";
 import { requete, transaction } from "@/lib/base";
 import { appelerStudio, lireOccupesDuStudio } from "@/passerelles/studio";
 import { lireReglagesTirage, lireQuotas } from "@/reglages";
-import type { Reseau } from "@/contrats";
 import {
   INTERRUPTEUR_PLANIFICATION,
   PHRASE_ARRET,
@@ -17,11 +16,13 @@ import {
   PHRASE_PAS_BRANCHE,
   PHRASE_SANS_OCCUPES,
   corpsDeProposition,
+  SQL_LIGNES_SEMAINE,
   jourParis,
+  lignesDeLaSemaine,
   lireOccupes,
   programmationAcceptee,
   proposerSemaine,
-  type LigneSemaine,
+  type LigneBase,
 } from "./regles";
 
 export * from "./regles";
@@ -37,19 +38,6 @@ export interface ResultatSemaine {
   listeReportees: { ligne: string; raison: string }[];
 }
 const vide = (message: string): ResultatSemaine => ({ message, proposees: 0, envoyees: 0, reportees: 0, listeReportees: [] });
-
-interface LigneBase {
-  id: string;
-  reseau: Reseau;
-  compte: string | null;
-  type_contenu: string;
-  prevue_le: Date;
-  etat: string;
-  date_choisie: boolean;
-  commandee: boolean;
-  /** Brouillon, pas encore au Studio, dans l'avenir : seule une telle ligne peut être déplacée. */
-  deplacable: boolean;
-}
 
 /** Le lundi de la semaine visée : celle de la date donnée ; sans date, la semaine en cours, sauf le dimanche où c'est la suivante (jamais une semaine passée). */
 export async function lundiVise(jour?: string): Promise<string> {
@@ -83,23 +71,8 @@ export async function proposerLaSemaine(lundi: string): Promise<ResultatSemaine>
   const [{ rythmes }, quotas] = await Promise.all([lireReglagesTirage(), lireQuotas()]);
   const { reportees, aEnvoyer } = await transaction(async () => {
     await requete(`SELECT pg_advisory_xact_lock(hashtext('planification-semaine'))`);
-    const lignes = await requete<LigneBase>(
-      `SELECT c.id::text, c.reseau, c.compte, c.type_contenu, c.prevue_le, c.etat, c.date_choisie,
-              (c.etat = 'brouillon' AND (c.etat_studio IS NULL OR c.etat_studio = 'en_attente') AND c.prevue_le > now()) AS deplacable,
-              EXISTS (SELECT 1 FROM commande_studio s WHERE s.calendrier_ligne = c.id AND s.archive_le IS NULL AND s.etat_envoi IN ('envoyee', 'mise_de_cote_studio')) AS commandee
-         FROM calendrier_ligne c
-        WHERE c.archive_le IS NULL AND c.etat <> 'echec' AND (c.prevue_le AT TIME ZONE 'Europe/Paris')::date BETWEEN $1::date AND $2::date
-        ORDER BY c.id`,
-      [lundi, fin],
-    );
-    const semaine: LigneSemaine[] = lignes.map((l) => ({
-      id: l.id,
-      reseau: l.reseau,
-      compte: l.compte,
-      type_contenu: l.type_contenu,
-      instant: l.prevue_le,
-      fixe: l.date_choisie || l.commandee || !l.deplacable,
-    }));
+    const lignes = await requete<LigneBase>(SQL_LIGNES_SEMAINE, [lundi, fin]);
+    const semaine = lignesDeLaSemaine(lignes);
     const tirage = proposerSemaine({ lundi, lignes: semaine, rythmes, quotas, occupes, maintenant });
     for (const p of tirage.propositions) {
       await requete(`UPDATE calendrier_ligne SET prevue_le = $2, modifie_le = now() WHERE id = $1 AND date_choisie = false AND archive_le IS NULL

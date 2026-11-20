@@ -1,10 +1,11 @@
 /**
  * Porte du studio (CONTRATS-ECHANGE.md § 3, « plus tard, porte du studio, demande D9 ») : le studio demande des
  * sujets à l'Usine et lui dit ceux qu'il a retenus. Échange décrit pour le studio dans docs/CONTRAT-PORTE.md.
- * Les routes : `POST /api/porte/sujets`, `POST /api/porte/sujets/retenir`, `POST /api/porte/sujets/retenir-lot` (v1.1), `GET /api/porte/metiers`.
+ * Les routes : `POST /api/porte/sujets`, `POST /api/porte/sujets/retenir`, `POST /api/porte/sujets/retenir-lot` (v1.1), `GET /api/porte/metiers`,
+ * `GET /api/porte/arret`, `POST /api/porte/planification/semaine` (lecture seule).
  */
 import { z } from "zod";
-import { codeMetier, codeService, codeTaille, reseau, typeContenu, type Reseau, type TypeContenu } from "./identifiants";
+import { RESEAUX, codeMetier, codeService, codeTaille, reseau, typeContenu, type Reseau, type TypeContenu } from "./identifiants";
 
 /** Variable du serveur : sans elle (ou plus courte que 32 caractères), la porte est éteinte et ses routes rendent 404. */
 export const VARIABLE_PORTE = "USINE_PORTE_SECRET";
@@ -146,4 +147,39 @@ export interface MetierPorte {
   allume: boolean;
   /** Cas d'usage non retirés qui citent une source. */
   cas_sources: number;
+}
+
+/** Vrai si « AAAA-MM-JJ » est une vraie date et un lundi. */
+export function estUnLundi(jour: string): boolean {
+  const d = new Date(`${jour}T12:00:00Z`);
+  return /^\d{4}-\d{2}-\d{2}$/.test(jour) && !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === jour && d.getUTCDay() === 1;
+}
+
+/** Corps de `POST /api/porte/planification/semaine` : la semaine à proposer (lecture seule). */
+export const demandeSemaine = z.strictObject({
+  debut: z.string({ error: "Indiquez le lundi de la semaine (AAAA-MM-JJ)." }).refine(estUnLundi, "Le début doit être un lundi, au format AAAA-MM-JJ."),
+  reseaux: z.array(reseau, { error: "Indiquez des réseaux connus." }).min(1, "Indiquez au moins un réseau, ou rien pour tous.").max(RESEAUX.length, "Trop de réseaux.").optional(),
+});
+export type DemandeSemaine = z.infer<typeof demandeSemaine>;
+
+/** Une proposition de la semaine : aucune donnée de personne (ni compte, ni texte libre de la base). */
+export interface LigneSemainePorte {
+  /** Clé stable : la même semaine et la même ligne rendent la même clé. */
+  cle: string;
+  /** « AAAA-MM-JJ », dans la semaine demandée. */
+  jour: string;
+  reseau: Reseau;
+  type: string;
+  /** « HH:MM », heure de Paris. */
+  heure?: string;
+  titre?: string;
+  pourquoi?: string;
+  ressemble_a?: string;
+}
+
+/** Réponse de `POST /api/porte/planification/semaine`. `arrete` : « Tout arrêter » est actif, aucune proposition. */
+export interface ReponseSemaine {
+  propositions: LigneSemainePorte[];
+  arrete?: true;
+  message?: string;
 }

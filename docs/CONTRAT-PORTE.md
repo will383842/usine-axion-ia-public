@@ -5,7 +5,7 @@
 ## Allumer, éteindre
 
 - Variable du serveur de l'Usine : `USINE_PORTE_SECRET` (32 caractères au moins), la même dans le studio.
-- Absente, vide ou trop courte : la porte est **éteinte**, ses trois routes rendent `404`.
+- Absente, vide ou trop courte : la porte est **éteinte**, toutes ses routes rendent `404`.
 - Chaque appel porte `Authorization: Bearer <USINE_PORTE_SECRET>` (comparé en temps constant). Absent ou faux : `401`, sans détail.
 - La porte ne dépend ni de la session de Will ni des interrupteurs `tirage` et `lots` : son interrupteur est le secret.
 - Corps en `application/json` (sinon `415`), 16 Ko au plus (`413`, refusé dès que `content-length` l'annonce, sinon dès que la lecture par morceaux dépasse 16 Ko : le reste n'est pas lu), champs stricts : un champ inconnu = `400`.
@@ -88,6 +88,27 @@ Retenir plusieurs sujets d'un coup. Rétrocompatible : `retenir` et `sujets` ne 
 - Tous les sujets sont contrôlés avant la première écriture (mêmes règles et mêmes codes que `retenir`) : un seul mauvais sujet et rien n'est noté. Un code des parts inconnu des bases (`400` `code_inconnu`) se découvre à l'écriture : les sujets déjà écrits restent notés, rejouer le lot corrigé est sans danger.
 - Réponse : `{ "retenus": 2, "deja": 1, "lignes": [ { "signature": "…", "deja": false } ] }`, une ligne par sujet dans l'ordre reçu. `retenus` : notés à cet appel ; `deja` : déjà notés (rejeu, ou même signature deux fois dans le lot).
 - Idempotent : rejouer un lot rend `retenus: 0` et `deja: n`, sans rien réécrire. Même garde, même secret que les autres routes.
+
+## `POST /api/porte/planification/semaine` (lecture seule)
+
+Le studio demande à l'Usine de **proposer** une semaine ; il affiche seulement.
+
+```json
+{ "debut": "2026-11-23", "reseaux": ["instagram", "tiktok"] }
+```
+
+- `debut` : un lundi, « AAAA-MM-JJ » (sinon `400` `demande_invalide`, phrase en français). `reseaux` (facultatif) : 1 à 6 réseaux connus ; absent : tous.
+- Même tirage que « Ma semaine » (rythmes, quotas, anti-répétition, jour fixé jamais déplacé), appliqué aux lignes du calendrier de l'Usine de cette semaine. Les créneaux pris du Studio ne sont **pas** lus (aucun appel de l'Usine vers le Studio) : le studio écarte lui-même ce qui est pris.
+- **Lecture seule** : rien n'est écrit au calendrier, aucune commande, aucun envoi, rien au journal. Rappeler rend la même réponse.
+- Ne dépend pas de l'interrupteur `planification` (il garde l'envoi poussé). « Tout arrêter » est respecté : réponse `200` sans proposition, avec `arrete: true` et une phrase.
+- Aucune donnée de personne : ni compte, ni texte libre.
+
+```json
+{ "propositions": [ { "cle": "<sha256 stable>", "jour": "2026-11-24", "reseau": "instagram", "type": "video",
+  "heure": "12:30", "pourquoi": "Un créneau libre qui respecte le rythme et les quantités du réseau." } ] }
+```
+
+`titre` et `ressemble_a` (facultatifs côté studio) ne sont pas rendus pour l'instant. Arrêt : `{ "propositions": [], "arrete": true, "message": "Tout est arrêté : rien n'est parti." }`.
 
 ## Fixtures du contrat (v1)
 
