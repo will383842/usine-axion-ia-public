@@ -131,6 +131,17 @@ describe("première relecture : cas conservés", () => {
     refuse("src/passerelles/studio.ts", `${STUDIO}import axios from "axios";`);
   });
 
+  it("passerelle courriel : ses trois hôtes, un par constante HOTE_<NOM>, acceptés ; un autre hôte refusé", () => {
+    const e = (c: string) => `export const HOTE_BREVO = "https://api.brevo.com";\nexport const HOTE_ZEPTOMAIL_EU = "https://api.zeptomail.eu";\n${c}\n`;
+    laisse("src/passerelles/courriel.ts", e(`await ${F}(\`\${HOTE_BREVO}/v3/smtp/email\`, { method: "POST", redirect: "error" });\nawait ${F}(\`\${HOTE_ZEPTOMAIL_EU}/v1.1/email\`, { redirect: "error" });`));
+    refuse("src/passerelles/courriel.ts", `export const HOTE_AUTRE = "https://api.example.com";\nawait ${F}(HOTE_AUTRE, { redirect: "error" });`);
+    refuse("src/passerelles/courriel.ts", `export const HOTE = "https://studio.axion-ia.com";\nawait ${F}(HOTE, { redirect: "error" });`);
+    refuse("src/passerelles/courriel.ts", e(`await ${F}("https://api.brevo.com/v3/smtp/email", { redirect: "error" });`));
+    refuse("src/passerelles/courriel.ts", e(`await ${F}(\`\${HOTE_INCONNU}/x\`, { redirect: "error" });`));
+    refuse("src/passerelles/courriel.ts", e(`await ${F}(\`\${HOTE_BREVO}/x\`, { redirect: "follow" });`));
+    refuse("src/passerelles/courriel.ts", e(`function f(HOTE_BREVO: string) { return HOTE_BREVO; }`));
+  });
+
   it("refuse les hôtes interdits, même dans une passerelle, mais pas un nom de source", () => {
     refuse("src/passerelles/studio.ts", `${STUDIO}const u = "https://api.${ZERNIO}.com/x";`);
     refuse("src/passerelles/studio.ts", `${STUDIO}const u = "app.${WAALAXY}.com";`);
