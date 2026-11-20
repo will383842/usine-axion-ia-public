@@ -33,6 +33,7 @@ export function ecranParCode(code: string): EcranAllumable | undefined {
 const PHRASES_AUTRES: Record<string, string> = {
   "connexion.second-code": "Allumé : un second code est demandé après le mot de passe, par une application sur votre téléphone enregistré. Éteint : le mot de passe seul suffit.",
   "connexion.second-code-courriel": "Allumé : un second code est envoyé par courriel après le mot de passe. Il ne s'allume que par un essai réussi, depuis « Second code ». Éteint : le mot de passe seul suffit.",
+  "comptes.actif": "Allumé : dans « Mes comptes », chaque compte montre s'il est actif et un bouton pour l'allumer ou l'éteindre. Seul un compte actif sert à proposer la semaine. Éteint : rien ne change.",
   tirage: "Choisit les vidéos d'une commande sans jamais refaire un contenu déjà commandé ou déjà fabriqué.",
   "tirage.fin-rendez-vous": "Permet de choisir, pour une vidéo, une fin qui invite à réserver un rendez-vous.",
   "lots.paquet": "Montre, pour chaque vidéo, le texte à coller dans le studio.",
