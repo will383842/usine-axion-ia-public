@@ -11,6 +11,8 @@ import { avancementParService, champsCalcules, estPhare, INTERRUPTEUR_METIERS, p
 export const metadata: Metadata = { title: "Fiche d'un métier" };
 export const dynamic = "force-dynamic";
 
+const etatLisible = (etat: string) => (etat === "valide" ? "Validé" : etat === "retire" ? "Retiré" : "À valider");
+
 const liste = (v: string | null) => (v ?? "").split(";").map((s) => s.trim()).filter(Boolean);
 
 export default async function Page({ params }: { params: Promise<{ code: string }> }) {
@@ -29,7 +31,8 @@ export default async function Page({ params }: { params: Promise<{ code: string 
   ]);
   const points = pointsATrancher(metier, douleurs, cas);
   const calcules = champsCalcules(metier, douleurs, cas);
-  const phares = cas.filter(estPhare).sort((a, b) => (a.phare ?? "").localeCompare(b.phare ?? ""));
+  // Tout ce que « Valider ce métier » valide doit se lire ici : les cas phares d'abord, puis tous les autres.
+  const tousLesCas = [...cas].sort((a, b) => Number(estPhare(b)) - Number(estPhare(a)) || (a.phare ?? "").localeCompare(b.phare ?? "") || a.code.localeCompare(b.code));
   const avance = avancementParService(cas, new Set(publies.map((p) => p.cas_usage)));
   const nomService = new Map(services.map((s) => [s.code, s.nom]));
   const aValider = metier.etat !== "valide" || douleurs.some((d) => d.etat !== "valide") || cas.some((c) => c.etat !== "valide");
@@ -114,6 +117,7 @@ export default async function Page({ params }: { params: Promise<{ code: string 
           {douleurs.map((d) => (
             <li key={d.code} className="rounded-xl border border-trait bg-surface p-3">
               <p>{d.dite}</p>
+              <p className="font-semibold">{etatLisible(d.etat)}</p>
               <p className="text-texte-doux">{liste(d.services).map((s) => nomService.get(s) ?? s).join(", ") || "Aucun service relié"}</p>
             </li>
           ))}
@@ -121,11 +125,18 @@ export default async function Page({ params }: { params: Promise<{ code: string 
       </div>
 
       <div className="flex flex-col gap-3">
-        <h2 className="text-xl font-bold">Ses cas phares ({phares.length})</h2>
+        <h2 className="text-xl font-bold">Ses cas d&apos;usage ({tousLesCas.length})</h2>
+        <p className="text-texte-doux">Tout ce que « Valider ce métier » valide, à lire ici avant de le toucher. Les cas phares viennent en premier.</p>
+        {tousLesCas.length === 0 ? <p className="text-texte-doux">Aucun cas pour ce métier.</p> : null}
         <ul className="flex flex-col gap-2">
-          {phares.map((c) => (
-            <li key={c.code} className="rounded-xl border border-trait bg-surface p-3">
+          {tousLesCas.map((c) => (
+            <li key={c.code} className="flex flex-col gap-1 rounded-xl border border-trait bg-surface p-3">
               <p className="font-semibold">{c.titre}</p>
+              <p className="font-semibold">
+                {etatLisible(c.etat)}
+                {estPhare(c) ? " · Cas phare" : ""}
+              </p>
+              {c.probleme?.trim() ? <p>{c.probleme}</p> : <p className="text-texte-doux">Problème non renseigné</p>}
               <p className="text-texte-doux">{c.source?.trim() ? `Source : ${c.source}` : "Sans source"}</p>
             </li>
           ))}
