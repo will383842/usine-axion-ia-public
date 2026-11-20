@@ -153,6 +153,7 @@ describe.skipIf(!url)("second code à la connexion", { timeout: 30_000 }, () => 
     p = new Pool({ connectionString: url, options: `-c search_path=${schema}` });
     utiliserPool(p);
     await jouerMigrations(p);
+    await p.query("UPDATE interrupteur SET allume = true WHERE code = 'connexion.second-code'"); // U-SECOND-CODE-ETEINT : ces essais couvrent le second code exigé
     vi.useFakeTimers({ toFake: ["Date"], now: Date.now() });
     process.env.SESSION_SECRET = "s".repeat(48);
     process.env.USINE_PASSWORD_HASH_B64 = Buffer.from(await hash(MOT_DE_PASSE, REGLAGES_ARGON2)).toString("base64");

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { etatConnexion } from "@/services/auth";
 import { FormulaireConnexion } from "./FormulaireConnexion";
 import { FormulaireEnregistrement } from "./FormulaireEnregistrement";
@@ -12,6 +13,7 @@ export default async function PageConnexion({ searchParams }: PageProps<"/connex
   const { suite } = await searchParams;
   const etat = await etatConnexion();
   const retour = suiteSure(suite);
+  if (etat === "connecte") redirect(retour);
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-sm flex-col justify-center gap-6 px-4">
       <p className="self-start rounded-full bg-terracotta px-4 py-2 font-titre text-lg font-bold text-sur-terracotta">Usine Axion</p>

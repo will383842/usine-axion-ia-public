@@ -10,12 +10,15 @@
  * - N-26 : le mot de passe n'ouvre qu'une session PARTIELLE (15 min) ; seul le second code (application du
  *   téléphone) l'ouvre en entier. Sans téléphone enregistré, l'enregistrement est imposé ; tant qu'il n'est pas fait,
  *   exigerSession() refuse tout (pages, actions serveur, routes /api) et le proxy ne laisse passer que /connexion.
+ * - U-SECOND-CODE-ETEINT : cela, seulement si l'interrupteur `connexion.second-code` est allumé (src/auth/exigence.ts ;
+ *   livré éteint). Éteint, le mot de passe seul ouvre la session complète ; lecture impossible = exigé.
  */
 import "server-only";
 import { randomUUID } from "node:crypto";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { empreinte } from "@/auth/chiffrement";
+import { secondCodeExige } from "@/auth/exigence";
 import { confirmerSecondCode, enregistrementPermis, preparerSecondCode, utiliserCodeSecours, verifierSecondCode } from "@/auth/second-code";
 import { idSecondCodeActif, sessionComplete, sessionPartielle } from "@/auth/session";
 import { journaliser } from "@/donnees";
@@ -66,6 +69,8 @@ async function noter(message: string) {
 
 export type ResultatConnexion = Resultat;
 
+const SECOND_CODE_ETEINT = "Le second code n'est pas demandé pour le moment. Connectez-vous avec votre mot de passe.";
+
 const TROP_D_ESSAIS = "Trop d'essais. Réessayez dans 15 minutes.";
 const BASE_MUETTE = "La base ne répond pas. Réessayez dans un instant.";
 
@@ -85,9 +90,9 @@ async function ouvrirSessionPartielle(resterConnecte: boolean): Promise<void> {
 }
 
 /** Mot de passe ET second code acceptés : la session porte le téléphone vérifié (`sc`). */
-async function ouvrirSession(resterConnecte: boolean, sc: string): Promise<void> {
+async function ouvrirSession(resterConnecte: boolean, sc?: string): Promise<void> {
   const duree = resterConnecte ? DUREE_LONGUE_SEC : DUREE_COURTE_SEC;
-  await poserJeton(await signerJeton({ jti: randomUUID(), rc: resterConnecte, sc }, duree), duree);
+  await poserJeton(await signerJeton({ jti: randomUUID(), rc: resterConnecte, ...(sc ? { sc } : {}) }, duree), duree);
   (await cookies()).set(NOM_COOKIE_APPAREIL, await signerAppareil(), {
     httpOnly: true,
     secure: true,
@@ -105,8 +110,9 @@ async function appareilConnu(): Promise<string | null> {
  * Ce que montre /connexion : le formulaire, la première ouverture, « pas encore ouverte » ; après le mot de passe
  * (session partielle) : l'enregistrement imposé d'un téléphone, ou son code ; session complète : « ouverte ».
  */
-export async function etatConnexion(): Promise<"connexion" | "premiere" | "fermee" | "enregistrer" | "second-code" | "ouverte"> {
-  const partielle = await lireSessionPartielle();
+export async function etatConnexion(): Promise<"connexion" | "premiere" | "fermee" | "enregistrer" | "second-code" | "ouverte" | "connecte"> {
+  const exige = await secondCodeExige();
+  const partielle = exige ? await lireSessionPartielle() : null;
   if (partielle) {
     try {
       // Après une remise, seule la session qui y a droit enregistre un téléphone ; les autres voient l'écran du code
@@ -116,7 +122,8 @@ export async function etatConnexion(): Promise<"connexion" | "premiere" | "ferme
       return "second-code";
     }
   }
-  if (await lireSession()) return "ouverte";
+  // Second code non exigé : une session complète n'a rien à montrer ici (la page renvoie vers l'Usine).
+  if (await lireSession()) return exige ? "ouverte" : "connecte";
   try {
     if (await hachageEnVigueur()) return "connexion";
   } catch {
@@ -160,6 +167,16 @@ async function tenter(essai: () => Promise<Resultat>, apresSucces: () => Promise
   return r;
 }
 
+/** Mot de passe accepté : session complète si le second code n'est pas exigé, sinon session partielle. */
+async function ouvrirApresMotDePasse(resterConnecte: boolean): Promise<boolean> {
+  if (await secondCodeExige()) {
+    await ouvrirSessionPartielle(resterConnecte);
+    return false;
+  }
+  await ouvrirSession(resterConnecte);
+  return true; // /connexion renvoie alors vers l'Usine (état « connecte »)
+}
+
 export async function seConnecter(motDePasse: string, resterConnecte: boolean): Promise<ResultatConnexion> {
   return tenter(
     async () => {
@@ -169,8 +186,8 @@ export async function seConnecter(motDePasse: string, resterConnecte: boolean): 
       return correct ? { ok: true } : { ok: false, message: "Mot de passe incorrect." };
     },
     async () => {
-      await ouvrirSessionPartielle(resterConnecte);
-      await noter("Mot de passe accepté : second code demandé.");
+      const ouverte = await ouvrirApresMotDePasse(resterConnecte);
+      await noter(ouverte ? "Mot de passe accepté : connexion de Will (second code non demandé)." : "Mot de passe accepté : second code demandé.");
     },
   );
 }
@@ -181,7 +198,7 @@ export async function premiereOuverture(motDePasse: string, confirmation: string
     () => enregistrerPremierHachage(motDePasse, confirmation),
     async () => {
       await noter("Première ouverture : Will a choisi son mot de passe.");
-      await ouvrirSessionPartielle(resterConnecte);
+      await ouvrirApresMotDePasse(resterConnecte);
     },
   );
 }
@@ -193,7 +210,7 @@ export async function changerMotDePasse(ancien: string, nouveau: string, confirm
     () => changerHachage(ancien, nouveau, confirmation),
     async () => {
       await noter("Mot de passe changé : les autres appareils sont déconnectés.");
-      await ouvrirSession(session.rc, session.sc!);
+      await ouvrirSession(session.rc, session.sc);
     },
   );
 }
@@ -237,6 +254,7 @@ async function enTempsConstant<T extends { ok: boolean }>(essai: () => Promise<T
 
 /** Tire le secret d'un nouveau téléphone et le rend UNE SEULE FOIS (il n'est jamais relu ni réaffiché). */
 export async function commencerSecondCode(): Promise<{ ok: true; secret: string; lien: string } | { ok: false; message: string }> {
+  if (!(await secondCodeExige())) return { ok: false, message: SECOND_CODE_ETEINT };
   const partielle = await lireSessionPartielle();
   if (!partielle) return { ok: false, message: SANS_MOT_DE_PASSE };
   const r = await preparerSecondCode(partielle).catch(() => ({ ok: false as const, message: BASE_MUETTE }));
@@ -246,6 +264,7 @@ export async function commencerSecondCode(): Promise<{ ok: true; secret: string;
 
 /** Premier code du nouveau téléphone : il est enregistré, la session s'ouvre, les codes de secours sont rendus une fois. */
 export async function enregistrerSecondCode(code: string): Promise<{ ok: true; codesSecours: string[] } | { ok: false; message: string }> {
+  if (!(await secondCodeExige())) return { ok: false, message: SECOND_CODE_ETEINT };
   const partielle = await lireSessionPartielle();
   if (!partielle) return { ok: false, message: SANS_MOT_DE_PASSE };
   return enTempsConstant(async () => {
@@ -259,6 +278,7 @@ export async function enregistrerSecondCode(code: string): Promise<{ ok: true; c
 
 /** Code de l'application : la session s'ouvre en entier. */
 export async function entrerSecondCode(code: string): Promise<Resultat> {
+  if (!(await secondCodeExige())) return { ok: false, message: SECOND_CODE_ETEINT };
   const partielle = await lireSessionPartielle();
   if (!partielle) return { ok: false, message: SANS_MOT_DE_PASSE };
   return enTempsConstant(async () => {
@@ -272,6 +292,7 @@ export async function entrerSecondCode(code: string): Promise<Resultat> {
 
 /** Téléphone perdu : un code de secours (une fois). L'Usine ne s'ouvre pas : un nouveau téléphone est à enregistrer. */
 export async function entrerCodeSecours(code: string): Promise<Resultat> {
+  if (!(await secondCodeExige())) return { ok: false, message: SECOND_CODE_ETEINT };
   const partielle = await lireSessionPartielle();
   if (!partielle) return { ok: false, message: SANS_MOT_DE_PASSE };
   return enTempsConstant(async () => {
