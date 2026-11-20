@@ -10,6 +10,7 @@ import { createCipheriv, createDecipheriv, createHmac, hkdfSync, randomBytes } f
 const VERSION = "v1";
 const USAGE = "usine-axion-ia:second-code:v1";
 const USAGE_EMPREINTE = "usine-axion-ia:empreinte-remise:v1";
+const USAGE_CODE_COURRIEL = "usine-axion-ia:code-courriel:v1";
 const LIEN = Buffer.from("second_code.secret_chiffre");
 
 function cle(usage = USAGE): Buffer {
@@ -44,4 +45,9 @@ export function dechiffrer(enveloppe: string): string {
   d.setAAD(LIEN);
   d.setAuthTag(brut.subarray(12, 28));
   return Buffer.concat([d.update(brut.subarray(28)), d.final()]).toString("utf8");
+}
+
+/** Empreinte complète (HMAC-SHA-256, clé HKDF d'un usage propre) du code reçu par courriel : seule elle est gardée en base, jamais le code. */
+export function empreinteCodeCourriel(code: string): string {
+  return createHmac("sha256", cle(USAGE_CODE_COURRIEL)).update(code).digest("hex");
 }

@@ -97,7 +97,7 @@ describe.skipIf(!url)("migrations", () => {
       const dernierAvant = (await q.query("SELECT jour::text, compte, genere_le FROM agregat_crm_dernier ORDER BY jour, compte")).rows;
       expect(avant).toHaveLength(3);
 
-      expect((await jouerMigrations(q)).jouees).toEqual(["032-agregats-reseau-cle.sql", "033-calendrier-etat-proposition.sql", "034-interrupteur-tout-arreter.sql", "035-releve-historique.sql", "036-commandes-studio.sql", "037-interrupteur-planification.sql", "038-interrupteur-plafond-ecran.sql", "039-sur-le-site.sql", "040-interrupteurs-manquants.sql", "041-interrupteur-second-code.sql", "043-compte-des-lignes.sql"]);
+      expect((await jouerMigrations(q)).jouees).toEqual(["032-agregats-reseau-cle.sql", "033-calendrier-etat-proposition.sql", "034-interrupteur-tout-arreter.sql", "035-releve-historique.sql", "036-commandes-studio.sql", "037-interrupteur-planification.sql", "038-interrupteur-plafond-ecran.sql", "039-sur-le-site.sql", "040-interrupteurs-manquants.sql", "041-interrupteur-second-code.sql", "042-second-code-courriel.sql", "043-compte-des-lignes.sql"]);
 
       // (a) mêmes nombres de lignes dans les nouvelles tables
       expect((await q.query("SELECT count(*)::int AS n FROM agregat_crm")).rows[0].n).toBe(3);

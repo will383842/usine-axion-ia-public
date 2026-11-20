@@ -123,6 +123,8 @@ describe.skipIf(!url)("second code : interrupteur", () => {
     await expect(changerInterrupteur(CODE, true)).rejects.toThrow();
     expect((await ligne(p)).allume).toBe(false);
     expect(await auth.seConnecter(MOT_DE_PASSE, true)).toEqual({ ok: true });
+    // Réserve R1 : l'allumage exige un téléphone enregistré.
+    await p.query(`INSERT INTO second_code (secret_chiffre, confirme_le) VALUES ('x', now())`);
     await changerInterrupteur(CODE, true);
     expect((await ligne(p)).allume).toBe(true);
     const journal = (await p.query(`SELECT message, cible FROM journal WHERE sujet = 'interrupteur' AND cible = $1 ORDER BY id`, [CODE])).rows;
@@ -131,6 +133,7 @@ describe.skipIf(!url)("second code : interrupteur", () => {
     // Allumé : la session sans second code tombe aussitôt.
     await expect(auth.exigerSession()).rejects.toThrow();
     await p.query(`UPDATE interrupteur SET allume = false WHERE code = $1`, [CODE]);
+    await p.query(`UPDATE second_code SET archive_le = now() WHERE archive_le IS NULL`);
   });
 
   it("l'extinction est aussi journalisée", async () => {

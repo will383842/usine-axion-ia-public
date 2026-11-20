@@ -20,6 +20,7 @@ export const PASSERELLES = {
   studio: ["studio.axion-ia.com"],
   "site-lecture": ["axion-ia.com", "www.axion-ia.com"],
   "bases-source": ["api.github.com"], // lecture seule du manifeste des bases (garde externe, redirections refusées)
+  courriel: ["api.zeptomail.eu", "api.zeptomail.com", "api.brevo.com"], // envoi du second code par courriel : un fournisseur à la fois (COURRIEL_FOURNISSEUR)
 };
 
 /** Liste fermée des modules importables partout (hors chemins relatifs et alias `@/`). Un client HTTP n'y est pas : l'y mettre est une décision à relire. */
@@ -92,10 +93,13 @@ function modulePermis(nom, fichier) {
   return !fichier.startsWith("src/") && MODULES_OUTILS.has(n);
 }
 
+/** Noms d'hôte permis dans une passerelle : HOTE, ou HOTE_<NOM> pour une passerelle à plusieurs fournisseurs. */
+const NOM_HOTE = /^HOTE(_[A-Z0-9]+)*$/;
+
 /** Le premier argument d'un fetch de passerelle : HOTE seul, ou HOTE suivi d'un chemin qui commence par « / » (jamais « @ » ni « . »). */
-function urlSurHote(arg) {
+function urlSurHote(arg, nomsHote) {
   const e = descend(arg);
-  const estHote = (n) => ts.isIdentifier(descend(n)) && descend(n).text === "HOTE";
+  const estHote = (n) => ts.isIdentifier(descend(n)) && nomsHote.has(descend(n).text);
   if (estHote(e)) return true;
   if (ts.isTemplateExpression(e)) {
     const [premier] = e.templateSpans;
@@ -189,12 +193,14 @@ export function fautesSortantes(fichier, texte) {
 
   let appels = 0;
   let hoteDeclare = false;
-  let declarationsHote = 0;
+  // Une passerelle à plusieurs fournisseurs déclare un hôte par constante : HOTE, ou HOTE_<NOM> (chacune une fois, hôte déclaré dans PASSERELLES).
+  const declarationsHote = new Map();
+  const nomsHote = new Set(sf.statements.filter(ts.isVariableStatement).flatMap((v) => v.declarationList.declarations).filter((d) => ts.isIdentifier(d.name) && NOM_HOTE.test(d.name.text)).map((d) => d.name.text));
   for (const n of noeuds) {
     if (ts.isIdentifier(n)) {
       const enType = n.parent && ts.isTypeReferenceNode(n.parent);
       const nomDePropriete = n.parent && (ts.isPropertyAccessExpression(n.parent) || ts.isQualifiedName(n.parent)) && (n.parent.name ?? n.parent.right) === n;
-      if (n.text === "HOTE" && nomDeclare(n)) declarationsHote++;
+      if (NOM_HOTE.test(n.text) && nomDeclare(n)) declarationsHote.set(n.text, (declarationsHote.get(n.text) ?? 0) + 1);
       if (n.text === F) {
         if (!passerelle) faute(n, `${F} hors de src/passerelles/ ; une sortie = une passerelle déclarée`);
         else if (estAppel(n)) appels++;
@@ -232,12 +238,12 @@ export function fautesSortantes(fichier, texte) {
 
     // Passerelle : chaque appel est lié à l'hôte exporté et refuse les redirections.
     if (hotes !== null && ts.isCallExpression(n) && ts.isIdentifier(n.expression) && n.expression.text === F) {
-      if (n.arguments.length < 1 || n.arguments.length > 2 || !urlSurHote(n.arguments[0])) faute(n, `le premier argument de ${F} est HOTE (ou HOTE + « /chemin »), jamais une autre chaîne`);
+      if (n.arguments.length < 1 || n.arguments.length > 2 || !urlSurHote(n.arguments[0], nomsHote)) faute(n, `le premier argument de ${F} est HOTE (ou HOTE + « /chemin »), jamais une autre chaîne`);
       if (!optionsSansRedirection(n.arguments[1])) faute(n, `chaque ${F} porte ses propres options littérales avec un seul redirect: "error"`);
     }
     if (hotes !== null && ts.isVariableStatement(n) && n.parent === sf) {
       for (const d of n.declarationList.declarations) {
-        if (ts.isIdentifier(d.name) && d.name.text === "HOTE") {
+        if (ts.isIdentifier(d.name) && NOM_HOTE.test(d.name.text)) {
           const exporte = n.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword);
           const constante = (n.declarationList.flags & ts.NodeFlags.Const) !== 0;
           const m = d.initializer && litteral(d.initializer) ? d.initializer.text.match(/^https:\/\/([a-z0-9.-]+)$/i) : null;
@@ -249,6 +255,6 @@ export function fautesSortantes(fichier, texte) {
     }
   }
   if (hotes !== null && appels > 0 && !hoteDeclare) fautes.push(`${fichier} : exporter l'hôte fixe (export const HOTE = "https://…", déclaré dans la garde)`);
-  if (hotes !== null && declarationsHote > 1) fautes.push(`${fichier} : HOTE ne se déclare qu'une fois (pas de masquage)`);
+  if (hotes !== null && [...declarationsHote.values()].some((c) => c > 1)) fautes.push(`${fichier} : chaque HOTE ne se déclare qu'une fois (pas de masquage)`);
   return fautes;
 }
