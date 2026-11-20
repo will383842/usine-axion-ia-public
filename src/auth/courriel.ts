@@ -140,6 +140,14 @@ export async function mettreEnService(code: string, jti: string): Promise<{ ok: 
     // par le bouton attend la fin de cette transaction, et la vérification qui suit ne peut plus être dépassée.
     await requete("SELECT 1 FROM interrupteur WHERE code = ANY($1) ORDER BY code FOR UPDATE", [[INTERRUPTEUR_SECOND_CODE, INTERRUPTEUR_COURRIEL]]);
     if (await allume(INTERRUPTEUR_SECOND_CODE)) return { ok: false, message: MESSAGE_TOTP_ALLUME };
+    // Aucun code de mise en service en cours pour cette session : refus SANS compter. Sinon un cookie seul, sans mot de
+    // passe ni code envoyé, userait le compteur du compte et enfermerait le fondateur dehors.
+    const [attendu] = await requete(
+      `SELECT 1 FROM second_code_courriel
+        WHERE session = $1 AND but = 'mise_en_service' AND utilise_le IS NULL AND archive_le IS NULL AND expire_le > now()`,
+      [empreinteSession(jti)],
+    );
+    if (!attendu) return { ok: false, message: MESSAGE_CODE_REFUSE };
     const v = await verifierCode("mise_en_service", code, jti);
     if (!v.ok) return v;
     await requete("UPDATE second_code_courriel_service SET archive_le = now() WHERE archive_le IS NULL");

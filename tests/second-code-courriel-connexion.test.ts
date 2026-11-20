@@ -213,4 +213,22 @@ describe.skipIf(!url)("second code par courriel : connexion et essai", { timeout
     expect(await changerInterrupteur(COURRIEL, true)).toMatchObject({ ok: false, message: expect.stringContaining("Second code") });
     expect(await changerInterrupteur(COURRIEL, false)).toEqual({ ok: true }); // éteindre reste permis
   });
+  it("une session seule (sans mot de passe ni code envoyé) ne consomme pas le compteur du compte et ne bloque pas la connexion", async () => {
+    // Avant l'allumage : cinq faux codes sans aucun code en cours.
+    expect(await auth.seConnecter(MOT_DE_PASSE, true)).toEqual({ ok: true });
+    for (let i = 0; i < 6; i++) expect((await auth.validerCodeEssai("00000000")).ok).toBe(false);
+    let e = (await p.query(`SELECT echecs, attente_jusqu_a, attentes_de_suite FROM second_code_essais WHERE id = 1`)).rows[0];
+    expect(e).toMatchObject({ echecs: 0, attente_jusqu_a: null, attentes_de_suite: 0 });
+    // Après l'allumage : même geste avec le cookie complet seul, puis le fondateur se connecte ailleurs.
+    bocal.clear();
+    await mettreEnService();
+    for (let i = 0; i < 6; i++) expect((await auth.validerCodeEssai("00000000")).ok).toBe(false);
+    e = (await p.query(`SELECT echecs, attente_jusqu_a, attentes_de_suite FROM second_code_essais WHERE id = 1`)).rows[0];
+    expect(e).toMatchObject({ echecs: 0, attente_jusqu_a: null, attentes_de_suite: 0 });
+    bocal.clear();
+    await vieillir();
+    ip = "203.0.113.77";
+    expect(await auth.seConnecter(MOT_DE_PASSE, true)).toMatchObject({ ok: true });
+    expect(await auth.entrerCodeCourriel(dernierCode())).toEqual({ ok: true });
+  });
 });

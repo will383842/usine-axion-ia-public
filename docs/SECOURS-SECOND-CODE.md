@@ -7,7 +7,7 @@
 - Sur l'écran, le message dit : « Pas reçu ? Regardez dans les indésirables, attendez une minute, puis touchez “Renvoyer le code”. » Faites-le avant tout le reste.
 
 ## Procédure, dans cet ordre
-1. Au moindre doute : changer le mot de passe.
+1. Au moindre doute : changer le mot de passe. Si vous êtes dehors (session perdue ou volée), faites-le depuis le serveur : `pnpm hacher`, poser le résultat dans `USINE_PASSWORD_HASH_B64`, redémarrer. Les jetons du second code par courriel vivent jusqu'à 30 jours : seul ce changement les coupe.
 2. Lancer la fonction de suspension, avec le rôle d'administration `usine_remise` (le rôle de l'application n'a pas le droit de l'appeler) :
    `SELECT suspendre_code_courriel('Will', 'session du PC', '<nom de la session qui la fait>');`
    (ou `'de vive voix'` à la place de `'session du PC'`). Elle archive la mise en service en cours, éteint « Second code par courriel », archive les codes non utilisés, remet à zéro les essais du compte et note la suspension (qui, quand, quelle session) dans `second_code_courriel_suspension`. Elle peut être rejouée sans dégât. Aucune ligne n'est supprimée.
