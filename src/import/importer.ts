@@ -15,7 +15,7 @@ import path from "node:path";
 import { journaliser } from "@/donnees";
 import { COLONNES_BASES, type NomTableBase } from "@/donnees/schema";
 import { requete, transaction } from "@/lib/base";
-import { COMPTES_DEPART, SERVICES_DEPART, SOURCE_COMPTES, SOURCE_SERVICES } from "./depart";
+import { COMPTES_DEPART, PUBLIEUR_DEPART, SERVICES_DEPART, SOURCE_COMPTES, SOURCE_SERVICES } from "./depart";
 import { DOSSIER_ACTUALITES, preparer, TABLES_RENVOYEES, type FichierBase, type FichierRefuse, type LigneBase, type LigneRefusee, type TablePreparee } from "./preparation";
 
 export const FICHIER_BASE = /^\d-[a-z0-9-]+\.md$/;
@@ -125,10 +125,10 @@ async function poserDepart(): Promise<{ service: number; compte: number }> {
   );
   const comptes = await requete(
     `INSERT INTO compte (code, reseau, identifiant, nature, nom, publieur, actif, etat, version, origine, source)
-     SELECT code, reseau, identifiant, nature, nom, 'buffer', false, 'propose', '1', 'repris', $2
+     SELECT code, reseau, identifiant, nature, nom, $3, false, 'propose', '1', 'repris', $2
      FROM json_populate_recordset(NULL::compte, $1::json)
      ON CONFLICT (code) DO NOTHING RETURNING code`,
-    [JSON.stringify(COMPTES_DEPART), SOURCE_COMPTES],
+    [JSON.stringify(COMPTES_DEPART), SOURCE_COMPTES, PUBLIEUR_DEPART],
   );
   return { service: services.length, compte: comptes.length };
 }

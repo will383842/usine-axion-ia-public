@@ -26,7 +26,7 @@ export const PHRASES = {
   metier_non_valide:
     "Un métier est allumé, mais aucun n'est validé : ouvrez sa fiche dans « Mes métiers », lisez-la, touchez « Valider ce métier », puis redemandez la semaine.",
   aucun_compte:
-    "Aucun compte n'est actif pour ces réseaux : allumez un compte Instagram ou Facebook dans Réglages › « Mes comptes » (si la section est éteinte : Réglages › Interrupteurs › « Allumer ou éteindre un compte »), puis redemandez la semaine.",
+    "Aucun compte n'est actif pour ces réseaux. Réglages › Mes comptes : rendez actif un compte Instagram ou Facebook, puis redemandez la semaine.",
   aucun_sujet:
     "L'Usine n'a trouvé aucun sujet neuf pour cette semaine : ceux des métiers allumés sont déjà fabriqués ou retenus, ou il manque des cas d'usage dans les bases. Allumez un autre métier dans « Mes métiers », puis redemandez la semaine.",
   aucun_sujet_sans_fin: (reseaux: string) =>
