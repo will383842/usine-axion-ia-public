@@ -91,7 +91,7 @@ async function alerter(attentesDeSuite: number): Promise<void> {
 }
 
 /** Joue un essai sous le verrou de la limite : refusé pendant l'attente ; un échec compte, un succès remet à zéro. */
-async function sousLimite<T extends { ok: true }>(essai: () => Promise<T | Echec>): Promise<T | Echec> {
+export async function sousLimite<T extends { ok: true }>(essai: () => Promise<T | Echec>): Promise<T | Echec> {
   return transaction(async () => {
     const [e] = await requete<{ en_attente: boolean; attentes_de_suite: number }>(
       "SELECT coalesce(attente_jusqu_a > now(), false) AS en_attente, attentes_de_suite FROM second_code_essais WHERE id = 1 FOR UPDATE",
