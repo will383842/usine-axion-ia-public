@@ -84,6 +84,32 @@ export interface EntreesSemaine {
   maintenant: Date;
 }
 
+/** Une ligne du calendrier telle que le tirage la lit (sélection de `SQL_LIGNES_SEMAINE`). */
+export interface LigneBase {
+  id: string;
+  reseau: Reseau;
+  compte: string | null;
+  type_contenu: string;
+  prevue_le: Date;
+  etat: string;
+  date_choisie: boolean;
+  commandee: boolean;
+  /** Brouillon, pas encore au Studio, dans l'avenir : seule une telle ligne peut être déplacée. */
+  deplacable: boolean;
+}
+
+/** Lecture seule des lignes de la semaine ($1 = lundi, $2 = dimanche), partagée par l'envoi poussé et la proposition lue par le Studio. */
+export const SQL_LIGNES_SEMAINE = `SELECT c.id::text, c.reseau, c.compte, c.type_contenu, c.prevue_le, c.etat, c.date_choisie,
+              (c.etat = 'brouillon' AND (c.etat_studio IS NULL OR c.etat_studio = 'en_attente') AND c.prevue_le > now()) AS deplacable,
+              EXISTS (SELECT 1 FROM commande_studio s WHERE s.calendrier_ligne = c.id AND s.archive_le IS NULL AND s.etat_envoi IN ('envoyee', 'mise_de_cote_studio')) AS commandee
+         FROM calendrier_ligne c
+        WHERE c.archive_le IS NULL AND c.etat <> 'echec' AND (c.prevue_le AT TIME ZONE 'Europe/Paris')::date BETWEEN $1::date AND $2::date
+        ORDER BY c.id`;
+
+/** Lignes de la base → entrées du tirage : un jour choisi, une ligne déjà commandée ou non déplaçable est fixe. */
+export const lignesDeLaSemaine = (lignes: LigneBase[]): LigneSemaine[] =>
+  lignes.map((l) => ({ id: l.id, reseau: l.reseau, compte: l.compte, type_contenu: l.type_contenu, instant: l.prevue_le, fixe: l.date_choisie || l.commandee || !l.deplacable }));
+
 const proche = (a: Date, b: Date) => Math.abs(a.getTime() - b.getTime()) < ECART_MINUTES * 60_000;
 
 /**
