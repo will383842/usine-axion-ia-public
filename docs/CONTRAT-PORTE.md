@@ -97,9 +97,10 @@ Le studio demande à l'Usine de **proposer** une semaine ; il affiche seulement.
 { "debut": "2026-11-23", "reseaux": ["instagram", "tiktok"] }
 ```
 
-- `debut` : un lundi, « AAAA-MM-JJ » (sinon `400` `demande_invalide`, phrase en français). `reseaux` (facultatif) : 1 à 6 réseaux connus ; absent : tous.
-- Même tirage que « Ma semaine » (rythmes, quotas, anti-répétition, jour fixé jamais déplacé), appliqué aux lignes du calendrier de l'Usine de cette semaine. Les créneaux pris du Studio ne sont **pas** lus (aucun appel de l'Usine vers le Studio) : le studio écarte lui-même ce qui est pris.
-- **Lecture seule** : rien n'est écrit au calendrier, aucune commande, aucun envoi, rien au journal. Rappeler rend la même réponse.
+- `debut` : un lundi, « AAAA-MM-JJ » (sinon `400` `demande_invalide`, phrase en français). `reseaux` (facultatif) : 1 à 6 réseaux connus, sans doublon (sinon `400`) ; absent : tous.
+- `type` : l'Usine peut proposer `video`, `carrousel`, `image`, `texte` et `story` (les types de `calendrier_ligne`). Le Studio n'affiche aujourd'hui que `video`, `carrousel`, `infographie` et `image` (`proposer-semaine.ts`) : les propositions `texte` et `story` y sont écartées sans message. L'Usine ne filtre rien : c'est au Studio d'élargir son affichage, ou à Will de décider d'un filtre.
+- Même tirage que « Ma semaine » (rythmes, quotas, anti-répétition, jour fixé jamais déplacé), appliqué aux lignes du calendrier de l'Usine de cette semaine. Les créneaux pris du Studio ne sont **pas** lus (aucun appel de l'Usine vers le Studio) : une proposition peut donc tomber sur un créneau déjà pris au Studio. Le Studio ne les écarte pas aujourd'hui (il écarte seulement ce qui sort de la semaine, un réseau ou un type inconnus, et les clés en double) : il affiche la proposition, et c'est la validation dans « À valider » qui tranche.
+- **Lecture seule** : rien n'est écrit au calendrier, aucune commande, aucun envoi, rien au journal. Rappeler rend la même réponse **à instant égal** seulement : le tirage écarte les heures déjà passées et « déplaçable » dépend de l'heure, la réponse peut donc changer d'une heure à l'autre.
 - Ne dépend pas de l'interrupteur `planification` (il garde l'envoi poussé). « Tout arrêter » est respecté : réponse `200` sans proposition, avec `arrete: true` et une phrase.
 - Aucune donnée de personne : ni compte, ni texte libre.
 

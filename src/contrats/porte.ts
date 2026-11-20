@@ -158,7 +158,12 @@ export function estUnLundi(jour: string): boolean {
 /** Corps de `POST /api/porte/planification/semaine` : la semaine à proposer (lecture seule). */
 export const demandeSemaine = z.strictObject({
   debut: z.string({ error: "Indiquez le lundi de la semaine (AAAA-MM-JJ)." }).refine(estUnLundi, "Le début doit être un lundi, au format AAAA-MM-JJ."),
-  reseaux: z.array(reseau, { error: "Indiquez des réseaux connus." }).min(1, "Indiquez au moins un réseau, ou rien pour tous.").max(RESEAUX.length, "Trop de réseaux.").optional(),
+  reseaux: z
+    .array(reseau, { error: "Indiquez des réseaux connus." })
+    .min(1, "Indiquez au moins un réseau, ou rien pour tous.")
+    .max(RESEAUX.length, "Trop de réseaux.")
+    .refine((l) => new Set(l).size === l.length, "Chaque réseau ne doit être indiqué qu'une fois.")
+    .optional(),
 });
 export type DemandeSemaine = z.infer<typeof demandeSemaine>;
 
@@ -169,7 +174,8 @@ export interface LigneSemainePorte {
   /** « AAAA-MM-JJ », dans la semaine demandée. */
   jour: string;
   reseau: Reseau;
-  type: string;
+  /** Un type que l'Usine peut proposer (`texte` et `story` compris) ; le Studio n'en affiche aujourd'hui que quatre (voir docs/CONTRAT-PORTE.md). */
+  type: TypeContenu;
   /** « HH:MM », heure de Paris. */
   heure?: string;
   titre?: string;

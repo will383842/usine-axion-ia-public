@@ -9,7 +9,7 @@ import { createHash } from "node:crypto";
 import { estArrete } from "@/arret";
 import { requete } from "@/lib/base";
 import { lireQuotas, lireReglagesTirage } from "@/reglages";
-import type { LigneSemainePorte, ReponseSemaine } from "@/contrats";
+import type { LigneSemainePorte, ReponseSemaine, TypeContenu } from "@/contrats";
 import { PHRASE_ARRET, SQL_LIGNES_SEMAINE, isoParis, lignesDeLaSemaine, proposerSemaine, type LigneBase } from "./regles";
 import { ajouterJours } from "@/calendrier/regles";
 
@@ -29,7 +29,7 @@ export async function lireSemaineProposee(lundi: string, reseaux?: readonly stri
     cle: cleSemaine(lundi, p.ligne),
     jour: p.jour,
     reseau: p.reseau,
-    type: p.type_contenu,
+    type: p.type_contenu as TypeContenu, // la contrainte CHECK de calendrier_ligne.type_contenu n'admet que ces cinq valeurs
     heure: isoParis(p.instant).slice(11, 16),
     pourquoi: POURQUOI_PROPOSITION,
   }));
