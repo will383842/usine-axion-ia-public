@@ -16,13 +16,15 @@ interface Props {
    */
   action: () => Promise<void | { ok: boolean; message?: string }>;
   className?: string;
+  /** Contrôle fait au toucher, avant le délai : s'il rend `false`, rien ne démarre (l'écran montre lui-même la raison). */
+  avant?: () => boolean;
 }
 
 /**
  * « Annuler » 10 s plutôt qu'une confirmation : le geste s'affiche comme fait, l'action part au bout de 10 s.
  * Si Will quitte la page avant, l'action part tout de suite (elle n'est jamais perdue en silence).
  */
-export function Annulable({ libelle, message, action, className = "bouton-second" }: Props) {
+export function Annulable({ libelle, message, action, className = "bouton-second", avant }: Props) {
   const [reste, setReste] = useState<number | null>(null);
   const [refus, setRefus] = useState<string | null>(null);
   const minuterie = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -52,6 +54,7 @@ export function Annulable({ libelle, message, action, className = "bouton-second
 
   const lancer = () => {
     setRefus(null);
+    if (avant && !avant()) return;
     enAttente.current = true;
     const fin = Date.now() + DELAI_ANNULER_MS;
     setReste(Math.ceil(DELAI_ANNULER_MS / 1000));
