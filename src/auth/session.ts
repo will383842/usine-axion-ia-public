@@ -5,6 +5,7 @@
  * Utilisé par src/proxy.ts et par exigerSession() (src/services/auth.ts). Base illisible : aucune session (échec fermé).
  */
 import { requete } from "@/lib/base";
+import { secondCodeExige } from "@/auth/exigence";
 import { DUREE_PARTIELLE_SEC, verifierJeton, type ContenuJeton } from "@/lib/jeton-session";
 
 /** L'identifiant du téléphone enregistré (confirmé, non archivé), ou null. */
@@ -15,7 +16,11 @@ export async function idSecondCodeActif(): Promise<string | null> {
 
 export async function sessionComplete(jeton: string | undefined): Promise<ContenuJeton | null> {
   const contenu = await verifierJeton(jeton);
-  if (!contenu?.sc || contenu.etape) return null;
+  if (!contenu || contenu.etape) return null;
+  // U-SECOND-CODE-ETEINT : second code non exigé (interrupteur éteint) = le mot de passe seul vaut session complète.
+  // Une lecture impossible vaut « exigé » : voir src/auth/exigence.ts.
+  if (!(await secondCodeExige())) return contenu;
+  if (!contenu.sc) return null;
   try {
     return (await idSecondCodeActif()) === contenu.sc ? contenu : null;
   } catch {

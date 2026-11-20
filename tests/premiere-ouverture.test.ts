@@ -41,6 +41,7 @@ describe.skipIf(!url)("première ouverture", () => {
     p = new Pool({ connectionString: url, options: `-c search_path=${schema}` });
     utiliserPool(p);
     await jouerMigrations(p);
+    await p.query("UPDATE interrupteur SET allume = true WHERE code = 'connexion.second-code'"); // U-SECOND-CODE-ETEINT : ces essais couvrent le second code exigé
     process.env.SESSION_SECRET = "s".repeat(48);
     delete process.env.USINE_PASSWORD_HASH_B64;
     delete process.env.USINE_PREMIERE_OUVERTURE;
