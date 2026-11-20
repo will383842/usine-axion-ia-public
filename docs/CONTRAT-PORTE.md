@@ -127,7 +127,8 @@ Erreurs (`409`, la phrase est affichée telle quelle par le studio) :
 |---|---|
 | `arrete` | Tout est arrêté dans l'Usine : aucune semaine n'est proposée. Rallumez depuis « Tout arrêter » dans l'Usine. |
 | `aucun_metier_allume` | Aucun métier n'est allumé dans l'Usine : allumez au moins un métier dans « Mes métiers » (si l'écran est éteint : Réglages › Interrupteurs › Écran « Métiers »), puis redemandez la semaine. |
-| `aucun_compte` | Aucun compte actif pour ces réseaux dans les bases : ajoutez un compte Instagram ou Facebook aux bases, puis redemandez la semaine. |
+| `aucun_metier_allume` (allumé, non validé) | Un métier est allumé, mais aucun n'est validé : ouvrez sa fiche dans « Mes métiers », lisez-la, touchez « Valider ce métier », puis redemandez la semaine. |
+| `aucun_compte` | Aucun compte n'est actif pour ces réseaux : allumez un compte Instagram ou Facebook dans Réglages › « Mes comptes » (si la section est éteinte : Réglages › Interrupteurs › « Allumer ou éteindre un compte »), puis redemandez la semaine. |
 | `aucun_sujet` | L'Usine n'a trouvé aucun sujet neuf pour cette semaine : ceux des métiers allumés sont déjà fabriqués ou retenus, ou il manque des cas d'usage dans les bases. Allumez un autre métier dans « Mes métiers », puis redemandez la semaine. |
 | `aucun_sujet` (fin manquante) | L'Usine n'a trouvé aucun sujet neuf pour cette semaine : il manque, dans les bases, une phrase de fin pour <réseaux>. Ajoutez-en une aux bases, puis redemandez la semaine. |
 | `aucun_format` | Aucun format vidéo n'est en service dans les bases. |
