@@ -98,7 +98,7 @@ Le studio demande à l'Usine de **proposer** une semaine de sujets ; l'Usine la 
 { "debut": "2026-11-23", "reseaux": ["instagram", "tiktok"] }
 ```
 
-- `debut` : un lundi, « AAAA-MM-JJ » (sinon `400` `demande_invalide`, phrase en français). `reseaux` (facultatif) : 1 à 6 réseaux connus, sans doublon (sinon `400`) ; absent : tous.
+- `debut` : un lundi, « AAAA-MM-JJ » (sinon `400` `demande_invalide`, phrase en français). `reseaux` (facultatif) : 1 à 6 réseaux connus, sans doublon (sinon `400`) ; absent : Instagram et Facebook, les réseaux cochés d'office (YouTube n'est jamais proposé).
 - Même moteur que `POST /api/porte/sujets` et que les lots. Des créneaux libres sont fabriqués en mémoire (autant que le rythme du réseau, type `video`, sur le compte actif du réseau) et passent par les mêmes règles que « Ma semaine » : rythmes, quotas, anti-répétition, écart de 90 minutes. Les lignes déjà au calendrier de l'Usine (jour fixé, déjà au studio) occupent leur place et consomment le rythme ; les sujets retenus avec `jour` et `reseau` pour cette semaine comptent comme des créneaux pris. Une semaine vide est tirée en entier, une semaine en partie posée est complétée.
 - Un seul tirage pour toute la semaine (`SEMAINE_SUJETS_MAX` = 20 sujets au plus), le sujet de rang *i* va au créneau *i*. Seulement `video` en V1.
 - **Lecture seule** : ni `calendrier_ligne`, ni lot, ni `deja_fabrique`, ni journal, ni appel sortant. Le compte n'est jamais rendu.
@@ -134,7 +134,7 @@ Erreurs (`409`, la phrase est affichée telle quelle par le studio) :
 | `semaine_pleine` | La semaine est déjà pleine selon vos rythmes : rien de plus à proposer. |
 | `semaine_passee` | Cette semaine est passée : choisissez une semaine à venir. |
 
-Cette section décrit le contrat visé ; le code correspondant arrive avec la PR « tirage de la semaine » (la route rend encore l'ancienne forme d'ici là).
+Cette section est en vigueur : la route rend cette forme.
 
 ## Fixtures du contrat (v1)
 

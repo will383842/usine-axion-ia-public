@@ -30,6 +30,7 @@ import { ErreurPorte } from "./http";
 export { ErreurPorte } from "./http";
 
 export const AUCUN_METIER_ALLUME = "Aucun métier allumé : choisissez un métier.";
+export const phraseAucunFormat = (type: string) => `Aucun format « ${type} » en service dans les bases.`;
 
 async function verifierMetiers(d: DemandeSujets): Promise<void> {
   if (d.metiers) {
@@ -73,18 +74,20 @@ export async function proposerSujets(d: DemandeSujets): Promise<ReponseSujets> {
 
 /**
  * Le tirage de `proposerSujets`, sans la limite de 20 de la demande (le plafond vient de l'appelant) ;
- * `maintenant` fixe l'instant du tirage (fenêtres d'anti-répétition). Rien n'est écrit en base.
+ * `maintenant` fixe l'instant du tirage (fenêtres d'anti-répétition) ; `ecarter` : signatures retirées de l'historique « déjà fabriqué »
+ * (la semaine proposée y met les sujets déjà retenus pour elle, pour que le tirage reste le même). Rien n'est écrit en base.
  */
-export async function tirerSujets(d: DemandeSujets, o: { maintenant?: Date } = {}): Promise<ReponseSujets> {
+export async function tirerSujets(d: DemandeSujets, o: { maintenant?: Date; ecarter?: readonly string[] } = {}): Promise<ReponseSujets> {
   await verifierMetiers(d);
   const bases = await chargerBases(d.metiers);
   if (!bases.formats.some((f) => f.en_service && f.type_contenu === d.type_contenu)) {
-    return { demandees: d.n, lignes: [], pourquoi: [{ metier: null, message: `Aucun format « ${d.type_contenu} » en service dans les bases.` }] };
+    return { demandees: d.n, lignes: [], pourquoi: [{ metier: null, message: phraseAucunFormat(d.type_contenu) }] };
   }
   const reglages = await reglagesDeLaDemande(d, bases, o.maintenant);
   const ctxFin = { typeContenu: d.type_contenu, comptes: bases.comptes, motsBranches: bases.motsBranches, finRendezVous: reglages.finRendezVous };
   const sansFin = d.reseaux.filter((r) => !finsPermises(bases.appels, { ...ctxFin, reseau: r }).length);
   const historique = await chargerHistorique();
+  if (o.ecarter?.length) historique.dejaFabrique = historique.dejaFabrique.filter((x) => !o.ecarter?.includes(x.signature));
   historique.dejaFabrique.push(...(await dejaFabriqueParSujet(bases.cas)));
   const r = tirer(d.n, reglages, historique, bases);
   const pourquoi = [...r.pourquoi];
