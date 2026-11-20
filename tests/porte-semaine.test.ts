@@ -319,9 +319,19 @@ describe.skipIf(!url)("porte · semaine · sur une vraie base", () => {
     expect(await erreurDe()).toEqual({
       statut: 409,
       code: "aucun_compte",
-      phrase: "Aucun compte actif pour ces réseaux dans les bases : ajoutez un compte Instagram ou Facebook aux bases, puis redemandez la semaine.",
+      phrase:
+        "Aucun compte n'est actif pour ces réseaux : allumez un compte Instagram ou Facebook dans Réglages › « Mes comptes » (si la section est éteinte : Réglages › Interrupteurs › « Allumer ou éteindre un compte »), puis redemandez la semaine.",
     });
     await p.query("UPDATE compte SET actif = true");
+
+    // Un métier allumé mais non validé : le tirage l'ignorerait ; la phrase dit de le valider (même code, même forme).
+    await p.query("UPDATE metier SET etat = 'propose'");
+    expect(await erreurDe()).toEqual({
+      statut: 409,
+      code: "aucun_metier_allume",
+      phrase: "Un métier est allumé, mais aucun n'est validé : ouvrez sa fiche dans « Mes métiers », lisez-la, touchez « Valider ce métier », puis redemandez la semaine.",
+    });
+    await p.query("UPDATE metier SET etat = 'valide'");
 
     const zero = { min: 0, max: 0 };
     await p.query(`INSERT INTO reglage (cle, valeur) VALUES ('rythmes', $1)`, [JSON.stringify({ instagram: zero, facebook: zero })]);
