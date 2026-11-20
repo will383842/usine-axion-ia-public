@@ -43,7 +43,7 @@ async function verifierMetiers(d: DemandeSujets): Promise<void> {
 }
 
 /** Les réglages du tirage pour cette demande : parts égales entre les formats en service du type demandé. */
-async function reglagesDeLaDemande(d: DemandeSujets, bases: BasesTirage): Promise<ReglagesTirage> {
+async function reglagesDeLaDemande(d: DemandeSujets, bases: BasesTirage, maintenant?: Date): Promise<ReglagesTirage> {
   const formats = bases.formats.filter((f) => f.en_service && f.type_contenu === d.type_contenu);
   const parts = Object.fromEntries(formats.map((f) => [f.code, 100 / formats.length]));
   const tailles = d.tailles;
@@ -57,6 +57,7 @@ async function reglagesDeLaDemande(d: DemandeSujets, bases: BasesTirage): Promis
     metiers: d.metiers,
     repetitionsPermises,
     graine: d.graine ?? Math.floor(Math.random() * 2 ** 31),
+    ...(maintenant ? { maintenant } : {}),
   });
   return {
     ...base,
@@ -67,12 +68,20 @@ async function reglagesDeLaDemande(d: DemandeSujets, bases: BasesTirage): Promis
 
 /** Rend n sujets neufs pour le studio. Rien n'est écrit en base. */
 export async function proposerSujets(d: DemandeSujets): Promise<ReponseSujets> {
+  return tirerSujets(d);
+}
+
+/**
+ * Le tirage de `proposerSujets`, sans la limite de 20 de la demande (le plafond vient de l'appelant) ;
+ * `maintenant` fixe l'instant du tirage (fenêtres d'anti-répétition). Rien n'est écrit en base.
+ */
+export async function tirerSujets(d: DemandeSujets, o: { maintenant?: Date } = {}): Promise<ReponseSujets> {
   await verifierMetiers(d);
   const bases = await chargerBases(d.metiers);
   if (!bases.formats.some((f) => f.en_service && f.type_contenu === d.type_contenu)) {
     return { demandees: d.n, lignes: [], pourquoi: [{ metier: null, message: `Aucun format « ${d.type_contenu} » en service dans les bases.` }] };
   }
-  const reglages = await reglagesDeLaDemande(d, bases);
+  const reglages = await reglagesDeLaDemande(d, bases, o.maintenant);
   const ctxFin = { typeContenu: d.type_contenu, comptes: bases.comptes, motsBranches: bases.motsBranches, finRendezVous: reglages.finRendezVous };
   const sansFin = d.reseaux.filter((r) => !finsPermises(bases.appels, { ...ctxFin, reseau: r }).length);
   const historique = await chargerHistorique();
@@ -170,13 +179,14 @@ async function ecrireSujet(s: RetenirSujet): Promise<ReponseRetenir> {
   const sig = signature(p);
   try {
     const ecrites = await requete<{ id: string }>(
-      `INSERT INTO deja_fabrique (type_contenu, metier, taille, service, douleur, cas_usage, actualite, format, structure, signature, code_version, note)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      `INSERT INTO deja_fabrique (type_contenu, metier, taille, service, douleur, cas_usage, actualite, format, structure, signature, code_version, note, vise_le, vise_reseau)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
        ON CONFLICT (signature) DO NOTHING RETURNING id`,
       [
         s.type_contenu, p.metier, p.taille, p.service, p.douleur, p.cas_usage, p.cas_usage ? null : p.actualite, p.format, p.structure, sig,
         codeVersion.safeParse(s.reference_studio).success ? s.reference_studio : null,
         `Retenu au studio : ${s.reference_studio}`,
+        s.jour ?? null, s.reseau ?? null,
       ],
     );
     if (ecrites.length) await journaliser("deja_fabrique", `Retenu au studio (porte) : ${p.metier ?? p.actualite}, ${p.cas_usage ?? p.actualite}, ${p.format}.`, { cible: p.metier ?? undefined });

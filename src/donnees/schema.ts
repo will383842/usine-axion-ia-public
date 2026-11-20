@@ -60,7 +60,7 @@ export const COLONNES_USINE = {
   ],
   deja_fabrique: [
     "id", "type_contenu", "metier", "taille", "service", "douleur", "cas_usage", "sujet", "actualite", "format", "structure", "signature",
-    "code_version", "fabrique_le", "note", "cree_le", "modifie_le", "archive_le",
+    "code_version", "fabrique_le", "note", "cree_le", "modifie_le", "archive_le", "vise_le", "vise_reseau",
   ],
   releve_mot: ["id", "semaine", "mot", "compte", "commentaires", "messages", "demandes_guide", "abonnes_gagnes", "cree_le", "modifie_le", "archive_le"],
 } as const;

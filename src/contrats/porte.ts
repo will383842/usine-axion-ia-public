@@ -41,6 +41,14 @@ export const partsSujet = z.strictObject({
 });
 export type PartsSujet = z.infer<typeof partsSujet>;
 
+function estUnJour(jour: string): boolean {
+  const d = new Date(`${jour}T12:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === jour;
+}
+
+/** Plafond de sujets tirés d'un coup pour une semaine proposée (`POST /api/porte/planification/semaine`). */
+export const SEMAINE_SUJETS_MAX = 20;
+
 /** Corps de `POST /api/porte/sujets/retenir`. */
 export const retenirSujet = z.strictObject({
   signature: z.string().min(1).max(800),
@@ -48,6 +56,9 @@ export const retenirSujet = z.strictObject({
   type_contenu: typeContenu,
   /** Repère de la vidéo au studio (code de version `0042-AV-TT` ou identifiant du studio). */
   reference_studio: z.string().trim().min(1).max(120).regex(/^[A-Za-z0-9._:-]+$/),
+  /** Facultatifs, ensemble : le jour (« AAAA-MM-JJ ») et le réseau visés au calendrier du studio. La semaine proposée les compte comme un créneau pris. */
+  jour: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(estUnJour, "Le jour doit être une vraie date, au format AAAA-MM-JJ.").optional(),
+  reseau: reseau.optional(),
 });
 export type RetenirSujet = z.infer<typeof retenirSujet>;
 
@@ -116,6 +127,13 @@ export const CODES_ERREUR_PORTE = [
   "type_invalide",
   "json_illisible",
   "demande_invalide",
+  "arrete",
+  "aucun_compte",
+  "aucun_sujet",
+  "aucun_format",
+  "rythme_zero",
+  "semaine_pleine",
+  "semaine_passee",
 ] as const;
 export type CodeErreurPorte = (typeof CODES_ERREUR_PORTE)[number];
 
@@ -167,7 +185,7 @@ export const demandeSemaine = z.strictObject({
 });
 export type DemandeSemaine = z.infer<typeof demandeSemaine>;
 
-/** Une proposition de la semaine : aucune donnée de personne (ni compte, ni texte libre de la base). */
+/** Une proposition de la semaine : ni compte, ni donnée de personne ; les textes viennent des bases, comme pour `/sujets`. */
 export interface LigneSemainePorte {
   /** Clé stable : la même semaine et la même ligne rendent la même clé. */
   cle: string;
@@ -181,11 +199,17 @@ export interface LigneSemainePorte {
   titre?: string;
   pourquoi?: string;
   ressemble_a?: string;
+  /** Pour une proposition tirée à la demande : le sujet, de la même forme qu'une ligne de `/sujets` (le studio le retient ensuite par `retenir`). Absent pour une ligne déjà au calendrier. */
+  sujet?: SujetPropose;
 }
 
-/** Réponse de `POST /api/porte/planification/semaine`. `arrete` : « Tout arrêter » est actif, aucune proposition. */
+/**
+ * Réponse de `POST /api/porte/planification/semaine`. `message` : réponse partielle (« TikTok n'est pas proposé : aucun compte actif. »).
+ * « Tout arrêter » se rend en `409` code `arrete`, plus en `200`.
+ */
 export interface ReponseSemaine {
   propositions: LigneSemainePorte[];
-  arrete?: true;
   message?: string;
+  /** Ancien : « Tout arrêter » en `200`. Plus rendu une fois la PR « tirage de la semaine » fusionnée, qui retire ce champ. */
+  arrete?: true;
 }
