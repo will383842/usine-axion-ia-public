@@ -15,14 +15,15 @@ import { avertissementDernierActif, lireSaisieCompte } from "@/app/reglages/comp
 const session = vi.fn(async () => undefined);
 const interrupteur = vi.fn(async () => true);
 const lire = vi.fn();
-const ecrire = vi.fn(async (..._a: unknown[]) => undefined);
+const requete = vi.fn(async (..._a: unknown[]): Promise<{ code: string }[]> => [{ code: "x" }]);
 const journaliser = vi.fn(async (..._a: unknown[]) => undefined);
 vi.mock("@/services/auth", () => ({ exigerSession: () => session() }));
 vi.mock("@/donnees", () => ({
-  depots: { compte: { lire: (c: string) => lire(c), ecrire: (l: unknown) => ecrire(l) } },
+  depots: { compte: { lire: (c: string) => lire(c) } },
   interrupteurAllume: () => interrupteur(),
   journaliser: (...a: unknown[]) => journaliser(...a),
 }));
+vi.mock("@/lib/base", () => ({ requete: (...a: unknown[]) => requete(...a) }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn(), refresh: vi.fn() }));
 
 const bonne = { reseau: "youtube", identifiant: "chaine-d-essai", nom: "Chaîne d'essai", nature: "compte" };
@@ -57,38 +58,75 @@ describe("ajouterCompte", () => {
     session.mockReset().mockResolvedValue(undefined);
     interrupteur.mockReset().mockResolvedValue(true);
     lire.mockReset().mockResolvedValue(undefined);
-    ecrire.mockClear();
+    requete.mockReset().mockResolvedValue([{ code: "x" }]);
     journaliser.mockClear();
   });
   it("refuse sans session", async () => {
     session.mockRejectedValue(new Error("NEXT_REDIRECT"));
     const { ajouterCompte } = await import("@/app/reglages/comptes/actions");
     await expect(ajouterCompte(bonne)).rejects.toThrow();
-    expect(ecrire).not.toHaveBeenCalled();
+    expect(requete).not.toHaveBeenCalled();
   });
   it("interrupteur éteint : rien n'est écrit", async () => {
     interrupteur.mockResolvedValue(false);
     const { ajouterCompte } = await import("@/app/reglages/comptes/actions");
     expect((await ajouterCompte(bonne)).ok).toBe(false);
-    expect(ecrire).not.toHaveBeenCalled();
+    expect(requete).not.toHaveBeenCalled();
   });
-  it("écrit un compte éteint, à valider, au libellé neutre, et le note au journal", async () => {
+  it("INSERT strict : un compte éteint, à valider, au libellé neutre, jamais de DO UPDATE ; noté au journal", async () => {
     const { ajouterCompte } = await import("@/app/reglages/comptes/actions");
-    expect((await ajouterCompte(bonne)).ok).toBe(true);
-    expect(ecrire).toHaveBeenCalledWith(expect.objectContaining({ code: "youtube:chaine-d-essai", reseau: "youtube", identifiant: "chaine-d-essai", nature: "compte", nom: "Chaîne d'essai", publieur: "diffuseur", actif: false, etat: "propose" }));
-    expect(journaliser).toHaveBeenCalledWith("compte", expect.stringContaining("ajouté"), { cible: "youtube:chaine-d-essai" });
+    expect((await ajouterCompte({ ...bonne, reseau: "instagram" })).ok).toBe(true);
+    const [sql, params] = requete.mock.calls[0] as [string, unknown[]];
+    expect(sql).toMatch(/INSERT INTO compte/);
+    expect(sql).toMatch(/ON CONFLICT \(code\) DO NOTHING/);
+    expect(sql).not.toMatch(/DO UPDATE/i);
+    expect(sql).toMatch(/false, 'propose', 'saisi'/);
+    expect(params).toEqual(expect.arrayContaining(["instagram:chaine-d-essai", "diffuseur"]));
+    expect(journaliser).toHaveBeenCalledWith("compte", expect.stringContaining("ajouté"), { cible: "instagram:chaine-d-essai" });
   });
-  it("un compte qui existe déjà : refusé avec une phrase, rien n'est écrit", async () => {
-    lire.mockResolvedValue({ code: "youtube:chaine-d-essai" });
+  it("un compte qui existe déjà (rien rendu par l'INSERT) : « Ce compte existe déjà. », rien au journal", async () => {
+    requete.mockResolvedValue([]);
     const { ajouterCompte } = await import("@/app/reglages/comptes/actions");
     const r = await ajouterCompte(bonne);
-    expect(r.ok).toBe(false);
-    expect(ecrire).not.toHaveBeenCalled();
+    expect(r).toEqual({ ok: false, message: "Ce compte existe déjà." });
+    expect(journaliser).not.toHaveBeenCalled();
+  });
+  it("YouTube : jamais la promesse de propositions ; « Ce réseau n'est pas encore proposé dans la semaine. »", async () => {
+    const { ajouterCompte } = await import("@/app/reglages/comptes/actions");
+    const r = await ajouterCompte(bonne);
+    expect(r.ok).toBe(true);
+    expect(r.message).toContain("Ce réseau n'est pas encore proposé dans la semaine.");
+    expect(r.message).not.toMatch(/reçoive des propositions/);
+    const i = await ajouterCompte({ ...bonne, reseau: "instagram" });
+    expect(i.message).toMatch(/reçoive des propositions/);
   });
   it("une saisie invalide : refusée, rien n'est écrit", async () => {
     const { ajouterCompte } = await import("@/app/reglages/comptes/actions");
     expect((await ajouterCompte({ ...bonne, identifiant: "Pas Bon" })).ok).toBe(false);
-    expect(ecrire).not.toHaveBeenCalled();
+    expect(requete).not.toHaveBeenCalled();
+  });
+  it("types contrôlés à l'entrée : null, objet, nombre, champ en trop sont refusés proprement, sans erreur ni écriture", async () => {
+    const { ajouterCompte } = await import("@/app/reglages/comptes/actions");
+    for (const mauvais of [null, undefined, "x", { ...bonne, identifiant: {} }, { ...bonne, nom: 5 }, { ...bonne, identifiant: ["a"] }, { ...bonne, actif: true }, { reseau: "instagram" }]) {
+      const r = await ajouterCompte(mauvais as never);
+      expect(r.ok).toBe(false);
+      expect(r.message).toMatch(/[a-zé]{4}/i);
+    }
+    expect(requete).not.toHaveBeenCalled();
+  });
+});
+
+describe("saisie · le champ fautif est nommé ; YouTube écarté du tirage", () => {
+  it("chaque refus porte le champ à relier à son erreur", () => {
+    const champ = (m: object) => { const r = lireSaisieCompte({ ...bonne, ...m }); return r.ok ? null : r.champ; };
+    expect(champ({ reseau: "myspace" })).toBe("reseau");
+    expect(champ({ identifiant: "" })).toBe("identifiant");
+    expect(champ({ nom: " " })).toBe("nom");
+    expect(champ({ nature: "x" })).toBe("nature");
+  });
+  it("pas d'avertissement « ne recevra plus de propositions » pour YouTube", () => {
+    const liste = [{ code: "youtube:a", reseau: "youtube", actif: true, etat: "valide", archive_le: null }];
+    expect(avertissementDernierActif(liste, "youtube:a")).toBeNull();
   });
 });
 

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { depots, interrupteurAllume } from "@/donnees";
+import { PHRASE_RESEAU_ECARTE, estReseauEcarte } from "@/planification/reseaux-ecartes";
 import { LIBELLE_RESEAU } from "@/reglages/modele";
 import { exigerSession } from "@/services/auth";
 import { enregistrerLiensProfil } from "../actions";
@@ -64,14 +65,14 @@ export default async function Page({
           </button>
         ) : null}
       </form>
-      {comptes.length > 0 ? (
+      {comptes.length > 0 || allumage ? (
         <section className="flex flex-col gap-4">
           <h2 className="text-2xl font-bold">Comptes actifs</h2>
           {allumage ? (
             <>
               <p className="text-texte-doux">
-                Un compte actif peut recevoir des propositions de la semaine.
-                Chacun est éteint tant que vous n&apos;y avez pas touché.
+                Un compte actif d&apos;Instagram, Facebook, TikTok ou LinkedIn peut
+                recevoir des propositions de la semaine. Chacun est éteint tant que vous n&apos;y avez pas touché.
               </p>
               {comptes
                 .filter((c) => c.etat !== "retire" && !c.archive_le)
@@ -90,6 +91,9 @@ export default async function Page({
                       <p className="font-semibold">
                         {c.actif ? "Actif" : "Éteint"}
                       </p>
+                      {estReseauEcarte(c.reseau) ? (
+                        <p className="text-texte-doux">{PHRASE_RESEAU_ECARTE}</p>
+                      ) : null}
                     </div>
                     <div>
                       <BoutonCompte code={c.code} actif={c.actif} nom={c.nom ?? c.identifiant} />
