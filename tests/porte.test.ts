@@ -7,7 +7,7 @@ import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { Pool } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import type { MetierPorte, ReponseSujets, SujetPropose } from "@/contrats";
+import type { DemandeSujets, MetierPorte, ReponseSujets, SujetPropose } from "@/contrats";
 import { signature } from "@/tirage";
 import { controlerAcces, enteteValide } from "@/porte/acces";
 import { estPublic } from "@/proxy";
@@ -269,6 +269,30 @@ describe.skipIf(!url)("porte · en base", () => {
     // Signature qui ne correspond pas à ses parts : refusée.
     const faux = await retenir(post("sujets/retenir", { ...corps, signature: "autre" }));
     expect(faux.status).toBe(400);
+  });
+
+  it("retenir : jour et reseau facultatifs, écrits quand ils sont fournis ; sans eux, rien ne change ; un jour invalide est refusé", async () => {
+    const { retenir } = await routes();
+    const [a, b] = (await proposer({ n: 2, metiers: ["essai.eteint"], graine: 21 })).lignes as SujetPropose[];
+    const corps = (l: SujetPropose) => ({ signature: l.signature, parts: l.parts, type_contenu: l.type_contenu, reference_studio: "0042-AV-TT" });
+    expect((await retenir(post("sujets/retenir", { ...corps(a), jour: "2026-11-24", reseau: "instagram" }))).status).toBe(200);
+    expect((await p.query("SELECT vise_le::text, vise_reseau FROM deja_fabrique WHERE signature = $1", [a.signature])).rows).toEqual([{ vise_le: "2026-11-24", vise_reseau: "instagram" }]);
+    expect((await retenir(post("sujets/retenir", corps(b)))).status).toBe(200);
+    expect((await p.query("SELECT vise_le, vise_reseau FROM deja_fabrique WHERE signature = $1", [b.signature])).rows).toEqual([{ vise_le: null, vise_reseau: null }]);
+    const [c] = (await proposer({ n: 1, metiers: ["essai.eteint"], graine: 22 })).lignes as SujetPropose[];
+    for (const mauvais of [{ jour: "2026-13-40" }, { jour: "24/11/2026" }, { reseau: "inconnu" }]) {
+      const r = await retenir(post("sujets/retenir", { ...corps(c), ...mauvais }));
+      expect(r.status).toBe(400);
+      expect(((await r.json()) as { code: string }).code).toBe("demande_invalide");
+    }
+    expect((await p.query("SELECT 1 FROM deja_fabrique WHERE signature = $1", [c.signature])).rowCount).toBe(0);
+  });
+
+  it("tirerSujets rend la même chose que proposerSujets à graine égale (et au-delà de 20 s'il le faut)", async () => {
+    const { proposerSujets, tirerSujets } = await import("@/porte");
+    const demande: DemandeSujets = { n: 5, type_contenu: "video", reseaux: ["instagram", "facebook"], metiers: ["essai.eteint"], graine: 31 };
+    expect(await tirerSujets({ ...demande })).toEqual(await proposerSujets({ ...demande }));
+    expect((await tirerSujets({ ...demande, n: 21 })).demandees).toBe(21);
   });
 
   it("retenir : un cas d'usage exige métier et structure ; une nouveauté, la structure ; douleur et cas peuvent être nuls", async () => {

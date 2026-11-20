@@ -54,7 +54,7 @@ describe.skipIf(!url)("migration 040 · interrupteurs manquants", () => {
     const autres = (await lire(p)).filter((l) => !CODES.includes(l.code));
     const posee = (await lire(p)).find((l) => l.code === "journal");
 
-    expect((await jouerMigrations(p)).jouees).toEqual(["040-interrupteurs-manquants.sql", "041-interrupteur-second-code.sql", "042-second-code-courriel.sql", "043-compte-des-lignes.sql"]);
+    expect((await jouerMigrations(p)).jouees).toEqual(["040-interrupteurs-manquants.sql", "041-interrupteur-second-code.sql", "042-second-code-courriel.sql", "043-compte-des-lignes.sql", "044-deja-fabrique-vise.sql"]);
     const apres = await lire(p);
     expect(apres.filter((l) => !CODES.includes(l.code) && !AJOUTES_APRES.includes(l.code))).toEqual(autres);
     expect(apres.find((l) => l.code === "journal")).toEqual(posee);

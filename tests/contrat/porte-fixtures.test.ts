@@ -20,7 +20,7 @@ const DOSSIER = fileURLToPath(new URL("./fixtures/", import.meta.url));
 const lire = <T>(nom: string): T => JSON.parse(readFileSync(DOSSIER + nom, "utf8")) as T;
 
 /** Empreinte attendue du jeu, écrite en dur : la même que celle recopiée dans le Studio. */
-const EMPREINTE_ATTENDUE = "c30cc5eb5a9707a092183b367c53723ab4fd669be4c0af8c2e147f79865acc89";
+const EMPREINTE_ATTENDUE = "f2eb03e9f281978bc1c69ef53b06fe90179db2e544aff7c87b6eea351a2cc926";
 
 function empreinteDuJeu(): string {
   const h = createHash("sha256");

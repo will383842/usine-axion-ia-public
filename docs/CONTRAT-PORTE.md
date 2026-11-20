@@ -73,6 +73,7 @@ Le studio a retenu un sujet : l'Usine le note « déjà fabriqué » (table `dej
 ```
 
 - `signature` doit être celle des `parts` (sinon `400` `signature_incoherente`) ; il faut un `format` et un cas ou une nouveauté. Parts exigées (sinon `400` `parts_absentes`) : pour un cas d'usage, `metier` et `structure` ; pour une nouveauté, `structure`. `douleur` (cas sans douleur reliée), `taille`, `service` peuvent être `null`, comme `metier`, `douleur` et `cas_usage` pour une nouveauté : les `parts` rendues par `/sujets` sont toujours acceptées telles quelles.
+- `jour` (« AAAA-MM-JJ », vraie date) et `reseau` : **facultatifs**, le jour et le réseau visés au calendrier du studio (sinon `400` `demande_invalide`). Rangés avec le sujet (`vise_le`, `vise_reseau`) : la semaine proposée les compte comme un créneau pris. Sans eux, rien ne change. Un sujet déjà noté (`deja: true`) n'est pas réécrit : ses `jour` et `reseau` non plus.
 - `reference_studio` : code de version (`0042-AV-TT`, gardé dans `code_version`) ou tout repère du studio (gardé dans la note).
 - Idempotent : rejouer l'appel rend `{ "signature": "…", "deja": true }` sans rien réécrire ; la première fois, `"deja": false`.
 
@@ -89,32 +90,56 @@ Retenir plusieurs sujets d'un coup. Rétrocompatible : `retenir` et `sujets` ne 
 - Réponse : `{ "retenus": 2, "deja": 1, "lignes": [ { "signature": "…", "deja": false } ] }`, une ligne par sujet dans l'ordre reçu. `retenus` : notés à cet appel ; `deja` : déjà notés (rejeu, ou même signature deux fois dans le lot).
 - Idempotent : rejouer un lot rend `retenus: 0` et `deja: n`, sans rien réécrire. Même garde, même secret que les autres routes.
 
-## `POST /api/porte/planification/semaine` (lecture seule)
+## `POST /api/porte/planification/semaine` (tirage à la demande, rien n'est écrit)
 
-Le studio demande à l'Usine de **proposer** une semaine ; il affiche seulement.
+Le studio demande à l'Usine de **proposer** une semaine de sujets ; l'Usine la tire elle-même, sans IA, et la rend. Le studio affiche, puis retient ce qui convient par `retenir`.
 
 ```json
 { "debut": "2026-11-23", "reseaux": ["instagram", "tiktok"] }
 ```
 
 - `debut` : un lundi, « AAAA-MM-JJ » (sinon `400` `demande_invalide`, phrase en français). `reseaux` (facultatif) : 1 à 6 réseaux connus, sans doublon (sinon `400`) ; absent : tous.
-- `type` : l'Usine peut proposer `video`, `carrousel`, `image`, `texte` et `story` (les types de `calendrier_ligne`). Le Studio n'affiche aujourd'hui que `video`, `carrousel`, `infographie` et `image` (`proposer-semaine.ts`) : les propositions `texte` et `story` y sont écartées sans message. L'Usine ne filtre rien : c'est au Studio d'élargir son affichage, ou à Will de décider d'un filtre.
-- Même tirage que « Ma semaine » (rythmes, quotas, anti-répétition, jour fixé jamais déplacé), appliqué aux lignes du calendrier de l'Usine de cette semaine. Les créneaux pris du Studio ne sont **pas** lus (aucun appel de l'Usine vers le Studio) : une proposition peut donc tomber sur un créneau déjà pris au Studio. Le Studio ne les écarte pas aujourd'hui (il écarte seulement ce qui sort de la semaine, un réseau ou un type inconnus, et les clés en double) : il affiche la proposition, et c'est la validation dans « À valider » qui tranche.
-- **Lecture seule** : rien n'est écrit au calendrier, aucune commande, aucun envoi, rien au journal. Rappeler rend la même réponse **à instant égal** seulement : le tirage écarte les heures déjà passées et « déplaçable » dépend de l'heure, la réponse peut donc changer d'une heure à l'autre.
-- Ne dépend pas de l'interrupteur `planification` (il garde l'envoi poussé). « Tout arrêter » est respecté : réponse `200` sans proposition, avec `arrete: true` et une phrase.
-- Aucune donnée de personne : ni compte, ni texte libre.
+- Même moteur que `POST /api/porte/sujets` et que les lots. Des créneaux libres sont fabriqués en mémoire (autant que le rythme du réseau, type `video`, sur le compte actif du réseau) et passent par les mêmes règles que « Ma semaine » : rythmes, quotas, anti-répétition, écart de 90 minutes. Les lignes déjà au calendrier de l'Usine (jour fixé, déjà au studio) occupent leur place et consomment le rythme ; les sujets retenus avec `jour` et `reseau` pour cette semaine comptent comme des créneaux pris. Une semaine vide est tirée en entier, une semaine en partie posée est complétée.
+- Un seul tirage pour toute la semaine (`SEMAINE_SUJETS_MAX` = 20 sujets au plus), le sujet de rang *i* va au créneau *i*. Seulement `video` en V1.
+- **Lecture seule** : ni `calendrier_ligne`, ni lot, ni `deja_fabrique`, ni journal, ni appel sortant. Le compte n'est jamais rendu.
+- **Interrupteurs** : la route ne dépend d'aucun (ni `tirage`, `lots`, `calendrier`, `planification`, `metiers`, ni les envois) ; son interrupteur est le secret de la porte, comme `/sujets`. « Tout arrêter » est respecté, vérifié en premier, avant toute lecture : `409` code `arrete` (**changement de contrat** : ce n'est plus un `200` avec `arrete: true`, que le studio ignore).
 
 ```json
-{ "propositions": [ { "cle": "<sha256 stable>", "jour": "2026-11-24", "reseau": "instagram", "type": "video",
-  "heure": "12:30", "pourquoi": "Un créneau libre qui respecte le rythme et les quantités du réseau." } ] }
+{ "propositions": [ {
+  "cle": "<sha256 hex, 64>", "jour": "2026-11-24", "reseau": "instagram", "type": "video", "heure": "12:30",
+  "titre": "…", "pourquoi": "<libellé du métier> · Un créneau libre qui respecte votre rythme (6 par semaine).",
+  "ressemble_a": "« … », fabriqué le 12/11",
+  "sujet": { "…": "même forme exacte qu'une ligne de POST /api/porte/sujets (SujetPropose)" } } ],
+  "message": "TikTok n'est pas proposé : aucun compte actif." }
 ```
 
-`titre` et `ressemble_a` (facultatifs côté studio) ne sont pas rendus pour l'instant. Arrêt : `{ "propositions": [], "arrete": true, "message": "Tout est arrêté : rien n'est parti." }`.
+- `cle` : `sha256("tirage | <lundi> | <réseau> | <signature>")` pour un créneau tiré ; la même semaine, le même réseau et le même sujet donnent la même clé. Une ligne déjà au calendrier garde sa clé (`cleSemaine(lundi, id)`) et n'a pas de `sujet`.
+- `sujet` : de quoi retenir ensuite par `POST /api/porte/sujets/retenir` (`signature`, `parts`, `type_contenu`, avec `jour` et `reseau`). Même forme que `/sujets` : les vieux studios l'ignorent sans risque.
+- `titre` : titre du cas d'usage, sinon de la nouveauté, sinon du sujet. `ressemble_a` (facultatif) : le dernier contenu déjà fabriqué de la même famille de sujet, avec sa date ; absent si rien ne ressemble.
+- `message` (facultatif) : réponse partielle, par exemple un réseau sans compte actif. `200` avec ce qui a pu être tiré.
+- **Stabilité** : deux appels le même jour, sans rien de changé, rendent la même réponse. La graine vient du lundi, l'instant du tirage est minuit (heure de Paris) du jour, et les créneaux déjà passés ne sont retirés qu'à la sortie. Le lendemain la réponse peut changer (la fenêtre d'anti-répétition avance, de nouvelles bases ou de nouveaux lots ont pu arriver) : c'est voulu. Un sujet déjà fabriqué ou déjà retenu n'est jamais reproposé ; un sujet retenu pour cette semaine retire son créneau sans changer les autres.
+- Aucune donnée de personne ni compte ; les textes viennent des bases, comme pour `/sujets`.
+- `type` : `video` en V1.
+
+Erreurs (`409`, la phrase est affichée telle quelle par le studio) :
+
+| code | phrase |
+|---|---|
+| `arrete` | Tout est arrêté dans l'Usine : aucune semaine n'est proposée. Rallumez depuis « Tout arrêter » dans l'Usine. |
+| `aucun_metier_allume` | Aucun métier n'est allumé dans l'Usine : allumez au moins un métier dans « Mes métiers » (si l'écran est éteint : Réglages › Interrupteurs › Écran « Métiers »), puis redemandez la semaine. |
+| `aucun_compte` | Aucun compte actif pour ces réseaux dans les bases : ajoutez un compte Instagram ou Facebook aux bases, puis redemandez la semaine. |
+| `aucun_sujet` | L'Usine n'a trouvé aucun sujet neuf pour cette semaine : + la première raison du tirage. |
+| `aucun_format` | Aucun format vidéo n'est en service dans les bases. |
+| `rythme_zero` | Tous vos réseaux sont au repos (rythme à zéro) : réglez un rythme dans Réglages. |
+| `semaine_pleine` | La semaine est déjà pleine selon vos rythmes : rien de plus à proposer. |
+| `semaine_passee` | Cette semaine est passée : choisissez une semaine à venir. |
+
+Cette section décrit le contrat visé ; le code correspondant arrive avec la PR « tirage de la semaine » (la route rend encore l'ancienne forme d'ici là).
 
 ## Fixtures du contrat (v1)
 
-- Jeu figé de JSON fictifs : `tests/contrat/fixtures/` (demande valide et invalide, sujet à retenir, rejeu de `retenir`, secrets courant · périmé · trop court, codes d'erreur). Schémas : `src/contrats/porte.ts`.
-- Empreinte sha256 du jeu : `c30cc5eb5a9707a092183b367c53723ab4fd669be4c0af8c2e147f79865acc89` (fichiers `.json` triés par nom ; pour chacun : nom, saut de ligne, contenu, saut de ligne). Le Studio recopie le jeu et la même empreinte ; si l'une change, l'autre suit.
+- Jeu figé de JSON fictifs : `tests/contrat/fixtures/` (demande valide et invalide, sujet à retenir, rejeu de `retenir`, secrets courant · périmé · trop court, codes d'erreur, dont les sept de la semaine). Schémas : `src/contrats/porte.ts`.
+- Empreinte sha256 du jeu : `f2eb03e9f281978bc1c69ef53b06fe90179db2e544aff7c87b6eea351a2cc926` (fichiers `.json` triés par nom ; pour chacun : nom, saut de ligne, contenu, saut de ligne). Le Studio recopie le jeu et la même empreinte ; si l'une change, l'autre suit.
 - Secret périmé (ancien secret après rotation) : `401`, sans détail. Secret du serveur absent ou de moins de 32 caractères : `404` (porte éteinte).
 - Rejeu de `retenir` : première réponse `deja: false`, rejeu `deja: true`, même signature.
 - Codes d'erreur rendus dans `code` : `CODES_ERREUR_PORTE` (`src/contrats/porte.ts`). Les `401` et `404` n'en portent pas.
