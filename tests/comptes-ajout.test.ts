@@ -10,7 +10,7 @@ import { Pool } from "pg";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { dossierMigrations, jouerMigrations } from "@/lib/migrations";
 import { COMPTES_DEPART, PUBLIEUR_DEPART, SOURCE_COMPTES } from "@/import/depart";
-import { avertissementDernierActif, lireSaisieCompte } from "@/app/reglages/comptes/saisie";
+import { avertissementDernierActif, deNom, lireSaisieCompte } from "@/app/reglages/comptes/saisie";
 
 const session = vi.fn(async () => undefined);
 const interrupteur = vi.fn(async () => true);
@@ -53,6 +53,32 @@ describe("avertissement du dernier compte actif d'un réseau", () => {
   });
 });
 
+describe("réserves des relectures de #60 et #61", () => {
+  it("identifiant vide : une phrase simple « Donnez un identifiant », sur le champ identifiant", () => {
+    for (const vide of ["", "   "]) {
+      const r = lireSaisieCompte({ ...bonne, identifiant: vide });
+      expect(r).toMatchObject({ ok: false, champ: "identifiant" });
+      if (!r.ok) expect(r.message).toMatch(/^Donnez un identifiant/);
+    }
+  });
+  it("élision : « d'Instagram » devant une voyelle, « de LinkedIn » sinon", () => {
+    expect(deNom("Instagram")).toBe("d'Instagram");
+    expect(deNom("YouTube")).toBe("d'YouTube");
+    expect(deNom("LinkedIn")).toBe("de LinkedIn");
+    const liste = [{ code: "instagram:a", reseau: "instagram", actif: true, etat: "propose", archive_le: null }];
+    const phrase = avertissementDernierActif(liste, "instagram:a") ?? "";
+    expect(phrase).toContain("dernier compte actif d'Instagram");
+    expect(phrase).not.toContain("de Instagram");
+  });
+  it("doublon : l'écran n'annonce pas « Compte ajouté. » pendant les 10 s, et l'action dit que rien n'a changé", async () => {
+    const ecran = await readFile(path.join(process.cwd(), "src/app/reglages/comptes/FormulaireCompte.tsx"), "utf8");
+    expect(ecran).not.toMatch(/message="Compte ajouté\.?"/);
+    requete.mockResolvedValue([]);
+    const { ajouterCompte } = await import("@/app/reglages/comptes/actions");
+    expect(await ajouterCompte(bonne)).toEqual({ ok: false, message: "Ce compte existe déjà : rien n'a été changé." });
+  });
+});
+
 describe("ajouterCompte", () => {
   beforeEach(() => {
     session.mockReset().mockResolvedValue(undefined);
@@ -88,7 +114,7 @@ describe("ajouterCompte", () => {
     requete.mockResolvedValue([]);
     const { ajouterCompte } = await import("@/app/reglages/comptes/actions");
     const r = await ajouterCompte(bonne);
-    expect(r).toEqual({ ok: false, message: "Ce compte existe déjà." });
+    expect(r).toEqual({ ok: false, message: "Ce compte existe déjà : rien n'a été changé." });
     expect(journaliser).not.toHaveBeenCalled();
   });
   it("YouTube : jamais la promesse de propositions ; « Ce réseau n'est pas encore proposé dans la semaine. »", async () => {

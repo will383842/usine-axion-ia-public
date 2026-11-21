@@ -258,7 +258,7 @@ export async function tirerLaSemaine(lundi: string, reseaux: readonly Reseau[] |
   const sansFin = [...new Set(videsParReseau)].filter((r) => !libres.some((s) => s.fins[r]));
   const sansSujet = videsParReseau.some((r) => !sansFin.includes(r));
   const raisons = [...(sansFin.length ? [PHRASES.manque_fins(nommer(sansFin).join(", "))] : []), ...(sansSujet ? [PHRASES.manque_sujets] : [])];
-  const manque = restants.length > tirees.length && raisons.length ? PHRASES.manque_tete(toutes.length, deCalendrier.length + restants.length) + raisons.join(" Et ") : undefined;
+  const manque = restants.length > tirees.length && raisons.length ? PHRASES.manque_tete(toutes.length, deCalendrier.length + restants.length) + raisons.join(" Par ailleurs, ") : undefined;
   const messages = [message, manque].filter((m): m is string => Boolean(m));
   return { propositions: toutes, ...(messages.length ? { message: messages.join(" ") } : {}) };
 }

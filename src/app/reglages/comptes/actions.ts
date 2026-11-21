@@ -50,7 +50,7 @@ export async function ajouterCompte(saisie: SaisieCompte): Promise<{ ok: boolean
     "INSERT INTO compte (code, reseau, identifiant, nature, nom, publieur, actif, etat, origine) VALUES ($1, $2, $3, $4, $5, $6, false, 'propose', 'saisi') ON CONFLICT (code) DO NOTHING RETURNING code",
     [c.code, c.reseau, c.identifiant, c.nature, c.nom, PUBLIEUR_DEPART],
   );
-  if (!ajoute.length) return { ok: false, message: "Ce compte existe déjà." };
+  if (!ajoute.length) return { ok: false, message: "Ce compte existe déjà : rien n'a été changé." };
   await journaliser("compte", `${c.nom} (${c.code}) : ajouté, éteint.`, { cible: c.code });
   revalidatePath("/reglages/comptes");
   return {

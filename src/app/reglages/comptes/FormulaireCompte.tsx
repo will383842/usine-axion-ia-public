@@ -80,7 +80,7 @@ export function FormulaireCompte() {
         </select>
       </label>
       <div>
-        <Annulable libelle="Ajouter un compte" message="Compte ajouté." className="bouton" action={envoyer} avant={controler} />
+        <Annulable libelle="Ajouter un compte" message="Ajout du compte en cours…" className="bouton" action={envoyer} avant={controler} />
       </div>
       {erreur ? (
         <p id="ajout-erreur" role="alert" className="rounded-lg bg-terracotta-doux px-3 py-2 font-semibold text-terracotta-fonce">
