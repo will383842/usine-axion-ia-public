@@ -36,9 +36,9 @@ export function lireSaisieCompte(s: SaisieCompte): { ok: true; valeur: CompteVal
   return { ok: true, valeur: { code: `${reseau}:${identifiant}`, reseau, identifiant, nom, nature } };
 }
 
-/** « de » devant un nom : « d'Instagram » devant une voyelle ou un « h » muet, « de LinkedIn » sinon. */
+/** « de » devant un nom : « d'Instagram » devant une voyelle, « de LinkedIn » ou « de YouTube » sinon (le « y » se prononce comme une consonne). */
 export function deNom(nom: string): string {
-  return /^[aeiouyàâäéèêëîïôöùûüh]/i.test(nom) ? `d'${nom}` : `de ${nom}`;
+  return /^[aeiouàâäéèêëîïôöùûü]/i.test(nom) ? `d'${nom}` : `de ${nom}`;
 }
 
 /** Phrase d'avertissement quand éteindre ce compte retire le dernier compte actif de son réseau ; `null` sinon. Éteindre reste permis. */

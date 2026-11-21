@@ -63,7 +63,7 @@ describe("réserves des relectures de #60 et #61", () => {
   });
   it("élision : « d'Instagram » devant une voyelle, « de LinkedIn » sinon", () => {
     expect(deNom("Instagram")).toBe("d'Instagram");
-    expect(deNom("YouTube")).toBe("d'YouTube");
+    expect(deNom("YouTube")).toBe("de YouTube");
     expect(deNom("LinkedIn")).toBe("de LinkedIn");
     const liste = [{ code: "instagram:a", reseau: "instagram", actif: true, etat: "propose", archive_le: null }];
     const phrase = avertissementDernierActif(liste, "instagram:a") ?? "";
