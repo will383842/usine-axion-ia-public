@@ -514,8 +514,8 @@ describe("tirage · formats en service, type image (L7-21)", () => {
     const table = (nom: string) => copie.tables.find((t) => t.table === nom)!.lignes as never[];
     const formats = formatsDuTirage(table("format_video"), table("format_autre"));
     expect(formats.filter((f) => f.type_contenu === "image" && f.en_service).map((f) => f.code)).toEqual(["image"]);
-    // Le carrousel reste « bientôt » : son type n'est pas en service.
-    expect(formats.find((f) => f.code === "carrousel")).toMatchObject({ en_service: false });
+    // Le carrousel `en_service` et `valide` est en service (plan #63).
+    expect(formats.find((f) => f.code === "carrousel")).toMatchObject({ en_service: true });
     // Contre-épreuve : les accroches et les fins de l'exemple sont écrites pour la vidéo ; on les ouvre à l'image.
     const defaut = bases(2);
     const b = bases(2, { formats, accroches: defaut.accroches.map((a) => ({ ...a, types_contenu: "video ; image" })), appels: APPELS.map((a) => ({ ...a, type_contenu: "video ; image" })) });

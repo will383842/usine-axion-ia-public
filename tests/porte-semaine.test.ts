@@ -198,6 +198,7 @@ describe.skipIf(!url)("porte · semaine · sur une vraie base", () => {
     for (const t of ["TPE", "PME", "ETI", "GE"]) await p.query("INSERT INTO taille (code, nom, poids, actif) VALUES ($1, $1, '1', 'oui')", [t]);
     for (const [i, f] of FAMILLES.entries()) await p.query("INSERT INTO accroche (code, famille, types_contenu, modele, etat) VALUES ($1, $2, 'video ; carrousel', 'Un modèle.', 'valide')", [`accroche.essai-${i}`, f]);
     await p.query("INSERT INTO format_video (code, nom, statut, en_lot, etat) VALUES ('tableau-anime', 'Tableau animé', 'actif', 'oui', 'valide')");
+    await p.query("INSERT INTO format_autre (code, etat_service, etat) VALUES ('carrousel', 'en_service', 'valide')");
     await p.query("INSERT INTO appel (code, reseaux, cible, type_contenu, type, objectif, dit, etat) VALUES ('fin-if-question', 'instagram ; facebook', 'clients', 'video ; carrousel', 'question', 'QUESTION', 'Et chez vous ?', 'valide')");
     for (const r of ["instagram", "facebook"]) {
       await p.query("INSERT INTO compte (code, reseau, identifiant, nature, nom, actif, etat) VALUES ($1, $2, $3, 'page', 'Compte fictif', true, 'valide')", [`${r}:essai`, r, "essai"]);
@@ -217,9 +218,16 @@ describe.skipIf(!url)("porte · semaine · sur une vraie base", () => {
     await p.query("ROLLBACK");
   });
 
-  const semaine = async (maintenant: Date = AVANT, reseaux?: never[]) => {
+  const allumer = () => p.query("UPDATE interrupteur SET allume = true WHERE code = 'semaine.carrousels'");
+  const ajouterLinkedin = async (typeFin = "video ; carrousel") => {
+    await p.query("INSERT INTO compte (code, reseau, identifiant, nature, nom, actif, etat) VALUES ('linkedin:essai', 'linkedin', 'essai', 'page', 'Compte fictif', true, 'valide')");
+    await p.query("INSERT INTO appel (code, reseaux, cible, type_contenu, type, objectif, etat) VALUES ('fin-li', 'linkedin', 'clients', $1, 'question', 'QUESTION', 'valide')", [typeFin]);
+  };
+  const carrousels = (r: Reponse, reseau?: string) => r.propositions.filter((l) => l.type === "carrousel" && (!reseau || l.reseau === reseau));
+  const videos = (r: Reponse) => r.propositions.filter((l) => l.type === "video").map((l) => ({ cle: l.cle, jour: l.jour, reseau: l.reseau, heure: l.heure, signature: l.sujet?.signature }));
+  const semaine = async (maintenant: Date = AVANT, reseaux?: string[]) => {
     const { lireSemaineProposee } = await import("@/planification/lecture");
-    return JSON.parse(JSON.stringify(await lireSemaineProposee(LUNDI, reseaux, maintenant))) as Reponse;
+    return JSON.parse(JSON.stringify(await lireSemaineProposee(LUNDI, reseaux as never, maintenant))) as Reponse;
   };
   const erreurDe = async (maintenant: Date = AVANT) => {
     const { lireSemaineProposee } = await import("@/planification/lecture");
@@ -515,6 +523,130 @@ describe.skipIf(!url)("porte · semaine · sur une vraie base", () => {
     for (const l of r.propositions) expect(l.sujet!.fins[l.reseau as "facebook"], `${l.reseau} ${l.jour}`).toBeDefined();
     expect(r.propositions.some((l) => l.reseau === "instagram")).toBe(false);
   });
+
+  describe("carrousels dans la semaine (plan #63)", () => {
+    it("C1 · éteint : aucune ligne carrousel, réponse égale à celle d'avant", async () => {
+      const a = await semaine();
+      expect(carrousels(a)).toHaveLength(0);
+      expect(a.propositions).toHaveLength(12);
+      expect(a.message).toBeUndefined();
+      expect((await p.query("SELECT allume FROM interrupteur WHERE code = 'semaine.carrousels'")).rows).toEqual([{ allume: false }]);
+      // Même format, même base, avec ou sans fin carrousel : éteint, la réponse ne change pas.
+      await p.query("UPDATE appel SET type_contenu = 'video'");
+      expect(await semaine()).toEqual(a);
+    });
+
+    it("C2 · allumé : exactement 2 carrousels par réseau (départ), deux jours différents, sujet de type carrousel", async () => {
+      await allumer();
+      const r = await semaine();
+      for (const reseau of ["instagram", "facebook"]) {
+        const c = carrousels(r, reseau);
+        expect(c).toHaveLength(2);
+        expect(new Set(c.map((l) => l.jour)).size).toBe(2);
+        for (const l of c) {
+          expect(l.sujet?.type_contenu).toBe("carrousel");
+          expect(l.sujet?.parts.format).toBe("carrousel");
+          expect(l.pourquoi).toMatch(/ · Un carrousel dans la semaine \(2 par semaine\)\.$/);
+          expect(Object.keys(l)).not.toContain("compte");
+        }
+      }
+      expect(r.propositions).toHaveLength(16);
+      expect(r.message).toBeUndefined();
+      expect(new Set(r.propositions.map((l) => l.cle)).size).toBe(16);
+      expect(lireCommeLeStudio(r)).toHaveLength(16);
+    });
+
+    it("C3 · les vidéos sont identiques, interrupteur éteint ou allumé", async () => {
+      const avant = await semaine();
+      await allumer();
+      const apres = await semaine();
+      expect(videos(apres)).toEqual(videos(avant));
+      expect(videos(apres)).toHaveLength(12);
+    });
+
+    it("C4 · TikTok avec compte actif : des vidéos, jamais de carrousel ; YouTube reste écarté", async () => {
+      await p.query("INSERT INTO compte (code, reseau, identifiant, nature, nom, actif, etat) VALUES ('tiktok:essai', 'tiktok', 'essai', 'page', 'Compte fictif', true, 'valide')");
+      await p.query("UPDATE appel SET reseaux = 'instagram ; facebook ; tiktok'");
+      await allumer();
+      const r = await semaine(AVANT, ["instagram", "tiktok"]);
+      expect(r.propositions.some((l) => l.reseau === "tiktok" && l.type === "video")).toBe(true);
+      expect(carrousels(r, "tiktok")).toHaveLength(0);
+      expect(carrousels(r, "instagram")).toHaveLength(2);
+      const { lireSemaineProposee } = await import("@/planification/lecture");
+      await expect(lireSemaineProposee(LUNDI, ["youtube"] as never, AVANT)).rejects.toMatchObject({ statut: 409, code: "rythme_zero" });
+    });
+
+    it("C5 · LinkedIn : 2 carrousels avec une fin carrousel ; sans elle, pas de carrousel LinkedIn, message, vidéos rendues, pas de 409", async () => {
+      await ajouterLinkedin();
+      await allumer();
+      const avec = await semaine(AVANT, ["linkedin"]);
+      expect(carrousels(avec, "linkedin")).toHaveLength(2);
+      expect(avec.propositions.some((l) => l.type === "video" && l.reseau === "linkedin")).toBe(true);
+
+      await p.query("UPDATE appel SET type_contenu = 'video' WHERE code = 'fin-li'");
+      const sans = await semaine(AVANT, ["linkedin"]);
+      expect(carrousels(sans)).toHaveLength(0);
+      expect(sans.propositions.length).toBeGreaterThan(0);
+      expect(sans.message).toContain("Aucun carrousel proposé pour LinkedIn : il manque une phrase de fin pour les carrousels dans les bases.");
+    });
+
+    it("C6 · format carrousel pas en service dans la base 5 : vidéos rendues, aucun carrousel, message, pas de 409", async () => {
+      await p.query("UPDATE format_autre SET etat = 'propose' WHERE code = 'carrousel'");
+      await allumer();
+      const r = await semaine();
+      expect(carrousels(r)).toHaveLength(0);
+      expect(r.propositions).toHaveLength(12);
+      expect(r.message).toBe("Aucun carrousel proposé : le format carrousel n'est pas en service dans les bases.");
+    });
+
+    it("C7 · quota carrousel Facebook à 0 : aucun carrousel Facebook ; quota par jour 1 : borné à 7", async () => {
+      await allumer();
+      const quotas = (f: unknown) => p.query("INSERT INTO reglage (cle, valeur) VALUES ('quotas_production', $1) ON CONFLICT (cle) DO UPDATE SET valeur = EXCLUDED.valeur", [JSON.stringify({ facebook: { carrousel: f } })]);
+      await quotas({ periode: "semaine", quantite: 0 });
+      const zero = await semaine();
+      expect(carrousels(zero, "facebook")).toHaveLength(0);
+      expect(carrousels(zero, "instagram")).toHaveLength(2);
+      await quotas({ periode: "jour", quantite: 1 });
+      const jour = await semaine();
+      expect(carrousels(jour, "facebook")).toHaveLength(7);
+    });
+
+    it("C8 · un carrousel retenu retire un créneau carrousel (pas une vidéo) et n'est pas reproposé", async () => {
+      await allumer();
+      const a = await semaine();
+      const choisi = carrousels(a, "instagram")[0];
+      await retenir(choisi.sujet!, { jour: choisi.jour, reseau: choisi.reseau });
+      const b = await semaine();
+      expect(videos(b)).toEqual(videos(a));
+      expect(carrousels(b, "instagram")).toHaveLength(1);
+      expect(carrousels(b, "facebook")).toHaveLength(2);
+      expect(b.propositions.some((l) => l.sujet?.signature === choisi.sujet!.signature)).toBe(false);
+    });
+
+    it("C9 · un même cas d'usage n'est pas pris deux fois dans la semaine, vidéos et carrousels confondus", async () => {
+      await allumer();
+      const r = await semaine();
+      const t = r.propositions.map((l) => l.titre);
+      expect(t).toHaveLength(16);
+      expect(new Set(t).size).toBe(16);
+    });
+
+    it("C10 · lecture seule : seulement des SELECT, rien d'écrit", async () => {
+      await allumer();
+      const sauve = p.query.bind(p);
+      requetes = [];
+      const espion = vi.spyOn(p, "query").mockImplementation(((sql: unknown, ...reste: unknown[]) => {
+        requetes.push(typeof sql === "string" ? sql : (sql as { text: string }).text);
+        return (sauve as (...a: unknown[]) => unknown)(sql, ...reste);
+      }) as never);
+      try {
+        expect(carrousels(await semaine())).toHaveLength(4);
+      } finally {
+        espion.mockRestore();
+      }
+      for (const sql of requetes) expect(sql, sql).toMatch(/^\s*SELECT\b/);
+    });
+  });
 });
 
 describe("porte · semaine · pièces pures", () => {
@@ -533,5 +665,19 @@ describe("porte · semaine · pièces pures", () => {
     expect(["12", "7"].every((id) => id.localeCompare("v-instagram-01", "en", { numeric: true }) < 0)).toBe(true);
     expect(cleTirage(LUNDI, "instagram", "sig")).toMatch(/^[0-9a-f]{64}$/);
     expect(cleTirage(LUNDI, "instagram", "sig")).not.toBe(cleTirage(LUNDI, "facebook", "sig"));
+  });
+
+  it("carrousels · lignesVirtuelles : vidéos puis carrousels (ids), type juste ; carrouselsParReseau : TikTok à 0, quota par jour borné à 7", async () => {
+    vi.doMock("server-only", () => ({}));
+    const { lignesVirtuelles, carrouselsParReseau } = await import("@/planification/semaine-tirage");
+    const rythmes = { ...RYTHMES_DEFAUT, instagram: { min: 2, max: 2 }, tiktok: { min: 1, max: 1 } };
+    const v = lignesVirtuelles(["instagram", "tiktok"], rythmes, { instagram: "instagram:essai", tiktok: "tiktok:essai" }, { instagram: 2, tiktok: 0 });
+    expect(v.map((l) => l.id)).toEqual(["v-instagram-01", "v-instagram-02", "v-instagram-c01", "v-instagram-c02", "v-tiktok-01"]);
+    expect(v.map((l) => l.type_contenu)).toEqual(["video", "video", "carrousel", "carrousel", "video"]);
+    expect(["v-instagram-02", "v-instagram-09"].every((id) => id.localeCompare("v-instagram-c01", "en", { numeric: true }) < 0)).toBe(true);
+    const q = JSON.parse(JSON.stringify(QUOTAS_DEFAUT));
+    q.facebook.carrousel = { periode: "jour", quantite: 1 };
+    q.linkedin.carrousel = { periode: "semaine", quantite: 0 };
+    expect(carrouselsParReseau(["instagram", "tiktok", "facebook", "linkedin"], q)).toEqual({ instagram: 2, tiktok: 0, facebook: 7, linkedin: 0 });
   });
 });

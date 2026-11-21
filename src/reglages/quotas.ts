@@ -28,11 +28,11 @@ export type QuotasParReseau = Record<Reseau, QuotasReseau>;
 function departReseau(r: Reseau): QuotasReseau {
   return {
     video: { periode: "jour", quantite: r === "instagram" ? 2 : 1 },
-    carrousel: { periode: "semaine", quantite: 1 },
+    carrousel: { periode: "semaine", quantite: 2 },
     image: { periode: "semaine", quantite: 2 },
   };
 }
-/** Valeurs de départ : vidéo 1 par jour (Instagram 2), carrousel 1 par semaine, infographie 2 par semaine. */
+/** Valeurs de départ : vidéo 1 par jour (Instagram 2), carrousel 2 par semaine, infographie 2 par semaine. */
 export const QUOTAS_DEFAUT: QuotasParReseau = Object.fromEntries(RESEAUX.map((r) => [r, departReseau(r)])) as QuotasParReseau;
 
 export function verifierQuota(q: Quota): string | null {

@@ -18,11 +18,11 @@ import {
 } from "@/reglages/quotas";
 
 describe("valeurs de départ", () => {
-  it("vidéo 1 par jour (Instagram 2), carrousel 1 par semaine, infographie 2 par semaine", () => {
+  it("vidéo 1 par jour (Instagram 2), carrousel 2 par semaine, infographie 2 par semaine", () => {
     const q = quotasParReseau(null);
     for (const r of RESEAUX) {
       expect(q[r].video).toEqual({ periode: "jour", quantite: r === "instagram" ? 2 : 1 });
-      expect(q[r].carrousel).toEqual({ periode: "semaine", quantite: 1 });
+      expect(q[r].carrousel).toEqual({ periode: "semaine", quantite: 2 });
       expect(q[r].image).toEqual({ periode: "semaine", quantite: 2 });
     }
     expect(QUOTAS_DEFAUT.instagram.video.quantite).toBeGreaterThanOrEqual(2);
