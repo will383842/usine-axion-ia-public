@@ -238,13 +238,16 @@ describe.skipIf(!url)("porte · en base", () => {
     expect(filtre.lignes.every((l) => l.taille?.code === "PME" && l.service?.code === "audit")).toBe(true);
   });
 
-  it("types de contenu : la vidéo se tire ; carrousel et image, pas encore en service (FORMATS_EN_SERVICE), disent pourquoi", async () => {
+  it("types de contenu : la vidéo et le carrousel se tirent (plan #63) ; l'image, pas encore en service, dit pourquoi", async () => {
     const video = await proposer({ n: 3, metiers: ["essai.un"], graine: 1 });
     expect(video.lignes).toHaveLength(3);
     expect(video.lignes.every((l) => l.type_contenu === "video" && l.format.code === "tableau-anime")).toBe(true);
-    // Depuis L2-05, un format n'est proposé que si son type est dans FORMATS_EN_SERVICE (la vidéo seule au départ) :
-    // la ligne « carrousel » de la base 5 est en service, mais le type reste « bientôt » tant que Will ne l'ouvre pas.
-    for (const type_contenu of ["carrousel", "image"] as const) {
+    // Depuis L2-05, un format n'est proposé que si son type est dans FORMATS_TIRAGE_EN_SERVICE (le carrousel s'y ajoute avec le plan #63) :
+    // la ligne « image » de la base 5 est en service, mais le type reste « bientôt » tant que Will ne l'ouvre pas.
+    const carrousel = await proposer({ n: 3, metiers: ["essai.un"], type_contenu: "carrousel", graine: 1 });
+    expect(carrousel.lignes.length).toBeGreaterThan(0);
+    expect(carrousel.lignes.every((l) => l.type_contenu === "carrousel")).toBe(true);
+    for (const type_contenu of ["image"] as const) {
       const r = await proposer({ n: 3, metiers: ["essai.un"], type_contenu, graine: 1 });
       expect(r.lignes).toEqual([]);
       expect(r.pourquoi[0].message).toMatch(new RegExp(`Aucun format « ${type_contenu} » en service`));

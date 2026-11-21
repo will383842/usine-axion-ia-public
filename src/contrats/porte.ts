@@ -48,6 +48,10 @@ function estUnJour(jour: string): boolean {
 
 /** Plafond de sujets tirés d'un coup pour une semaine proposée (`POST /api/porte/planification/semaine`). */
 export const SEMAINE_SUJETS_MAX = 20;
+/** Plafond de carrousels ajoutés à une semaine proposée, en plus des vidéos (plan #63). */
+export const SEMAINE_CARROUSELS_MAX = 10;
+/** Les seuls réseaux qui reçoivent des carrousels dans la semaine proposée. */
+export const RESEAUX_CARROUSEL = ["linkedin", "instagram", "facebook"] as const satisfies readonly Reseau[];
 
 /** Corps de `POST /api/porte/sujets/retenir`. */
 export const retenirSujet = z.strictObject({
@@ -192,7 +196,7 @@ export interface LigneSemainePorte {
   /** « AAAA-MM-JJ », dans la semaine demandée. */
   jour: string;
   reseau: Reseau;
-  /** Un type que l'Usine peut proposer (`texte` et `story` compris) ; le Studio n'en affiche aujourd'hui que quatre (voir docs/CONTRAT-PORTE.md). */
+  /** `video` ou `carrousel` pour la semaine tirée (carrousels seulement si l'interrupteur `semaine.carrousels` est allumé) ; une ligne déjà au calendrier peut porter un autre type (voir docs/CONTRAT-PORTE.md). */
   type: TypeContenu;
   /** « HH:MM », heure de Paris. */
   heure?: string;
