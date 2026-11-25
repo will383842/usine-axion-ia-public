@@ -292,4 +292,25 @@ describe.skipIf(!url)("commandes · en base, avec une doublure du Studio", () =>
     expect((await palierDeLigne("linkedin", "video", "2099-12-10"))?.palier).toBe(100);
     expect((await proposerAuStudio(b)).etat_envoi).toBe("envoyee");
   });
+
+  it("T-C1 · une ligne née d'un tutoriel validé envoie `videoId` ; une ligne ordinaire n'en envoie pas", async () => {
+    const { proposerAuStudio } = await import("@/commandes/service");
+    const ordinaire = await nouvelleLigne();
+    await proposerAuStudio(ordinaire);
+    expect(Object.keys(appelerStudio.mock.calls[0][1] as object)).not.toContain("videoId");
+    appelerStudio.mockClear();
+    const tuto = await nouvelleLigne();
+    await p.query(
+      `INSERT INTO tutoriel_tirage (cle, lundi, essai, reseau, etat_tirage, etat_studio, video_id, a_valider_le, calendrier_ligne) VALUES ('tuto-2099-12-07-1', '2099-12-07', 1, 'linkedin', 'pris', 'fait', 'vid-001', now(), $1)`,
+      [tuto],
+    );
+    await proposerAuStudio(tuto);
+    expect(appelerStudio.mock.calls[0][1]).toMatchObject({ videoId: "vid-001", reseau: "linkedin" });
+    // Pas encore « à valider » : pas de videoId.
+    appelerStudio.mockClear();
+    const attente = await nouvelleLigne();
+    await p.query(`INSERT INTO tutoriel_tirage (cle, lundi, essai, reseau, etat_tirage, etat_studio, video_id, calendrier_ligne) VALUES ('tuto-2099-12-14-1', '2099-12-14', 1, 'linkedin', 'pris', 'pris', 'vid-002', $1)`, [attente]);
+    await proposerAuStudio(attente);
+    expect(Object.keys(appelerStudio.mock.calls[0][1] as object)).not.toContain("videoId");
+  });
 });

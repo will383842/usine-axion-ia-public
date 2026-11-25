@@ -5,3 +5,4 @@ export * from "./porte";
 export * from "./lien-suivi";
 export * from "./commande";
 export * from "./plafond";
+export * from "./tutoriel";

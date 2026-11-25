@@ -524,11 +524,69 @@ describe.skipIf(!url)("porte · semaine · sur une vraie base", () => {
     expect(r.propositions.some((l) => l.reseau === "instagram")).toBe(false);
   });
 
+  describe("créneau tutoriel (plan #65)", () => {
+    const poserTirage = () =>
+      p.query(`INSERT INTO tutoriel_tirage (cle, lundi, essai, reseau, etat_tirage, etat_studio, element_id) VALUES ('tuto-${LUNDI}-1', $1, 1, 'instagram', 'pris', 'pris', 'el-1')`, [LUNDI]);
+    const allumerTuto = () => p.query("UPDATE interrupteur SET allume = true WHERE code = 'tutoriel.reserve'");
+
+    it("T-S1 · interrupteur éteint, tirage `pris` présent : la réponse est identique à celle sans tirage", async () => {
+      const sans = await semaine();
+      await poserTirage();
+      expect(await semaine()).toEqual(sans);
+      expect(videos(sans).filter((v) => v.reseau === "instagram")).toHaveLength(6);
+    });
+
+    it("T-S2 · allumé, tirage `pris` sans ligne pour ce lundi : une proposition vidéo Instagram de moins, rien d'autre ne change, seulement des SELECT", async () => {
+      const sans = await semaine();
+      await poserTirage();
+      await allumerTuto();
+      const sauve = p.query.bind(p);
+      requetes = [];
+      const espion = vi.spyOn(p, "query").mockImplementation(((sql: unknown, ...reste: unknown[]) => {
+        requetes.push(typeof sql === "string" ? sql : (sql as { text: string }).text);
+        return (sauve as (...a: unknown[]) => unknown)(sql, ...reste);
+      }) as never);
+      let avec: Reponse;
+      try {
+        avec = await semaine();
+      } finally {
+        espion.mockRestore();
+      }
+      for (const sql of requetes) expect(sql, sql).toMatch(/^\s*SELECT\b/);
+      expect(videos(avec).filter((v) => v.reseau === "instagram")).toHaveLength(5);
+      // Les créneaux Facebook restent les mêmes (les sujets, rangés par heure, peuvent passer d'un créneau à l'autre).
+      const creneauxFacebook = (r: Reponse) => r.propositions.filter((l) => l.reseau === "facebook").map((l) => `${l.jour} ${l.heure}`);
+      expect(creneauxFacebook(avec)).toEqual(creneauxFacebook(sans));
+      expect(avec.propositions).toHaveLength(sans.propositions.length - 1);
+      // Une fois la ligne posée, c'est une ligne réelle qui consomme la place : plus de place retirée en double.
+      const [{ id }] = (await p.query(`INSERT INTO calendrier_ligne (reseau, compte, type_contenu, prevue_le, date_choisie) VALUES ('instagram', 'instagram:essai', 'video', $1, true) RETURNING id`, [instantDeParis("2099-03-03", "12:30")])).rows;
+      await p.query("UPDATE tutoriel_tirage SET calendrier_ligne = $1", [id]);
+      const posee = await semaine();
+      expect(videos(posee).filter((v) => v.reseau === "instagram")).toHaveLength(5);
+      expect(posee.propositions.filter((l) => l.reseau === "instagram")).toHaveLength(5);
+    });
+  });
+
   describe("carrousels dans la semaine (plan #63)", () => {
-    it("C1 · éteint : aucune ligne carrousel, réponse égale à celle d'avant", async () => {
+    // Relevé de la réponse du code d'AVANT la PR (src/planification/semaine-tirage.ts de 9318cc5), sur les mêmes données fictives : cle, jour, réseau, type, heure.
+    const AVANT_LA_PR = [
+      ["2695230ff00e97b9a5badf4bffb4f451cf84b695ec7cd6783cd650848ed22239", "2099-03-02", "facebook", "video", "09:00"],
+      ["cec7809e2bf39c8e5b52fe7794b96dc059b54471db0abca402755c11f9e12b3f", "2099-03-02", "instagram", "video", "09:00"],
+      ["f18f19af2fd1359850ab0b87befd9e8d5ef974c52b374c7126c17a0e6df89ea1", "2099-03-03", "facebook", "video", "09:00"],
+      ["91d0fb8bdabf324d0df65d06f3352f91d76d7ab79aaba1732ab5f17a4a46c18e", "2099-03-03", "instagram", "video", "09:00"],
+      ["95ca93dbf805f17c2c30ab65e2965d5d6b8b9620aa10277e1ce6806988419c44", "2099-03-04", "facebook", "video", "09:00"],
+      ["a1d1dc7634f712ca7c83ec720f028389434fca6f8104f7fb662312d0c68bcafb", "2099-03-04", "instagram", "video", "09:00"],
+      ["344fef414af7f697fca53fa3dc6cf3b122713302ff04723943f24a9d66a80c06", "2099-03-05", "facebook", "video", "09:00"],
+      ["4bb70fe12d3417dfa2a9cc1f2d1af88fec6cee067b935b4128efd1fdef93d8a1", "2099-03-05", "instagram", "video", "09:00"],
+      ["062ec1df6764753d1e14fb261828bd0514b3be52d40f69ac67a30cb98adcfe56", "2099-03-06", "facebook", "video", "09:00"],
+      ["957359f79024d8541a538345ba95b698e24b70fa4e58188ba8f92b7bf3050c85", "2099-03-06", "instagram", "video", "09:00"],
+      ["fe4053851ea2fa437fe4295a13d6943131292bf6da343aeb22237c59a30694c8", "2099-03-08", "facebook", "video", "09:00"],
+      ["74655f5e7aea84d30cb8d99c0d624138a35daaf7eba3231b1b6f49fa40abe9e2", "2099-03-08", "instagram", "video", "09:00"],
+    ];
+    it("C1 · éteint : la réponse est celle du code d'avant la PR, ligne pour ligne", async () => {
       const a = await semaine();
+      expect(a.propositions.map((l) => [l.cle, l.jour, l.reseau, l.type, l.heure])).toEqual(AVANT_LA_PR);
       expect(carrousels(a)).toHaveLength(0);
-      expect(a.propositions).toHaveLength(12);
       expect(a.message).toBeUndefined();
       expect((await p.query("SELECT allume FROM interrupteur WHERE code = 'semaine.carrousels'")).rows).toEqual([{ allume: false }]);
       // Même format, même base, avec ou sans fin carrousel : éteint, la réponse ne change pas.
@@ -688,12 +746,29 @@ describe.skipIf(!url)("porte · semaine · sur une vraie base", () => {
       expect(r.propositions.filter((l) => l.type === "video")).toHaveLength(0);
     });
 
-    it("C14 · en cours de semaine : aucun carrousel dans le passé, les carrousels du jour passé sont reportés ou écartés", async () => {
-      await allumer();
+    it("C14 · en cours de semaine : aucun carrousel dans le passé, vidéos inchangées, écart de 90 minutes entre tout ce qui est posé le même jour sur un réseau", async () => {
       const maintenant = instantDeParis("2099-03-04", "13:00");
+      const avant = await semaine(maintenant);
+      await allumer();
       const r = await semaine(maintenant);
       expect(carrousels(r).length).toBeGreaterThan(0);
+      expect(videos(r)).toEqual(videos(avant));
       for (const l of r.propositions) expect(instantDeParis(l.jour, l.heure!).getTime()).toBeGreaterThan(maintenant.getTime());
+      for (const reseau of ["instagram", "facebook"]) {
+        const instants = r.propositions.filter((l) => l.reseau === reseau).map((l) => instantDeParis(l.jour, l.heure!).getTime()).sort((x, y) => x - y);
+        for (let i = 1; i < instants.length; i++) expect(instants[i] - instants[i - 1], reseau).toBeGreaterThanOrEqual(90 * 60_000);
+      }
+    });
+
+    it("C15 · le compte du message compte aussi les carrousels : propositions rendues sur créneaux (vidéos et carrousels)", async () => {
+      // Instagram seul a une phrase de fin : les créneaux Facebook (6 vidéos + 2 carrousels) restent vides.
+      await p.query("UPDATE appel SET reseaux = 'instagram'");
+      const eteint = await semaine();
+      expect(eteint.message).toContain("6 propositions sur 12 créneaux : ");
+      await allumer();
+      const r = await semaine();
+      expect(r.propositions).toHaveLength(8);
+      expect(r.message).toContain("8 propositions sur 16 créneaux : ");
     });
 
     it("C10 · lecture seule : seulement des SELECT, rien d'écrit", async () => {
