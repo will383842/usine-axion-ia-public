@@ -9,9 +9,9 @@ import { afterAll, beforeAll, beforeEach, afterEach, describe, expect, it, vi } 
 import type { ReponseSemaine } from "@/contrats";
 
 const url = process.env.DATABASE_URL;
-// Samedi 21/11/2026, 2 h de Paris : la demande du fondateur pour la semaine du lundi 23/11.
-const LUNDI = "2026-11-23";
-const SAMEDI = new Date("2026-11-21T01:00:00Z");
+// Samedi 28/02/2099, 2 h de Paris : la demande du fondateur pour la semaine du lundi 02/03 (dates lointaines : l'essai ne dépend pas du jour réel).
+const LUNDI = "2099-03-02";
+const SAMEDI = new Date("2099-02-28T01:00:00Z");
 
 describe.skipIf(!url)("semaine · aucun créneau abandonné en silence", () => {
   const schema = `essai_${randomBytes(4).toString("hex")}`;
@@ -101,7 +101,7 @@ describe.skipIf(!url)("semaine · aucun créneau abandonné en silence", () => {
   it("le compte du message compte aussi les lignes du calendrier renvoyées", async () => {
     await valider(0);
     const { instantDeParis } = await import("@/planification/regles");
-    await p.query("INSERT INTO calendrier_ligne (reseau, compte, type_contenu, prevue_le) VALUES ('instagram', 'instagram:essai', 'video', $1)", [instantDeParis("2026-11-24", "09:00")]);
+    await p.query("INSERT INTO calendrier_ligne (reseau, compte, type_contenu, prevue_le) VALUES ('instagram', 'instagram:essai', 'video', $1)", [instantDeParis("2099-03-03", "09:00")]);
     const r = await semaine();
     expect(r.propositions).toHaveLength(2);
     expect(r.message).toMatch(/^2 propositions sur /);
