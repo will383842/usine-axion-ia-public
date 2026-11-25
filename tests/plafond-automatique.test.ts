@@ -104,7 +104,7 @@ describe.skipIf(!url)("plafond automatique · en base, avec une doublure du Stud
     expect(j[0].sujet).toBe("reglage");
     expect(j[0].message).toMatch(/acceptée par le Studio/);
     expect(j[0].message).toMatch(/éteinte/);
-    expect(j[0].donnees).toMatchObject({ avant: null, apres: { actif: false, plafond_cents: 2000 } });
+    expect(j[0].donnees).toMatchObject({ avant_usine: null, apres: { actif: false, plafond_cents: 2000 } });
   });
 
   it("allumer : envoyé et noté seulement si l'état et le plafond reçus sont exactement ceux envoyés ; journal avant et après", async () => {
@@ -116,12 +116,61 @@ describe.skipIf(!url)("plafond automatique · en base, avec une doublure du Stud
     expect((await lirePlafondAutomatique())?.actif).toBe(true);
     const j = await journal();
     expect(j[0].message).toMatch(/allumée/);
-    expect(j[0].donnees).toMatchObject({ avant: null, apres: { actif: true, plafond_cents: 2000 } });
+    expect(j[0].donnees).toMatchObject({ avant_usine: null, apres: { actif: true, plafond_cents: 2000 } });
     // éteindre ensuite : l'avant est l'état allumé
     reglerPlafondDuStudio.mockResolvedValue(reponse());
     await reperer();
     await envoyerAutonomie({ actif: false, plafondCents: 2000 });
-    expect((await journal())[0].donnees).toMatchObject({ avant: { actif: true, plafond_cents: 2000 }, apres: { actif: false } });
+    expect((await journal())[0].donnees).toMatchObject({ avant_usine: { actif: true, plafond_cents: 2000 }, apres: { actif: false } });
+  });
+
+  it("course : « Tout arrêter » pendant un allumage en vol → l'autonomie est coupée aussitôt, notée au journal, jamais « allumée »", async () => {
+    const { envoyerAutonomie, lirePlafondAutomatique } = await import("@/reglages/plafond-automatique");
+    reglerPlafondDuStudio.mockReset();
+    reglerPlafondDuStudio.mockImplementation(async (actif: boolean) => {
+      if (actif) await arret(true); // l'arrêt est posé pendant que l'allumage est en vol, puis le Studio répond « allumé »
+      return reponse({ automatique: actif });
+    });
+    try {
+      expect(await envoyerAutonomie({ actif: true, plafondCents: 2000 })).toEqual({ ok: false, raison: "arret_en_vol" });
+      expect(reglerPlafondDuStudio.mock.calls).toEqual([
+        [true, 2000],
+        [false, 2000],
+      ]);
+      expect((await lirePlafondAutomatique())?.actif).toBe(false);
+      expect((await journal()).some((l) => /tout a été arrêté pendant l'allumage ; l'autonomie a été éteinte aussitôt/.test(l.message))).toBe(true);
+    } finally {
+      await arret(false);
+    }
+  });
+
+  it("course : l'extinction qui suit ne répond pas → « sans_reponse » (le texte dit « peut-être allumée »), alerte au journal", async () => {
+    const { envoyerAutonomie } = await import("@/reglages/plafond-automatique");
+    reglerPlafondDuStudio.mockReset();
+    reglerPlafondDuStudio.mockImplementation(async (actif: boolean) => {
+      if (!actif) throw new Error("réseau");
+      await arret(true);
+      return reponse({ automatique: true });
+    });
+    try {
+      expect(await envoyerAutonomie({ actif: true, plafondCents: 2000 })).toEqual({ ok: false, raison: "sans_reponse" });
+      expect((await journal()).some((l) => /extinction n'a pas été confirmée/.test(l.message))).toBe(true);
+    } finally {
+      await arret(false);
+    }
+  });
+
+  it("le Studio a répondu 200 mais l'écriture locale échoue : rien ne lève, le résultat reste « accepté », alerte au journal", async () => {
+    const donnees = await import("@/donnees");
+    const { envoyerAutonomie } = await import("@/reglages/plafond-automatique");
+    reglerPlafondDuStudio.mockResolvedValue(reponse({ automatique: true }));
+    const espion = vi.spyOn(donnees, "ecrireReglage").mockRejectedValue(new Error("base"));
+    try {
+      expect(await envoyerAutonomie({ actif: true, plafondCents: 2000 })).toMatchObject({ ok: true, actif: true });
+    } finally {
+      espion.mockRestore();
+    }
+    expect((await journal()).some((l) => /n'a pas pu le noter/.test(l.message))).toBe(true);
   });
 
   it("allumer à 0 ou au-dessus de la borne : refusé sans aucun appel", async () => {

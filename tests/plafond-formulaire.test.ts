@@ -3,7 +3,7 @@
 import { createElement, act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { FormulairePlafond } from "@/app/reglages/plafond/FormulairePlafond";
+import { BoutonEteindre, FormulairePlafond } from "@/app/reglages/plafond/FormulairePlafond";
 
 const allumerAutonomie = vi.fn(async (..._a: unknown[]) => ({ ok: true, message: "Autonomie allumée : fictif." }));
 const enregistrerPlafondAutomatique = vi.fn(async (..._a: unknown[]) => ({ ok: true, message: "Plafond accepté : fictif." }));
@@ -76,11 +76,16 @@ describe("allumer : renoncer pendant les 10 s n'envoie rien", () => {
     expect(allumerAutonomie).not.toHaveBeenCalled();
     racine = createRoot(hote);
   });
-  it("« pagehide » pendant le décompte n'allume pas", async () => {
+  it("« pagehide » pendant le décompte n'allume pas, et le retour sur la page (cache arrière) est remis à zéro", async () => {
     demarrerAllumage();
     act(() => void window.dispatchEvent(new Event("pagehide")));
     await laisserPasser(11_000);
     expect(allumerAutonomie).not.toHaveBeenCalled();
+    expect(bouton("Annuler")).toBeUndefined();
+    expect(bouton("Oui, allumer")).toBeTruthy();
+    expect(interrupteur().disabled).toBe(false);
+    expect(montantChamp().disabled).toBe(false);
+    expect(bouton("Revenir")!.disabled).toBe(false);
   });
   it("« Annuler » : rien ne part ; sans geste, l'allumage part après 10 s, avec le montant saisi, et le message de réussite reste affiché", async () => {
     demarrerAllumage();
@@ -105,5 +110,46 @@ describe("plafond seul : rallumer l'interrupteur pendant le décompte n'envoie r
     expect(enregistrerPlafondAutomatique).not.toHaveBeenCalled();
     toucher("Annuler");
     expect(interrupteur().disabled).toBe(false);
+  });
+});
+
+describe("« Enregistrer le plafond » : quitter la page n'envoie rien", () => {
+  it("démontage et « pagehide » pendant le décompte : aucun envoi, écran remis à zéro", async () => {
+    monter(false);
+    toucher("Enregistrer le plafond");
+    act(() => void window.dispatchEvent(new Event("pagehide")));
+    await laisserPasser(11_000);
+    expect(enregistrerPlafondAutomatique).not.toHaveBeenCalled();
+    expect(bouton("Enregistrer le plafond")).toBeTruthy();
+    expect(interrupteur().disabled).toBe(false);
+    toucher("Enregistrer le plafond");
+    act(() => racine.unmount());
+    await laisserPasser(11_000);
+    expect(enregistrerPlafondAutomatique).not.toHaveBeenCalled();
+    racine = createRoot(hote);
+  });
+  it("sans quitter, l'envoi part au bout de 10 s", async () => {
+    monter(false);
+    toucher("Enregistrer le plafond");
+    await laisserPasser(10_500);
+    expect(enregistrerPlafondAutomatique).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("bouton d'urgence « Éteindre maintenant » : il dit son résultat", () => {
+  const monterBouton = () => act(() => racine.render(createElement(BoutonEteindre)));
+  const toucherAsync = async () => act(async () => void bouton("Éteindre maintenant")!.click());
+  it("réussite, échec et exception : un message à chaque fois", async () => {
+    monterBouton();
+    await toucherAsync();
+    expect(hote.textContent).toContain("Autonomie éteinte.");
+    eteindreAutonomie.mockResolvedValueOnce({ ok: false, message: "Le Studio ne répond pas : l'extinction n'est pas confirmée." });
+    await toucherAsync();
+    expect(hote.textContent).toContain("l'extinction n'est pas confirmée");
+    expect(hote.querySelector('[role="alert"]')).toBeTruthy();
+    eteindreAutonomie.mockRejectedValueOnce(new Error("réseau"));
+    await toucherAsync();
+    expect(hote.textContent).toMatch(/n'est pas confirmée : l'autonomie peut encore être allumée/);
+    expect(bouton("Éteindre maintenant")!.disabled).toBe(false);
   });
 });

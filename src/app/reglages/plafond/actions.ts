@@ -29,7 +29,17 @@ function enClair(r: ResultatPlafond, reussite: string): Message {
       return { ok: false, message: "Le Studio a refusé l'envoi : rien n'a changé. Le détail est dans le journal." };
     case "reponse_inattendue":
       return { ok: false, message: "Le Studio a répondu de façon inattendue : ce réglage n'est pas noté comme accepté. Le détail est dans le journal." };
+    case "arret_en_vol":
+      return { ok: false, message: "Tout a été arrêté pendant l'envoi : l'autonomie a été éteinte aussitôt, rien ne se dépense seul." };
   }
+}
+
+/** Un allumage sans réponse nette a pu être appliqué : on ne dit jamais « rien n'a changé ». */
+const PEUT_ETRE_ALLUMEE = "Le Studio n'a pas confirmé : l'autonomie est PEUT-ÊTRE allumée. Rechargez la page pour lire l'état, ou éteignez-la.";
+
+function enClairAllumage(r: ResultatPlafond, reussite: string): Message {
+  if (!r.ok && (r.raison === "sans_reponse" || r.raison === "reponse_inattendue" || (r.raison === "refuse" && (r.statut ?? 0) >= 500))) return { ok: false, message: PEUT_ETRE_ALLUMEE };
+  return enClair(r, reussite);
 }
 
 async function ecranAllume(): Promise<boolean> {
@@ -66,23 +76,22 @@ export async function allumerAutonomie(saisie: string, confirmation: string): Pr
   const centimes = lireSaisieEuros(String(saisie));
   if (centimes === null || centimes === 0) return { ok: false, message: BORNES_ALLUMER };
   try {
-    const r = enClair(await envoyerAutonomie({ actif: true, plafondCents: centimes }), `Autonomie allumée : l'Usine peut dépenser seule jusqu'à ${montant(centimes)} par mois.`);
+    const r = enClairAllumage(await envoyerAutonomie({ actif: true, plafondCents: centimes }), `Autonomie allumée : l'Usine peut dépenser seule jusqu'à ${montant(centimes)} par mois.`);
     revalidatePath("/reglages/plafond");
     return r;
   } catch {
-    return { ok: false, message: PAS_DE_REPONSE };
+    return { ok: false, message: PEUT_ETRE_ALLUMEE };
   }
 }
 
-/** Éteint ce que l'Usine dépense seule, tout de suite : sans confirmation ni délai (c'est le sens sûr). */
+/** Éteint ce que l'Usine dépense seule, tout de suite : sans confirmation ni délai (c'est le sens sûr). Ne dépend que de la session, pas de l'interrupteur de l'écran. */
 export async function eteindreAutonomie(): Promise<Message> {
   await exigerSession();
-  if (!(await ecranAllume())) return { ok: false, message: "Cet écran est éteint." };
   try {
     const r = await couperAutonomie();
     revalidatePath("/reglages/plafond");
     if (r.ok) return { ok: true, message: "Autonomie éteinte : l'Usine ne dépense plus rien seule." };
-    if (r.raison === "sans_reponse") return { ok: false, message: "Le Studio ne répond pas : rien n'a changé. L'autonomie peut encore être allumée ; éteignez-la aussi dans le Studio." };
+    if (r.raison === "sans_reponse") return { ok: false, message: "Le Studio ne répond pas : l'extinction n'est pas confirmée. L'autonomie peut encore être allumée ; éteignez-la aussi dans le Studio." };
     return enClair(r, "");
   } catch {
     return { ok: false, message: PAS_DE_REPONSE };

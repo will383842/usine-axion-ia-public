@@ -5,8 +5,7 @@ import { interrupteurAllume } from "@/donnees";
 import { PLAFOND_DEPART_CENTS, lireAutonomieStudio, lirePlafondAutomatique } from "@/reglages/plafond-automatique";
 import { LIGNES_PLAFONDS_VIDEO, PHRASE_PLAFONDS_VIDEO } from "@/reglages/plafonds-video";
 import { exigerSession } from "@/services/auth";
-import { eteindreAutonomie } from "./actions";
-import { FormulairePlafond } from "./FormulairePlafond";
+import { BoutonEteindre, FormulairePlafond } from "./FormulairePlafond";
 
 export const metadata: Metadata = { title: "Ce que l'Usine dépense seule" };
 export const dynamic = "force-dynamic";
@@ -20,12 +19,6 @@ function enSaisie(centimes: number): string {
   return reste === 0 ? String(Math.floor(centimes / 100)) : `${Math.floor(centimes / 100)},${String(reste).padStart(2, "0")}`;
 }
 
-async function eteindreSansEtat(): Promise<void> {
-  "use server";
-  await exigerSession();
-  await eteindreAutonomie();
-}
-
 export default async function Page() {
   await exigerSession();
   if (!(await interrupteurAllume("plafond.ecran"))) {
@@ -33,6 +26,8 @@ export default async function Page() {
       <section className="flex flex-col gap-4 rounded-2xl border border-trait bg-surface p-5">
         <h1 className="text-3xl font-bold">Ce que l&apos;Usine dépense seule</h1>
         <p>Cet écran est éteint.</p>
+        <p>Si l&apos;Usine dépensait seule, vous pouvez quand même l&apos;éteindre :</p>
+        <BoutonEteindre />
         <Link href="/reglages/interrupteurs" className="inline-flex min-h-11 items-center font-semibold underline">
           Ouvrir les interrupteurs
         </Link>
@@ -62,11 +57,7 @@ export default async function Page() {
             <p className="font-semibold">Dépensé ce mois-ci : inconnu.</p>
             <p>L&apos;état n&apos;a pas pu être lu : rien n&apos;est envoyé pour allumer. Réessayez plus tard.</p>
             <p>Si l&apos;Usine dépensait seule, vous pouvez quand même l&apos;éteindre :</p>
-            <form action={eteindreSansEtat}>
-              <button type="submit" className="bouton">
-                Éteindre maintenant
-              </button>
-            </form>
+            <BoutonEteindre />
           </>
         )}
       </section>

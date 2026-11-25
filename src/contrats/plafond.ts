@@ -38,6 +38,6 @@ export const reponseAutonomieStudio = z.object({
 });
 export type ReponseAutonomieStudio = z.infer<typeof reponseAutonomieStudio>;
 
-export const RAISONS_PLAFOND = ["hors_bornes", "arret", "pas_branche", "sans_reponse", "refuse", "reponse_inattendue"] as const;
+export const RAISONS_PLAFOND = ["hors_bornes", "arret", "pas_branche", "sans_reponse", "refuse", "reponse_inattendue", "arret_en_vol"] as const;
 export type RaisonPlafond = (typeof RAISONS_PLAFOND)[number];
 export type ResultatPlafond = { ok: true; actif: boolean; plafond_cents: number; deja: boolean } | { ok: false; raison: RaisonPlafond; statut?: number };

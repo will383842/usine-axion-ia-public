@@ -1,7 +1,7 @@
 /** PLAFOND-USINE-a · envoi de l'état de l'autonomie et de son plafond au Studio, dernier réglage accepté, lecture de l'état du Studio. Allumer n'est décidé que par l'appelant (action d'allumage, après confirmation). */
 import "server-only";
 import { z } from "zod";
-import { sousArret } from "@/arret";
+import { estArrete, sousArret } from "@/arret";
 import { ecrireReglage, journaliser, lireReglage } from "@/donnees";
 import { PLAFOND_AUTO_MAX_CENTS, reponseAutonomieStudio, reponsePlafondStudio, type RaisonPlafond, type ResultatPlafond } from "@/contrats";
 import { lireAutonomieDuStudio, reglerPlafondDuStudio } from "@/passerelles/studio";
@@ -47,16 +47,17 @@ const EN_CLAIR: Record<RaisonPlafond, string> = {
   sans_reponse: "le Studio ne répond pas",
   refuse: "le Studio a refusé l'envoi",
   reponse_inattendue: "réponse inattendue du Studio",
+  arret_en_vol: "tout a été arrêté pendant l'envoi, l'autonomie a été éteinte aussitôt",
 };
 
 const etat = (actif: boolean) => (actif ? "allumée" : "éteinte");
 const sansAccepte = (r: ReglageAutonomie | null) => (r ? { actif: r.actif, plafond_cents: r.plafond_cents } : null);
 
 async function echec(demande: { actif: boolean; plafond_cents: number }, raison: RaisonPlafond, statut?: number): Promise<ResultatPlafond> {
-  const avant = sansAccepte(await lirePlafondAutomatique());
-  await journaliser("reglage", `Autonomie non envoyée au Studio : ${EN_CLAIR[raison]}.`, {
+  const avant_usine = sansAccepte(await lirePlafondAutomatique());
+  await journaliser("reglage", `Autonomie non envoyée au Studio : ${EN_CLAIR[raison]}. Avant (dernier réglage noté par l'Usine, pas lu au Studio) en données.`, {
     cible: CLE_PLAFOND_AUTO,
-    donnees: statut === undefined ? { avant, demande, raison } : { avant, demande, raison, statut },
+    donnees: statut === undefined ? { avant_usine, demande, raison } : { avant_usine, demande, raison, statut },
   });
   return statut === undefined ? { ok: false, raison } : { ok: false, raison, statut };
 }
@@ -93,13 +94,35 @@ export async function envoyerAutonomie(
     }
     return echec(demande, "reponse_inattendue", statut);
   }
-  const avant = await lirePlafondAutomatique();
-  await journaliser("reglage", `Autonomie acceptée par le Studio : ${etat(actif)}, plafond ${plafondCents / 100} € par mois.`, {
-    cible: CLE_PLAFOND_AUTO,
-    donnees: { avant: sansAccepte(avant), apres: demande, deja: lue.data.deja },
-  });
-  if (!(lue.data.deja && avant?.plafond_cents === plafondCents && avant.actif === actif)) {
-    await ecrireReglage(CLE_PLAFOND_AUTO, { actif, plafond_cents: plafondCents, accepte_le: new Date().toISOString(), version: 2 });
+  // Le Studio a répondu 200 : à partir d'ici rien ne lève (l'état du Studio est déjà changé), un échec local n'est qu'une alerte au journal.
+  try {
+    const avant = await lirePlafondAutomatique();
+    await journaliser("reglage", `Autonomie acceptée par le Studio : ${etat(actif)}, plafond ${plafondCents / 100} € par mois. Avant = dernier réglage noté par l'Usine, pas l'état lu au Studio.`, {
+      cible: CLE_PLAFOND_AUTO,
+      donnees: { avant_usine: sansAccepte(avant), apres: demande, deja: lue.data.deja },
+    });
+    if (!(lue.data.deja && avant?.plafond_cents === plafondCents && avant.actif === actif)) {
+      await ecrireReglage(CLE_PLAFOND_AUTO, { actif, plafond_cents: plafondCents, accepte_le: new Date().toISOString(), version: 2 });
+    }
+  } catch {
+    try {
+      await journaliser("reglage", "Alerte : le Studio a accepté le réglage mais l'Usine n'a pas pu le noter.", { cible: CLE_PLAFOND_AUTO, donnees: { demande } });
+    } catch {
+      /* rien de plus à faire : le Studio a bien le réglage et l'écran relit son état */
+    }
+  }
+  // Course avec « Tout arrêter » : un allumage parti avant l'arrêt peut arriver après l'extinction. On revérifie et on coupe.
+  if (actif && (await estArrete())) {
+    const coupe = await couperAutonomie();
+    try {
+      await journaliser("reglage", coupe.ok ? "Alerte : tout a été arrêté pendant l'allumage ; l'autonomie a été éteinte aussitôt." : "Alerte : tout a été arrêté pendant l'allumage ; l'extinction n'a pas été confirmée, l'autonomie est peut-être allumée.", {
+        cible: CLE_PLAFOND_AUTO,
+        donnees: { demande, extinction_confirmee: coupe.ok },
+      });
+    } catch {
+      /* le résultat rendu dit déjà l'essentiel */
+    }
+    return coupe.ok ? { ok: false, raison: "arret_en_vol" } : { ok: false, raison: "sans_reponse" };
   }
   return { ok: true, actif, plafond_cents: plafondCents, deja: lue.data.deja };
 }

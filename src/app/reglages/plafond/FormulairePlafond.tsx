@@ -6,6 +6,35 @@ import { allumerAutonomie, enregistrerPlafondAutomatique, eteindreAutonomie } fr
 
 type Message = { texte: string; erreur: boolean };
 
+/** Bouton d'urgence « Éteindre maintenant » : sans confirmation, et il dit son résultat (éteinte, ou extinction non confirmée). */
+export function BoutonEteindre() {
+  const [message, setMessage] = useState<Message | null>(null);
+  const [enCours, setEnCours] = useState(false);
+  const eteindre = async () => {
+    setEnCours(true);
+    try {
+      const r = await eteindreAutonomie();
+      setMessage({ texte: r.message, erreur: !r.ok });
+    } catch {
+      setMessage({ texte: "L'extinction n'est pas confirmée : l'autonomie peut encore être allumée. Réessayez, ou éteignez-la dans le Studio.", erreur: true });
+    } finally {
+      setEnCours(false);
+    }
+  };
+  return (
+    <div className="flex flex-col gap-2">
+      {message && (
+        <p role={message.erreur ? "alert" : "status"} className={message.erreur ? "rounded-lg bg-terracotta-doux px-3 py-2 font-semibold text-terracotta-fonce" : "font-semibold"}>
+          {message.texte}
+        </p>
+      )}
+      <button type="button" className="bouton" disabled={enCours} onClick={eteindre}>
+        Éteindre maintenant
+      </button>
+    </div>
+  );
+}
+
 /**
  * Interrupteur + plafond en euros, pré-remplis avec l'état lu dans le Studio. Rien ne part avant le geste d'enregistrement :
  * allumer = résumé, « Oui, allumer », puis 10 s pour annuler ; éteindre = tout de suite.
@@ -100,7 +129,7 @@ export function FormulairePlafond({ allumeInitial, initial, resume }: { allumeIn
           Éteindre maintenant
         </button>
       )}
-      {!allume && !reel && <Annulable libelle="Enregistrer le plafond" message="Plafond envoyé au Studio dans 10 s." action={plafondSeul} className="bouton" surDecompte={setVerrou} />}
+      {!allume && !reel && <Annulable libelle="Enregistrer le plafond" message="Plafond envoyé au Studio dans 10 s." action={plafondSeul} className="bouton" surDecompte={setVerrou} annulerSiQuitte />}
     </section>
   );
 }

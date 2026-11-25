@@ -166,9 +166,35 @@ describe("plafond-ecran · allumer et éteindre", () => {
   it("allumer : le Studio se tait ou refuse → message clair, rien n'a changé", async () => {
     const { allumerAutonomie } = await import("@/app/reglages/plafond/actions");
     envoyerAutonomie.mockResolvedValue({ ok: false, raison: "sans_reponse" });
-    expect(await allumerAutonomie("20", "allumer")).toEqual({ ok: false, message: "Le Studio ne répond pas : rien n'a changé. Réessayez plus tard." });
+    expect(await allumerAutonomie("20", "allumer")).toEqual({ ok: false, message: "Le Studio n'a pas confirmé : l'autonomie est PEUT-ÊTRE allumée. Rechargez la page pour lire l'état, ou éteignez-la." });
     envoyerAutonomie.mockRejectedValue(new Error("panne"));
     expect((await allumerAutonomie("20", "allumer")).ok).toBe(false);
+  });
+
+  it("allumer sans réponse nette : jamais « rien n'a changé », toujours « PEUT-ÊTRE allumée »", async () => {
+    const { allumerAutonomie } = await import("@/app/reglages/plafond/actions");
+    const peutEtre = { ok: false, message: "Le Studio n'a pas confirmé : l'autonomie est PEUT-ÊTRE allumée. Rechargez la page pour lire l'état, ou éteignez-la." };
+    for (const r of [{ ok: false, raison: "sans_reponse" }, { ok: false, raison: "reponse_inattendue", statut: 200 }, { ok: false, raison: "refuse", statut: 502 }]) {
+      envoyerAutonomie.mockResolvedValue(r);
+      expect(await allumerAutonomie("20", "allumer"), JSON.stringify(r)).toEqual(peutEtre);
+    }
+    envoyerAutonomie.mockRejectedValue(new Error("panne"));
+    expect(await allumerAutonomie("20", "allumer")).toEqual(peutEtre);
+    envoyerAutonomie.mockResolvedValue({ ok: false, raison: "refuse", statut: 400 });
+    expect((await allumerAutonomie("20", "allumer")).message).toMatch(/rien n'a changé/);
+    envoyerAutonomie.mockResolvedValue({ ok: false, raison: "arret_en_vol" });
+    expect((await allumerAutonomie("20", "allumer")).message).toMatch(/éteinte aussitôt/);
+  });
+
+  it("éteindre ne dépend que de la session : possible même si l'écran est éteint", async () => {
+    const { eteindreAutonomie } = await import("@/app/reglages/plafond/actions");
+    interrupteurAllume.mockResolvedValue(false);
+    couperAutonomie.mockResolvedValue({ ok: true, actif: false, plafond_cents: 2000, deja: false });
+    expect((await eteindreAutonomie()).ok).toBe(true);
+    expect(couperAutonomie).toHaveBeenCalledTimes(1);
+    exigerSession.mockRejectedValueOnce(new Error("NEXT_REDIRECT"));
+    await expect(eteindreAutonomie()).rejects.toThrow();
+    expect(couperAutonomie).toHaveBeenCalledTimes(1);
   });
 
   it("éteindre : immédiat, sans confirmation ; Studio muet : message clair", async () => {
@@ -179,7 +205,7 @@ describe("plafond-ecran · allumer et éteindre", () => {
     expect(r.ok).toBe(true);
     expect(r.message).toMatch(/éteinte/);
     couperAutonomie.mockResolvedValue({ ok: false, raison: "sans_reponse" });
-    expect(await eteindreAutonomie()).toEqual({ ok: false, message: "Le Studio ne répond pas : rien n'a changé. L'autonomie peut encore être allumée ; éteignez-la aussi dans le Studio." });
+    expect(await eteindreAutonomie()).toEqual({ ok: false, message: "Le Studio ne répond pas : l'extinction n'est pas confirmée. L'autonomie peut encore être allumée ; éteignez-la aussi dans le Studio." });
   });
 });
 
@@ -199,7 +225,8 @@ describe("plafond-ecran · textes de l'écran", () => {
   it("l'effet de « Tout arrêter » est dit à l'écran ; « Éteindre maintenant » reste proposé quand l'état n'est pas lu ; le formulaire n'est pas remonté par une clé d'état", () => {
     const page = readFileSync(join(dossier, "page.tsx"), "utf8");
     expect(page).toMatch(/« Tout arrêter » éteint aussi ce que l&apos;Usine dépense seule ; la reprise ne le rallume jamais, seul cet écran le peut/);
-    expect(page).toMatch(/\{studio\.connu \? \([\s\S]*?\) : \([\s\S]*?Éteindre maintenant/);
+    expect(page).toMatch(/\{studio\.connu \? \([\s\S]*?\) : \([\s\S]*?<BoutonEteindre \/>/);
+    expect(page).toMatch(/Cet écran est éteint\.[\s\S]*?<BoutonEteindre \/>/);
     expect(page).not.toMatch(/<FormulairePlafond[^>]*\bkey=/);
     const bouton = readFileSync("src/arret/BoutonToutArreter.tsx", "utf8");
     expect(bouton).toMatch(/éteint aussi ce que l&apos;Usine dépense seule/);
