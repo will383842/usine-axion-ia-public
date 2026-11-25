@@ -111,12 +111,12 @@ export type EtatStudio =
   | { connu: false }
   | { connu: true; automatique: boolean; plafond_cents: number; utilise_cents: number; mois: string; pilote: "usine" | "studio" | "aucun" };
 
-/** État lu au Studio (lecture seule, sans rien écrire ici). Panne, refus ou réponse illisible : « inconnu » (échec fermé). */
+/** État lu au Studio (lecture seule, sans rien écrire ici), donc lisible même sous « Tout arrêter » : sinon l'écran dirait à tort que le Studio se tait. Panne, refus ou réponse illisible : « inconnu » (échec fermé). */
 export async function lireAutonomieStudio(): Promise<EtatStudio> {
   try {
-    const r = await sousArret("envoi", () => lireAutonomieDuStudio());
-    if (!r.fait || !r.valeur.envoye || r.valeur.statut !== 200) return { connu: false };
-    const l = reponseAutonomieStudio.safeParse(r.valeur.corps);
+    const r = await lireAutonomieDuStudio();
+    if (!r.envoye || r.statut !== 200) return { connu: false };
+    const l = reponseAutonomieStudio.safeParse(r.corps);
     if (!l.success) return { connu: false };
     return {
       connu: true,

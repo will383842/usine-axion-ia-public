@@ -172,6 +172,19 @@ describe.skipIf(!url)("plafond automatique · en base, avec une doublure du Stud
     expect(await lireAutonomieStudio()).toEqual({ connu: false });
   });
 
+  it("lireAutonomieStudio : la lecture reste possible sous « Tout arrêter » (elle ne dit pas à tort que le Studio se tait)", async () => {
+    const { lireAutonomieStudio } = await import("@/reglages/plafond-automatique");
+    lireAutonomieDuStudio.mockReset();
+    lireAutonomieDuStudio.mockResolvedValue({ envoye: true, statut: 200, corps: { automatique: true, plafond_automatique_cents: 2000, utilise_automatique_cents: 0, mois: "2026-11", pilote: "usine" } });
+    await arret(true);
+    try {
+      expect(await lireAutonomieStudio()).toMatchObject({ connu: true, automatique: true });
+      expect(lireAutonomieDuStudio).toHaveBeenCalledTimes(1);
+    } finally {
+      await arret(false);
+    }
+  });
+
   it("rejeu (deja) : ok, valeur inchangée", async () => {
     const { envoyerPlafondAutomatique } = await import("@/reglages/plafond-automatique");
     await envoyerPlafondAutomatique(2000);
@@ -264,6 +277,34 @@ describe("plafond automatique · garde-fous statiques", () => {
       }
     }
     expect(trouves).toBe(1);
+  });
+  it("l'envoi vers le Studio n'a que deux appelants : `reglerPlafondDuStudio(` dans plafond-automatique.ts seul ; `envoyerAutonomie(` seulement avec `actif: true` (actions.ts) ou `actif: false`, jamais une variable", () => {
+    const enleverCommentaires = (t: string) => t.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    for (const f of fichiers("src").filter((x) => /\.(ts|tsx)$/.test(x))) {
+      const chemin = f.replace(/\\/g, "/");
+      const t = enleverCommentaires(readFileSync(f, "utf8")).replace(/^import [^;]*;$/gm, "");
+      const appelsPasserelle = (t.match(/\breglerPlafondDuStudio\b/g) ?? []).length;
+      if (chemin === "src/passerelles/studio.ts") expect(appelsPasserelle, chemin).toBe(1); // sa définition
+      else if (chemin === "src/reglages/plafond-automatique.ts") expect(appelsPasserelle, chemin).toBe(1); // un seul appel (l'import est écarté)
+      else expect(appelsPasserelle, chemin).toBe(0);
+      if (chemin === "src/reglages/plafond-automatique.ts") continue; // sa définition et ses propres appels (`actif: false` écrit en dur)
+      for (const m of t.matchAll(/\benvoyerAutonomie\b(?!\s*\()/g)) expect.soft(m[0], `${chemin} : envoyerAutonomie ne se passe ni ne s'alias jamais`).toBeUndefined();
+      for (const m of t.matchAll(/\benvoyerAutonomie\(([^)]*)/g)) {
+        expect(m[1], `${chemin} : envoyerAutonomie( n'accepte qu'un littéral actif: true|false`).toMatch(/^\s*\{\s*actif\s*:\s*(true|false)\s*,/);
+        if (/actif\s*:\s*true/.test(m[1])) expect(chemin).toBe("src/app/reglages/plafond/actions.ts");
+      }
+    }
+    const plafond = enleverCommentaires(readFileSync("src/reglages/plafond-automatique.ts", "utf8"));
+    for (const m of plafond.matchAll(/\benvoyerAutonomie\(\s*\{\s*(actif\s*:[^}]*)\}/g)) expect(m[1], "plafond-automatique.ts").toMatch(/^actif\s*:\s*false\b/);
+    // Le seul appel de la passerelle y passe l'état reçu en paramètre de envoyerAutonomie.
+    expect(plafond).toMatch(/reglerPlafondDuStudio\(actif, plafondCents\)/);
+  });
+  it("chaque appel réseau de la passerelle du Studio a un délai maximal", () => {
+    const t = readFileSync("src/passerelles/studio.ts", "utf8");
+    const appels = t.match(/await fetch\(/g)?.length ?? 0;
+    expect(appels).toBeGreaterThan(0);
+    expect(t.match(/signal: AbortSignal\.timeout\(DELAI_MAX_MS\)/g)?.length ?? 0).toBe(appels);
+    expect(t).toMatch(/DELAI_MAX_MS = 10_000/);
   });
   it("la passerelle prend l'état en paramètre, sans littéral, et envoie en PUT", () => {
     const t = readFileSync("src/passerelles/studio.ts", "utf8");

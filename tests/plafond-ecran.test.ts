@@ -196,6 +196,15 @@ describe("plafond-ecran · textes de l'écran", () => {
     expect(tout).toContain("Oui, allumer");
     expect(tout).toContain("Le Studio ne répond pas");
   });
+  it("l'effet de « Tout arrêter » est dit à l'écran ; « Éteindre maintenant » reste proposé quand l'état n'est pas lu ; le formulaire n'est pas remonté par une clé d'état", () => {
+    const page = readFileSync(join(dossier, "page.tsx"), "utf8");
+    expect(page).toMatch(/« Tout arrêter » éteint aussi ce que l&apos;Usine dépense seule ; la reprise ne le rallume jamais, seul cet écran le peut/);
+    expect(page).toMatch(/\{studio\.connu \? \([\s\S]*?\) : \([\s\S]*?Éteindre maintenant/);
+    expect(page).not.toMatch(/<FormulairePlafond[^>]*\bkey=/);
+    const bouton = readFileSync("src/arret/BoutonToutArreter.tsx", "utf8");
+    expect(bouton).toMatch(/éteint aussi ce que l&apos;Usine dépense seule/);
+    expect(bouton).toMatch(/seul l&apos;écran « Ce que l&apos;Usine dépense seule » peut le rallumer/);
+  });
   it("ne dit plus « restent éteints » ni « Vous seul pourrez les allumer »", () => {
     const tout = sources().join("\n");
     expect(tout).not.toContain("restent éteints");

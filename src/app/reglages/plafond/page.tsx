@@ -5,6 +5,7 @@ import { interrupteurAllume } from "@/donnees";
 import { PLAFOND_DEPART_CENTS, lireAutonomieStudio, lirePlafondAutomatique } from "@/reglages/plafond-automatique";
 import { LIGNES_PLAFONDS_VIDEO, PHRASE_PLAFONDS_VIDEO } from "@/reglages/plafonds-video";
 import { exigerSession } from "@/services/auth";
+import { eteindreAutonomie } from "./actions";
 import { FormulairePlafond } from "./FormulairePlafond";
 
 export const metadata: Metadata = { title: "Ce que l'Usine dépense seule" };
@@ -17,6 +18,12 @@ const montant = (centimes: number) => `${euros.format(centimes / 100)} €`;
 function enSaisie(centimes: number): string {
   const reste = centimes % 100;
   return reste === 0 ? String(Math.floor(centimes / 100)) : `${Math.floor(centimes / 100)},${String(reste).padStart(2, "0")}`;
+}
+
+async function eteindreSansEtat(): Promise<void> {
+  "use server";
+  await exigerSession();
+  await eteindreAutonomie();
 }
 
 export default async function Page() {
@@ -53,7 +60,13 @@ export default async function Page() {
         ) : (
           <>
             <p className="font-semibold">Dépensé ce mois-ci : inconnu.</p>
-            <p>Le Studio ne répond pas : rien n&apos;est affiché ni envoyé pour l&apos;instant. Réessayez plus tard.</p>
+            <p>L&apos;état n&apos;a pas pu être lu : rien n&apos;est envoyé pour allumer. Réessayez plus tard.</p>
+            <p>Si l&apos;Usine dépensait seule, vous pouvez quand même l&apos;éteindre :</p>
+            <form action={eteindreSansEtat}>
+              <button type="submit" className="bouton">
+                Éteindre maintenant
+              </button>
+            </form>
           </>
         )}
       </section>
@@ -62,13 +75,13 @@ export default async function Page() {
           <section className="rounded-xl border border-trait bg-surface p-4">
             <p className="font-semibold">Bon à savoir</p>
             <p>Une fois réglée ici, l&apos;autonomie ne se règle plus dans le Studio (sauf le bouton Éteindre). Vous pouvez donc l&apos;allumer, l&apos;éteindre et changer le plafond depuis cet écran seulement.</p>
+            <p>« Tout arrêter » éteint aussi ce que l&apos;Usine dépense seule ; la reprise ne le rallume jamais, seul cet écran le peut.</p>
             <p>Les plafonds par vidéo ci-dessous s&apos;ajoutent à ce plafond du mois.</p>
           </section>
           <FormulairePlafond
-            key={`${studio.automatique}-${plafondInitial}`}
             allumeInitial={studio.automatique}
             initial={enSaisie(plafondInitial)}
-            resume={`L'Usine pourra dépenser seule jusqu'à {plafond} € par mois, sans vous demander, puis s'arrêtera. Vous pourrez l'éteindre à tout moment ; « Tout arrêter » l'éteint aussi. Le plafond ne peut pas dépasser ${borne}.`}
+            resume={`L'Usine pourra dépenser seule jusqu'à {plafond} € par mois, sans vous demander, puis s'arrêtera. Vous pourrez l'éteindre à tout moment ; « Tout arrêter » l'éteint aussi, et ensuite seul cet écran peut la rallumer. Le plafond ne peut pas dépasser ${borne}.`}
           />
         </>
       )}
