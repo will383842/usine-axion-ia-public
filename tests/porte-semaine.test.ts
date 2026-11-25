@@ -655,6 +655,47 @@ describe.skipIf(!url)("porte · semaine · sur une vraie base", () => {
       expect(new Set(t).size).toBe(16);
     });
 
+    it("C12 · carrousels épuisés (sujets déjà retenus, fins présentes) : message « pas assez de sujets neufs », pas « fin manquante »", async () => {
+      await allumer();
+      await p.query("INSERT INTO reglage (cle, valeur) VALUES ('quotas_production', $1) ON CONFLICT (cle) DO UPDATE SET valeur = EXCLUDED.valeur", [JSON.stringify({ facebook: { carrousel: { periode: "semaine", quantite: 7 } } })]);
+      // Peu de matière : une accroche, une taille, un cas d'usage par métier.
+      await p.query("UPDATE accroche SET etat = 'retire' WHERE code <> 'accroche.essai-0'");
+      await p.query("UPDATE taille SET actif = 'non' WHERE code <> 'TPE'");
+      await p.query("UPDATE cas_usage SET etat = 'retire' WHERE code NOT IN (SELECT min(code) FROM cas_usage GROUP BY cible)");
+      // On retient tous les sujets carrousel que le tirage peut rendre, sans jour ni réseau (aucun créneau pris).
+      for (let tour = 0; tour < 60; tour++) {
+        const r = await semaine();
+        const c = carrousels(r);
+        if (!c.length) break;
+        for (const l of c) await retenir(l.sujet!);
+      }
+      const fin = await semaine();
+      expect(carrousels(fin)).toHaveLength(0);
+      expect(fin.message).toContain("sujets");
+      expect(fin.message).not.toContain("phrase de fin pour les carrousels");
+    });
+
+    it("C13 · plus aucune vidéo à poser mais des créneaux carrousel libres : les carrousels sont rendus, pas de 409", async () => {
+      for (const r of ["instagram", "facebook"]) {
+        for (let i = 0; i < 6; i++) {
+          await p.query(`INSERT INTO calendrier_ligne (reseau, compte, type_contenu, prevue_le, date_choisie) VALUES ($1, $2, 'video', $3, true)`, [r, `${r}:essai`, instantDeParis(`2099-03-0${2 + i}`, "12:30")]);
+        }
+      }
+      expect(await erreurDe()).toMatchObject({ statut: 409, code: "semaine_pleine" });
+      await allumer();
+      const r = await semaine();
+      expect(carrousels(r)).toHaveLength(4);
+      expect(r.propositions.filter((l) => l.type === "video")).toHaveLength(0);
+    });
+
+    it("C14 · en cours de semaine : aucun carrousel dans le passé, les carrousels du jour passé sont reportés ou écartés", async () => {
+      await allumer();
+      const maintenant = instantDeParis("2099-03-04", "13:00");
+      const r = await semaine(maintenant);
+      expect(carrousels(r).length).toBeGreaterThan(0);
+      for (const l of r.propositions) expect(instantDeParis(l.jour, l.heure!).getTime()).toBeGreaterThan(maintenant.getTime());
+    });
+
     it("C10 · lecture seule : seulement des SELECT, rien d'écrit", async () => {
       await allumer();
       const sauve = p.query.bind(p);
