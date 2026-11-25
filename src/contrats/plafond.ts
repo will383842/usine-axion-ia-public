@@ -28,6 +28,9 @@ export const reponsePlafondStudio = z
   .refine((r) => !r.automatique || r.plafond_automatique_cents > 0, { message: "allumé avec 0" });
 export type ReponsePlafondStudio = z.infer<typeof reponsePlafondStudio>;
 
+/** Corps de la lecture (POST /api/usine/reglages/autonomie) : le contrat 2 seul, sinon le Studio répond 426 « contrat_inconnu ». */
+export const corpsLectureAutonomieStudio = z.strictObject({ contrat: z.literal(2) });
+
 /** Lecture de l'état au Studio (POST /api/usine/reglages/autonomie, lecture seule). Tolérante : les autres champs sont ignorés. */
 export const reponseAutonomieStudio = z.object({
   automatique: z.boolean(),

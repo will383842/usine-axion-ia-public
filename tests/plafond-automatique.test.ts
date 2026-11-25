@@ -14,7 +14,7 @@ vi.mock("@/passerelles/studio", async (original) => {
 });
 
 import { lireSaisieEuros } from "@/reglages/plafond-automatique";
-import { PLAFOND_AUTO_MAX_CENTS, corpsPlafondStudio, reponsePlafondStudio, reponseAutonomieStudio } from "@/contrats";
+import { PLAFOND_AUTO_MAX_CENTS, corpsPlafondStudio, corpsLectureAutonomieStudio, reponsePlafondStudio, reponseAutonomieStudio } from "@/contrats";
 
 describe("plafond automatique · saisie en euros", () => {
   it("convertit en centimes par la chaîne", () => {
@@ -347,6 +347,23 @@ describe("plafond automatique · garde-fous statiques", () => {
     for (const m of plafond.matchAll(/\benvoyerAutonomie\(\s*\{\s*(actif\s*:[^}]*)\}/g)) expect(m[1], "plafond-automatique.ts").toMatch(/^actif\s*:\s*false\b/);
     // Le seul appel de la passerelle y passe l'état reçu en paramètre de envoyerAutonomie.
     expect(plafond).toMatch(/reglerPlafondDuStudio\(actif, plafondCents\)/);
+  });
+  it("la lecture de l'autonomie envoie le contrat 2, validé par un schéma (jamais un corps vide)", () => {
+    expect(corpsLectureAutonomieStudio.parse({ contrat: 2 })).toEqual({ contrat: 2 });
+    expect(corpsLectureAutonomieStudio.safeParse({}).success).toBe(false);
+    expect(corpsLectureAutonomieStudio.safeParse({ contrat: 2, autre: 1 }).success).toBe(false);
+    const t = readFileSync("src/passerelles/studio.ts", "utf8");
+    const lecture = t.slice(t.indexOf("export async function lireAutonomieDuStudio"), t.indexOf("export async function reglerPlafondDuStudio"));
+    expect(lecture).not.toContain('body: "{}"');
+    expect(lecture).toMatch(/corpsLectureAutonomieStudio\.parse\(\{ contrat: 2 \}\)/);
+    expect(lecture).toMatch(/body: JSON\.stringify\(corps\)/);
+  });
+  it("lireAutonomieStudio : un refus 426 donne un message distinct de « le Studio ne répond pas »", async () => {
+    const { lireAutonomieStudio } = await import("@/reglages/plafond-automatique");
+    lireAutonomieDuStudio.mockResolvedValue({ envoye: true, statut: 426, corps: { code: "contrat_inconnu" } });
+    expect(await lireAutonomieStudio()).toEqual({ connu: false, refus: "contrat" });
+    lireAutonomieDuStudio.mockResolvedValue({ envoye: true, statut: 500, corps: null });
+    expect(await lireAutonomieStudio()).toEqual({ connu: false });
   });
   it("chaque appel réseau de la passerelle du Studio a un délai maximal", () => {
     const t = readFileSync("src/passerelles/studio.ts", "utf8");
