@@ -23,6 +23,7 @@ import {
   MINUTES_ENTRE_DEMANDES,
   MINUTES_ENTRE_RELECTURES,
   NOTE_LIGNE_TUTORIEL,
+  PAUSE_PASSAGERE_MINUTES,
   RELECTURES_MAX,
   RESEAU_TUTORIEL,
   cleTutoriel,
@@ -30,6 +31,7 @@ import {
   lireReponseSuivi,
   lireReponseTirage,
   lundiCible,
+  refusDefinitif,
   pauseCommandeMinutes,
 } from "./regles";
 
@@ -140,6 +142,8 @@ async function suivre(maintenant: Date, fait: string[]): Promise<void> {
       if (lu.genre === "perdu" && calendrier_ligne) {
         await transaction(async () => {
           await requete(`UPDATE calendrier_ligne SET archive_le = now(), modifie_le = now() WHERE id = $1 AND archive_le IS NULL`, [calendrier_ligne]);
+          // La commande du créneau ne compte plus dans le quota du jour (rien n'est supprimé ; côté Studio le créneau reste « proposé », aucune route d'annulation).
+          await requete(`UPDATE commande_studio SET archive_le = now(), modifie_le = now() WHERE calendrier_ligne = $1 AND archive_le IS NULL`, [calendrier_ligne]);
           await requete(`UPDATE tutoriel_tirage SET etat_studio = $2, relue_le = $3, modifie_le = now() WHERE cle = $1`, [cle, etatStocke, maintenant]);
         });
         await journaliser("tutoriel", "Un tutoriel de la réserve est à revoir ou refusé : son créneau est retiré du calendrier, un autre essai suivra.", { cible: cle, donnees: { etat: lu.etat } });
@@ -171,7 +175,7 @@ export async function poser(maintenant: Date, fait: string[]): Promise<void> {
   // La date du créneau est posée par l'Usine pour ce tutoriel seul : `date_choisie = true` la met hors de portée de l'horloge de la semaine (aucun appel de programmation d'ici).
   const lignes = await requete<{ cle: string; lundi: string; reseau: string }>(
     `SELECT cle, lundi::text, reseau FROM tutoriel_tirage
-      WHERE a_valider_le IS NOT NULL AND calendrier_ligne IS NULL AND archive_le IS NULL AND video_id IS NOT NULL ORDER BY lundi, essai`,
+      WHERE a_valider_le IS NOT NULL AND calendrier_ligne IS NULL AND archive_le IS NULL AND video_id IS NOT NULL AND etat_studio IN ('pris', 'fait') ORDER BY lundi, essai`,
   );
   for (const t of lignes) {
     // Les créneaux déjà pris du Studio, lus avant tout : sans lecture claire, rien n'est posé (on réessaie au passage suivant).
@@ -214,7 +218,8 @@ export async function poser(maintenant: Date, fait: string[]): Promise<void> {
 
 /**
  * Propose au Studio, avec `videoId`, chaque ligne de tutoriel dont la commande n'est pas partie (même clé de commande : jamais deux).
- * Une commande refusée n'est pas renvoyée à chaque passage : pause de 1 h, 2 h, 4 h… puis arrêt après 6 envois, avec une ligne au journal.
+ * Seuls les refus DÉFINITIFS (400, 426, réponse non comprise) comptent : pause de 1 h, 2 h, 4 h…, arrêt après 6 envois, une ligne au journal.
+ * Les erreurs passagères (409, 423, 429, 5xx, silence, pas branché, arrêt) sont rejouées sans limite, avec une pause de 30 min, et ne font jamais abandonner.
  */
 async function commander(maintenant: Date, fait: string[]): Promise<void> {
   const lignes = await requete<{ id: string; cle: string; commande_essais: number }>(
@@ -233,6 +238,11 @@ async function commander(maintenant: Date, fait: string[]): Promise<void> {
     }
     fait.push("commande_a_rejouer");
     if (r.etat_envoi !== "non_envoyee") continue; // rien n'est parti (interrupteur, ligne absente) : pas de pause
+    if (!refusDefinitif(r.message)) {
+      // Passager : on ne compte pas, on attend un peu (30 min) et on rejoue sans fin.
+      await requete(`UPDATE tutoriel_tirage SET commande_prochaine_le = $2, modifie_le = now() WHERE cle = $1`, [cle, new Date(maintenant.getTime() + PAUSE_PASSAGERE_MINUTES * 60_000)]);
+      continue;
+    }
     const essais = commande_essais + 1;
     await requete(`UPDATE tutoriel_tirage SET commande_essais = $2, commande_prochaine_le = $3, modifie_le = now() WHERE cle = $1`, [cle, essais, new Date(maintenant.getTime() + pauseCommandeMinutes(essais) * 60_000)]);
     if (essais >= ENVOIS_COMMANDE_MAX) {

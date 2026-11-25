@@ -1,5 +1,6 @@
 /** Réserve de tutoriels · règles pures : clés, lundi visé, lecture des réponses du Studio, choix du créneau. Ni base ni réseau. */
 import { ajouterJours, lundiDe, parSemaine } from "@/calendrier/regles";
+import { lireReponseCommande } from "@/commandes/regles";
 import { cleTirageTutoriel, lectureTirageTutoriel, reponseTirageTutoriel, type EtatStudioTutoriel, type Reseau } from "@/contrats";
 import { jourParis, proposerSemaine, type LigneSemaine, type Occupe } from "@/planification/regles";
 import type { RythmesParReseau } from "@/reglages/modele";
@@ -11,8 +12,13 @@ export const ESSAIS_MAX_PAR_SEMAINE = 2;
 export const MINUTES_ENTRE_DEMANDES = 60;
 export const MINUTES_ENTRE_RELECTURES = 30;
 export const RELECTURES_MAX = 10;
-/** Commande refusée : pause de 1 h, 2 h, 4 h… entre deux envois, arrêt après 6 envois (le fondateur place le créneau dans le Studio). */
+/** Refus DÉFINITIF seul (400, 426, réponse non comprise) : pause de 1 h, 2 h, 4 h… entre deux envois, arrêt après 6 envois (le fondateur place le créneau dans le Studio). */
 export const ENVOIS_COMMANDE_MAX = 6;
+/** Erreur passagère (409, 423, 429, 5xx, silence, pas branché, arrêt) : rejouée sans limite d'envois, pause de 30 min (jamais plus d'1 h), sans compter. */
+export const PAUSE_PASSAGERE_MINUTES = 30;
+const PHRASES_REFUS_DEFINITIF = new Set([lireReponseCommande(400, null).message, lireReponseCommande(426, null).message, lireReponseCommande(200, null).message]);
+/** Vrai si le message de l'envoi est un refus définitif du Studio (selon `src/commandes/regles.ts`) ; tout le reste est passager. */
+export const refusDefinitif = (message: string): boolean => PHRASES_REFUS_DEFINITIF.has(message);
 export const pauseCommandeMinutes = (envoisRefuses: number) => 60 * 2 ** Math.max(0, envoisRefuses - 1);
 export const ID_LIGNE_TUTORIEL = "v-tutoriel";
 export const NOTE_LIGNE_TUTORIEL = "Tutoriel de la réserve";

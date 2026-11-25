@@ -331,7 +331,7 @@ describe.skipIf(!url)("tutoriels · sur une vraie base, avec une doublure du Stu
     await passer(s.t());
     suivi = { etat: "fait", elementId: "el-1", videoId, aValider: true };
     await passer(s.t(31));
-    const [t] = await lignes(s.lundi);
+    const t = (await lignes(s.lundi)).find((x) => !x.archive_le); // R4 laisse des tirages archivés sur des semaines plus tardives
     expect(t.calendrier_ligne).not.toBeNull();
     return { s, cle: t.cle as string, ligne: t.calendrier_ligne as string };
   };
@@ -401,6 +401,42 @@ describe.skipIf(!url)("tutoriels · sur une vraie base, avec une doublure du Stu
     expect(commandesR4()).toHaveLength(6);
     const j = await p.query("SELECT 1 FROM journal WHERE sujet = 'tutoriel' AND cible = $1 AND message LIKE '%plus renvoyée%'", [`tuto-${s.lundi}-1`]);
     expect(j.rowCount).toBe(1);
+    rang += 3; // les 10 jours de passages ci-dessus ont créé des tirages sur les semaines suivantes : les essais suivants prennent des semaines plus loin
+  });
+
+  it("R1bis · erreurs passagères (503 puis 429) : rejouées sans compter ni abandonner ; la commande part au retour du Studio ; un 400 répété s'arrête après 6 essais", async () => {
+    const s = semaine();
+    let statutCommande = 503;
+    appelerStudio.mockImplementation(async (chemin: string) => {
+      if (chemin === "usine/tutoriels") return { envoye: true, statut: 200, corps: tirage };
+      if (chemin.startsWith("usine/tutoriels/")) return { envoye: true, statut: 200, corps: suivi };
+      if (chemin === "usine/commandes") return { envoye: true, statut: statutCommande, corps: statutCommande === 200 ? { etat: "recue", deja: false } : { erreur: "x" } };
+      throw new Error(`chemin inattendu ${chemin}`);
+    });
+    tirage = { etat: "pris", elementId: "el-1" };
+    await passer(s.t());
+    suivi = { etat: "fait", elementId: "el-1", videoId: "vid-pass", aValider: true };
+    await passer(s.t(31)); // 503
+    statutCommande = 429;
+    await passer(s.t(62)); // 429
+    for (let i = 1; i <= 20; i++) await passer(s.t(62 + 31 * i)); // beaucoup de passages : jamais abandonnée
+    const t = (await lignes(s.lundi)).find((x) => !x.archive_le);
+    expect(t.commande_essais).toBe(0);
+    expect(appels("usine/commandes").length).toBeGreaterThan(6);
+    expect((await p.query("SELECT 1 FROM journal WHERE sujet = 'tutoriel' AND cible = $1 AND message LIKE '%plus renvoyée%'", [t.cle])).rowCount).toBe(0);
+    statutCommande = 200; // le Studio revient
+    await passer(s.t(62 + 31 * 22));
+    expect((await p.query("SELECT etat_envoi FROM commande_studio WHERE calendrier_ligne = $1 AND archive_le IS NULL", [t.calendrier_ligne])).rows[0].etat_envoi).toBe("envoyee");
+  });
+
+  it("R2bis · quand le créneau est retiré, sa commande est archivée aussi (plus comptée au quota), rien n'est supprimé", async () => {
+    const { s, ligne } = await jusquALaPose("vid-r2bis");
+    expect((await p.query("SELECT count(*)::int AS n FROM commande_studio WHERE calendrier_ligne = $1 AND archive_le IS NULL", [ligne])).rows[0].n).toBe(1);
+    suivi = { etat: "a_revoir", elementId: "el-1", aValider: false };
+    await passer(s.t(93));
+    const c = (await p.query("SELECT archive_le FROM commande_studio WHERE calendrier_ligne = $1", [ligne])).rows;
+    expect(c).toHaveLength(1);
+    expect(c[0].archive_le).not.toBeNull();
   });
 
   it("R5 · la pose seule, sans le verrou consultatif : deux poses simultanées donnent une seule ligne (le `FOR UPDATE` tient)", async () => {
