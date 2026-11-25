@@ -5,6 +5,7 @@ import { lireReglagesTirage } from "@/reglages";
 import { exigerSession } from "@/services/auth";
 import { enregistrerTirage } from "../actions";
 import { Bloc, Entete, Nombre, Retour } from "../Champs";
+import { PlafondsVideo } from "./PlafondsVideo";
 
 export const metadata: Metadata = { title: "Poids et plafond" };
 export const dynamic = "force-dynamic";
@@ -14,6 +15,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ e
   const { etat, erreur } = await searchParams;
   const r = await lireReglagesTirage();
   return (
+    <div className="flex flex-col gap-6">
     <form action={enregistrerTirage} className="flex flex-col gap-6">
       <Entete titre="Poids et plafond" intro="Plus un poids est grand, plus la taille d'entreprise ou le service revient souvent. Le plafond est proposé à chaque commande de vidéos." />
       <Retour etat={etat} erreur={erreur} />
@@ -34,5 +36,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ e
         Enregistrer
       </button>
     </form>
+    <PlafondsVideo />
+    </div>
   );
 }
