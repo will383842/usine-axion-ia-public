@@ -564,6 +564,30 @@ describe.skipIf(!url)("porte · semaine · sur une vraie base", () => {
       expect(videos(apres)).toHaveLength(12);
     });
 
+    it("C3 bis · semaine en partie posée (deux lignes image sur Facebook et Instagram) : vidéos identiques éteint/allumé, 2 carrousels par réseau", async () => {
+      for (const r of ["facebook", "instagram"]) {
+        for (const j of ["2099-03-03", "2099-03-05"]) await p.query(`INSERT INTO calendrier_ligne (reseau, compte, type_contenu, prevue_le) VALUES ($1, $2, 'image', $3)`, [r, `${r}:essai`, instantDeParis(j, "09:00")]);
+      }
+      const avant = await semaine();
+      await allumer();
+      const apres = await semaine();
+      expect(videos(apres)).toEqual(videos(avant));
+      expect(videos(apres).length).toBeLessThan(12);
+      expect(apres.propositions.filter((l) => l.type !== "carrousel")).toEqual(avant.propositions);
+      expect(carrousels(apres, "facebook")).toHaveLength(2);
+      expect(carrousels(apres, "instagram")).toHaveLength(2);
+    });
+
+    it("C11 · plafond SEMAINE_CARROUSELS_MAX : jamais plus de 10 carrousels, les vidéos gardent leur place", async () => {
+      await allumer();
+      const avant = await semaine();
+      const q = { periode: "jour", quantite: 1 };
+      await p.query("INSERT INTO reglage (cle, valeur) VALUES ('quotas_production', $1) ON CONFLICT (cle) DO UPDATE SET valeur = EXCLUDED.valeur", [JSON.stringify({ facebook: { carrousel: q }, instagram: { carrousel: q } })]);
+      const r = await semaine();
+      expect(carrousels(r)).toHaveLength(10);
+      expect(videos(r)).toEqual(videos(avant));
+    });
+
     it("C4 · TikTok avec compte actif : des vidéos, jamais de carrousel ; YouTube reste écarté", async () => {
       await p.query("INSERT INTO compte (code, reseau, identifiant, nature, nom, actif, etat) VALUES ('tiktok:essai', 'tiktok', 'essai', 'page', 'Compte fictif', true, 'valide')");
       await p.query("UPDATE appel SET reseaux = 'instagram ; facebook ; tiktok'");
