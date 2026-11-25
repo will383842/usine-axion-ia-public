@@ -5,6 +5,9 @@
 set -euo pipefail
 
 ENV_FICHIER="${HORLOGE_ENV:-/opt/usine-axion-ia/.env.horloge}"
+# URL imposée par la ligne cron des tutoriels : lue AVANT le fichier d'environnement, elle l'emporte toujours sur HORLOGE_URL.
+URL_FORCEE="${HORLOGE_URL_FORCEE:-}"
+readonly URL_FORCEE # un fichier d'environnement ne peut pas la réécrire
 [ -f "$ENV_FICHIER" ] && . "$ENV_FICHIER"
 
 if [ "${HORLOGE_ACTIVE:-0}" != "1" ]; then
@@ -12,7 +15,7 @@ if [ "${HORLOGE_ACTIVE:-0}" != "1" ]; then
   exit 0
 fi
 
-URL="${HORLOGE_URL:-http://127.0.0.1:3000/api/horloge/semaine}"
+URL="${URL_FORCEE:-${HORLOGE_URL:-http://127.0.0.1:3000/api/horloge/semaine}}"
 : "${USINE_HORLOGE_SECRET:?USINE_HORLOGE_SECRET manquant}"
 
 # Le secret passe par un descripteur anonyme (<(...)) : jamais dans la liste des processus.
