@@ -13,7 +13,7 @@ export const PLAFOND_TOTAL_VIDEO_EUR = 1.25;
 /** « 1 € », « 0,60 € » : virgule française, deux décimales seulement si nécessaire. */
 export function montantEur(v: number): string {
   const texte = Number.isInteger(v) ? String(v) : v.toFixed(2).replace(".", ",");
-  return `${texte} €`;
+  return `${texte}\u00A0€`;
 }
 
 export const PHRASE_PLAFONDS_VIDEO =
