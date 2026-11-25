@@ -15,6 +15,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ e
   const { etat, erreur } = await searchParams;
   const r = await lireReglagesTirage();
   return (
+    <div className="flex flex-col gap-6">
     <form action={enregistrerTirage} className="flex flex-col gap-6">
       <Entete titre="Poids et plafond" intro="Plus un poids est grand, plus la taille d'entreprise ou le service revient souvent. Le plafond est proposé à chaque commande de vidéos." />
       <Retour etat={etat} erreur={erreur} />
@@ -31,10 +32,11 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ e
       <Bloc titre="Plafond par commande">
         <Nombre nom="plafond" libelle="Plafond par défaut (€)" defaut={r.plafondLotEur} min={1} pas={0.5} />
       </Bloc>
-      <PlafondsVideo />
       <button type="submit" className="bouton self-start">
         Enregistrer
       </button>
     </form>
+    <PlafondsVideo />
+    </div>
   );
 }
