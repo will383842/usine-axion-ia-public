@@ -1,7 +1,7 @@
 /** Passerelle sortante vers le Studio (L7-23). Éteinte par défaut : interrupteur « studio.sortant » allumé ET secret STUDIO_PORTE_SECRET (32 caractères au moins, distinct du secret entrant) requis. */
 import "server-only";
 import { interrupteurAllume } from "@/donnees";
-import { PLAFOND_AUTO_MAX_CENTS, corpsPlafondStudio } from "@/contrats";
+import { PLAFOND_AUTO_MAX_CENTS, corpsLectureAutonomieStudio, corpsPlafondStudio } from "@/contrats";
 
 export const HOTE = "https://studio.axion-ia.com";
 export const INTERRUPTEUR_STUDIO = "studio.sortant";
@@ -65,10 +65,11 @@ export async function lireOccupesDuStudio(du: string, au: string): Promise<Repon
 export async function lireAutonomieDuStudio(): Promise<ReponseStudio> {
   const secret = process.env.STUDIO_PORTE_SECRET ?? "";
   if (secret.length < SECRET_MIN || !(await interrupteurAllume(INTERRUPTEUR_STUDIO))) return { envoye: false };
+  const corps = corpsLectureAutonomieStudio.parse({ contrat: 2 });
   const reponse = await fetch(`${HOTE}/api/usine/reglages/autonomie`, {
     method: "POST",
     headers: { authorization: `Bearer ${secret}`, "content-type": "application/json" },
-    body: "{}",
+    body: JSON.stringify(corps),
     redirect: "error",
     signal: AbortSignal.timeout(DELAI_MAX_MS),
   });

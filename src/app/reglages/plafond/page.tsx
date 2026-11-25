@@ -55,7 +55,11 @@ export default async function Page() {
         ) : (
           <>
             <p className="font-semibold">Dépensé ce mois-ci : inconnu.</p>
-            <p>L&apos;état n&apos;a pas pu être lu : rien n&apos;est envoyé pour allumer. Réessayez plus tard.</p>
+            {studio.refus === "contrat" ? (
+              <p>Le Studio a refusé cette lecture : il attend une version plus récente de l&apos;échange. Rien n&apos;est envoyé pour allumer ; prévenez Will.</p>
+            ) : (
+              <p>L&apos;état n&apos;a pas pu être lu : rien n&apos;est envoyé pour allumer. Réessayez plus tard.</p>
+            )}
             <p>Si l&apos;Usine dépensait seule, vous pouvez quand même l&apos;éteindre :</p>
             <BoutonEteindre />
           </>
