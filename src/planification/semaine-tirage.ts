@@ -9,13 +9,18 @@ import { createHash } from "node:crypto";
 import { estArrete } from "@/arret";
 import { comptesActifs } from "@/calendrier/compte-actif";
 import { ajouterJours, parSemaine } from "@/calendrier/regles";
-import { SEMAINE_SUJETS_MAX, type LigneSemainePorte, type ReponseSemaine, type Reseau, type SujetPropose, type TypeContenu } from "@/contrats";
+import { RESEAUX_CARROUSEL, SEMAINE_CARROUSELS_MAX, SEMAINE_SUJETS_MAX, type LigneSemainePorte, type ReponseSemaine, type Reseau, type SujetPropose, type TypeContenu } from "@/contrats";
+import { interrupteurAllume } from "@/donnees";
 import { requete } from "@/lib/base";
 import { ErreurPorte, phraseAucunFormat, tirerSujets } from "@/porte";
 import { lireQuotas, lireReglagesTirage } from "@/reglages";
+import type { QuotasParReseau } from "@/reglages/quotas";
 import { LIBELLE_RESEAU, type RythmesParReseau } from "@/reglages/modele";
 import { RESEAUX_PAR_DEFAUT } from "@/tirage/charger";
 import { ECART_MINUTES, HEURES, SQL_LIGNES_SEMAINE, instantDeParis, isoParis, jourParis, lignesDeLaSemaine, proposerSemaine, type LigneBase, type LigneSemaine } from "./regles";
+
+/** Interrupteur du plan #63 : éteint (par défaut), la semaine ne compte que des vidéos. */
+export const INTERRUPTEUR_SEMAINE_CARROUSELS = "semaine.carrousels";
 
 export const POURQUOI_PROPOSITION = "Un créneau libre qui respecte le rythme et les quantités du réseau.";
 
@@ -40,6 +45,9 @@ export const PHRASES = {
   cas_repete: "Ce cas d'usage revient déjà dans la semaine : il n'y en avait pas assez de différents.",
   semaine_pleine: "La semaine est déjà pleine selon vos rythmes : rien de plus à proposer.",
   semaine_passee: "Cette semaine est passée : choisissez une semaine à venir.",
+  carrousel_format: "Aucun carrousel proposé : le format carrousel n'est pas en service dans les bases.",
+  carrousel_fins: (reseaux: string) => `Aucun carrousel proposé pour ${reseaux} : il manque une phrase de fin pour les carrousels dans les bases.`,
+  carrousel_sujets: "Aucun carrousel proposé : pas assez de sujets neufs.",
 } as const;
 
 /** Clé stable d'une proposition tirée d'une ligne du calendrier : la même semaine et la même ligne donnent la même clé. */
@@ -57,8 +65,28 @@ export const minuitParis = (maintenant: Date): Date => instantDeParis(jourParis(
 /** Réseaux jamais proposés par la semaine tirée (YouTube est éteint pour l'instant). */
 const RESEAUX_ECARTES: readonly string[] = ["youtube", "youtube-shorts"];
 
-/** Les créneaux libres à remplir, en mémoire : autant que le rythme du réseau, vidéo, sur le compte actif. Ids triés après les vraies lignes. */
-export function lignesVirtuelles(reseaux: readonly Reseau[], rythmes: RythmesParReseau, comptes: Partial<Record<Reseau, string>>): LigneSemaine[] {
+/**
+ * Combien de carrousels ajouter par réseau : le quota carrousel du réseau (par semaine : la quantité ; par jour : la quantité × 7), borné à 7.
+ * Zéro pour tout réseau hors `RESEAUX_CARROUSEL` (TikTok, YouTube). Pure.
+ */
+export function carrouselsParReseau(reseaux: readonly Reseau[], quotas: QuotasParReseau): Partial<Record<Reseau, number>> {
+  const sortie: Partial<Record<Reseau, number>> = {};
+  for (const r of reseaux) {
+    if (!(RESEAUX_CARROUSEL as readonly string[]).includes(r)) {
+      sortie[r] = 0;
+      continue;
+    }
+    const q = quotas[r].carrousel;
+    sortie[r] = Math.min(7, Math.max(0, q.periode === "jour" ? q.quantite * 7 : q.quantite));
+  }
+  return sortie;
+}
+
+/**
+ * Les créneaux libres à remplir, en mémoire : autant que le rythme du réseau, vidéo, sur le compte actif ; puis `carrousels[réseau]` créneaux
+ * carrousel (ids `v-<réseau>-c01…`, triés après les vidéos du réseau). Ids triés après les vraies lignes.
+ */
+export function lignesVirtuelles(reseaux: readonly Reseau[], rythmes: RythmesParReseau, comptes: Partial<Record<Reseau, string>>, carrousels: Partial<Record<Reseau, number>> = {}): LigneSemaine[] {
   const sortie: LigneSemaine[] = [];
   for (const reseau of reseaux) {
     const compte = comptes[reseau];
@@ -66,6 +94,9 @@ export function lignesVirtuelles(reseaux: readonly Reseau[], rythmes: RythmesPar
     const n = parSemaine(rythmes[reseau]);
     for (let rang = 1; rang <= n; rang++) {
       sortie.push({ id: `v-${reseau}-${String(rang).padStart(2, "0")}`, reseau, compte, type_contenu: "video", instant: new Date(0), fixe: false });
+    }
+    for (let rang = 1; rang <= (carrousels[reseau] ?? 0); rang++) {
+      sortie.push({ id: `v-${reseau}-c${String(rang).padStart(2, "0")}`, reseau, compte, type_contenu: "carrousel", instant: new Date(0), fixe: false });
     }
   }
   return sortie;
@@ -121,6 +152,7 @@ interface Creneau {
   jour: string;
   reseau: Reseau;
   instant: Date;
+  carrousel: boolean;
 }
 
 /**
@@ -155,34 +187,67 @@ export async function tirerLaSemaine(lundi: string, reseaux: readonly Reseau[] |
   const minuit = minuitParis(maintenant);
   const lignes = await requete<LigneBase>(SQL_LIGNES_SEMAINE, [lundi, dimanche]);
   const reelles = lignesDeLaSemaine(lignes).filter((l) => demandees.includes(l.reseau));
+  // Premier appel : exactement le chemin d'avant (vidéos seules, rythmes d'origine), qu'il y ait des carrousels ou non.
   const virtuelles = lignesVirtuelles(avecCompte, rythmes, comptes);
-  const { propositions } = proposerSemaine({ lundi, lignes: [...reelles, ...virtuelles], rythmes, quotas, occupes: [], maintenant: minuit, etaler: true });
-  const dePassage = new Set(virtuelles.map((v) => v.id));
+  const { propositions: propositionsVideo } = proposerSemaine({ lignes: [...reelles, ...virtuelles], lundi, rythmes, quotas, occupes: [], maintenant: minuit, etaler: true });
+  // Carrousels (plan #63) : éteint, rien ne change. Allumé, un SECOND appel pose K créneaux carrousel en plus ; les vidéos et lignes du premier appel y sont des lignes fixes, donc elles ne bougent pas.
+  const carrouselsAllumes = await interrupteurAllume(INTERRUPTEUR_SEMAINE_CARROUSELS);
+  const parReseau = carrouselsAllumes ? carrouselsParReseau(avecCompte, quotas) : {};
+  const reseauxCarrousel = avecCompte.filter((r) => (parReseau[r] ?? 0) > 0);
+  let propositionsCarrousel: typeof propositionsVideo = [];
+  if (reseauxCarrousel.length) {
+    const rythmesCarrousel: RythmesParReseau = { ...rythmes };
+    for (const r of reseauxCarrousel) rythmesCarrousel[r] = { min: rythmes[r].min + (parReseau[r] ?? 0), max: rythmes[r].max + (parReseau[r] ?? 0) };
+    const fixes: LigneSemaine[] = [
+      ...reelles.filter((l) => l.fixe),
+      ...propositionsVideo.map((p) => ({ id: p.ligne, reseau: p.reseau, compte: p.compte, type_contenu: p.type_contenu, instant: p.instant, fixe: true })),
+    ];
+    const carrouselsVirtuels = lignesVirtuelles(reseauxCarrousel, rythmes, comptes, parReseau).filter((v) => v.type_contenu === "carrousel");
+    propositionsCarrousel = proposerSemaine({ lignes: [...fixes, ...carrouselsVirtuels], lundi, rythmes: rythmesCarrousel, quotas, occupes: [], maintenant: minuit, etaler: true }).propositions.filter((p) => p.type_contenu === "carrousel");
+  }
+  const propositions = [...propositionsVideo, ...propositionsCarrousel];
+  const dePassage = new Set([...virtuelles.map((v) => v.id), ...propositionsCarrousel.map((p) => p.ligne)]);
+  const idsCarrousel = new Set(propositionsCarrousel.map((p) => p.ligne));
 
   // Instants déjà pris par réseau (lignes fixes et propositions) : un créneau d'aujourd'hui déjà passé est reporté à une heure libre d'aujourd'hui.
   const occupes = new Map<string, Date[]>();
   const poser = (r: string, d: Date) => occupes.set(r, [...(occupes.get(r) ?? []), d]);
   for (const l of reelles) if (l.fixe) poser(l.reseau, l.instant);
-  for (const p of propositions) poser(p.reseau, p.instant);
+  for (const p of propositionsVideo) poser(p.reseau, p.instant);
   const aujourdhui = jourParis(maintenant);
   const libre = (r: string, instant: Date, sauf: Date) => !(occupes.get(r) ?? []).some((d) => d.getTime() !== sauf.getTime() && Math.abs(d.getTime() - instant.getTime()) < ECART_MINUTES * 60_000);
 
   // Les créneaux tirés (virtuels), jamais déjà passés, triés par (heure, réseau) : le sujet de rang i va au créneau i.
+  // Les vidéos d'abord (comme avant, sans voir les carrousels), puis les carrousels, qui respectent l'écart de 90 minutes avec tout ce qui est posé (vidéos reportées comprises).
   const grille = propositions.filter((p) => dePassage.has(p.ligne));
-  const creneaux: Creneau[] = [];
-  for (const p of grille) {
+  const grilleOrdonnee = [...grille.filter((p) => !idsCarrousel.has(p.ligne)), ...grille.filter((p) => idsCarrousel.has(p.ligne))];
+  const tousCreneaux: Creneau[] = [];
+  for (const p of grilleOrdonnee) {
     let instant = p.instant;
+    let reporte = false;
     if (instant.getTime() <= maintenant.getTime() && p.jour === aujourdhui) {
       const h = HEURES.find((x) => instantDeParis(aujourdhui, x).getTime() > maintenant.getTime() && libre(p.reseau, instantDeParis(aujourdhui, x), p.instant));
       if (!h) continue;
       instant = instantDeParis(aujourdhui, h);
       poser(p.reseau, instant);
+      reporte = true;
     }
     if (instant.getTime() <= maintenant.getTime()) continue;
-    creneaux.push({ jour: p.jour, reseau: p.reseau, instant });
+    if (idsCarrousel.has(p.ligne) && !reporte) {
+      if (!libre(p.reseau, instant, new Date(0))) {
+        const h = p.jour === aujourdhui ? HEURES.find((x) => instantDeParis(aujourdhui, x).getTime() > maintenant.getTime() && libre(p.reseau, instantDeParis(aujourdhui, x), new Date(0))) : undefined;
+        if (!h) continue;
+        instant = instantDeParis(aujourdhui, h);
+      }
+      poser(p.reseau, instant);
+    }
+    tousCreneaux.push({ jour: p.jour, reseau: p.reseau, instant, carrousel: idsCarrousel.has(p.ligne) });
   }
-  creneaux.sort((a, b) => a.instant.getTime() - b.instant.getTime() || a.reseau.localeCompare(b.reseau));
+  const parHeure = (a: Creneau, b: Creneau) => a.instant.getTime() - b.instant.getTime() || a.reseau.localeCompare(b.reseau);
+  const creneaux = tousCreneaux.filter((c) => !c.carrousel).sort(parHeure);
   creneaux.splice(SEMAINE_SUJETS_MAX);
+  const creneauxCarrousel = tousCreneaux.filter((c) => c.carrousel).sort(parHeure);
+  creneauxCarrousel.splice(SEMAINE_CARROUSELS_MAX);
 
   // Lignes déjà au calendrier (déplaçables) : comme avant, sans sujet.
   const deCalendrier: LigneSemainePorte[] = propositions
@@ -190,8 +255,8 @@ export async function tirerLaSemaine(lundi: string, reseaux: readonly Reseau[] |
     .map((p) => ({ cle: cleSemaine(lundi, p.ligne), jour: p.jour, reseau: p.reseau, type: p.type_contenu as TypeContenu, heure: isoParis(p.instant).slice(11, 16), pourquoi: POURQUOI_PROPOSITION }));
 
   // Sujets déjà retenus pour cette semaine : ils restent hors de l'historique (le tirage garde sa suite) ; leur créneau (même jour et réseau, sinon le dernier du réseau) est retiré.
-  const retenus = await requete<{ signature: string; vise_le: string; vise_reseau: Reseau }>(
-    `SELECT signature, vise_le::text, vise_reseau FROM deja_fabrique WHERE archive_le IS NULL AND vise_le BETWEEN $1::date AND $2::date AND vise_reseau IS NOT NULL ORDER BY id`,
+  const retenus = await requete<{ signature: string; vise_le: string; vise_reseau: Reseau; type_contenu: string }>(
+    `SELECT signature, vise_le::text, vise_reseau, type_contenu FROM deja_fabrique WHERE archive_le IS NULL AND vise_le BETWEEN $1::date AND $2::date AND vise_reseau IS NOT NULL ORDER BY id`,
     [lundi, dimanche],
   );
 
@@ -212,17 +277,45 @@ export async function tirerLaSemaine(lundi: string, reseaux: readonly Reseau[] |
   }
 
   // Créneaux déjà pris par un sujet retenu : retirés, sans toucher aux autres. Le sujet retenu lui-même n'est pas reproposé (ni son cas d'usage).
-  const pris = new Set<number>();
-  for (const x of retenus) {
-    let i = creneaux.findIndex((c, k) => !pris.has(k) && c.reseau === x.vise_reseau && c.jour === x.vise_le);
-    if (i < 0) for (let k = creneaux.length - 1; k >= 0; k--) if (!pris.has(k) && creneaux[k].reseau === x.vise_reseau) { i = k; break; }
-    if (i >= 0) pris.add(i);
-  }
+  // Allumé, un carrousel retenu retire un créneau carrousel, jamais une vidéo ; une vidéo retenue, un créneau vidéo.
+  const retirer = (liste: readonly Creneau[], deCeType: readonly (typeof retenus)[number][]) => {
+    const pris = new Set<number>();
+    for (const x of deCeType) {
+      let i = liste.findIndex((c, k) => !pris.has(k) && c.reseau === x.vise_reseau && c.jour === x.vise_le);
+      if (i < 0) for (let k = liste.length - 1; k >= 0; k--) if (!pris.has(k) && liste[k].reseau === x.vise_reseau) { i = k; break; }
+      if (i >= 0) pris.add(i);
+    }
+    return pris;
+  };
+  const estCarrousel = (x: (typeof retenus)[number]) => carrouselsAllumes && x.type_contenu === "carrousel";
+  const pris = retirer(creneaux, retenus.filter((x) => !estCarrousel(x)));
   const dejaRetenues = new Set(retenus.map((x) => x.signature));
   const restants = creneaux.filter((_, k) => !pris.has(k));
   const titresRetenus = sujets.filter((s) => dejaRetenues.has(s.signature)).map(identiteDe);
   const libres = sujets.filter((s) => !dejaRetenues.has(s.signature));
   const placements = affecterSujets(restants, libres, titresRetenus);
+
+  // Second tirage (carrousels), seulement allumé : jamais de 409, un message à la place.
+  const prisCarrousel = retirer(creneauxCarrousel, retenus.filter(estCarrousel));
+  const restantsCarrousel = creneauxCarrousel.filter((_, k) => !prisCarrousel.has(k));
+  let sujetsCarrousel: SujetPropose[] = [];
+  let formatCarrouselAbsent = false;
+  let finCarrouselManquante = false;
+  if (creneauxCarrousel.length) {
+    try {
+      const total = reseauxCarrousel.reduce((n, r) => n + (parReseau[r] ?? 0), 0);
+      const rc = await tirerSujets(
+        { n: Math.min(total * 3, 60), type_contenu: "carrousel", reseaux: reseauxCarrousel, graine: graineDeLaSemaine(lundi) ^ 1 },
+        { maintenant: minuit, ecarter: retenus.map((x) => x.signature) },
+      );
+      sujetsCarrousel = rc.lignes;
+      formatCarrouselAbsent = !rc.lignes.length && rc.pourquoi[0]?.message === phraseAucunFormat("carrousel");
+      finCarrouselManquante = !rc.lignes.length && rc.pourquoi.some((x) => x.message.startsWith("Aucune fin possible"));
+    } catch (e) {
+      if (!(e instanceof ErreurPorte)) throw e;
+    }
+  }
+  const libresCarrousel = sujetsCarrousel.filter((s) => !dejaRetenues.has(s.signature));
 
   const familles = new Map<string, Promise<string | undefined>>();
   const tirees: LigneSemainePorte[] = [];
@@ -246,11 +339,13 @@ export async function tirerLaSemaine(lundi: string, reseaux: readonly Reseau[] |
   }
 
   const toutes = [...deCalendrier, ...tirees];
-  if (!toutes.length) {
-    if (!creneaux.length && grille.length) throw new ErreurPorte(409, "semaine_passee", PHRASES.semaine_passee);
-    if (restants.length) throw new ErreurPorte(409, "aucun_sujet", libres.length ? PHRASES.aucun_sujet_sans_fin(nommer(avecCompte).join(", ")) : PHRASES.aucun_sujet);
-    throw new ErreurPorte(409, "semaine_pleine", PHRASES.semaine_pleine);
-  }
+  const semaineVide = () => {
+    if (!creneaux.length && grille.length) return new ErreurPorte(409, "semaine_passee", PHRASES.semaine_passee);
+    if (restants.length) return new ErreurPorte(409, "aucun_sujet", libres.length ? PHRASES.aucun_sujet_sans_fin(nommer(avecCompte).join(", ")) : PHRASES.aucun_sujet);
+    return new ErreurPorte(409, "semaine_pleine", PHRASES.semaine_pleine);
+  };
+  // Allumé, des créneaux carrousel libres suffisent à ne pas répondre « semaine pleine » : on rend les carrousels (409 seulement s'il n'en sort aucun).
+  if (!toutes.length && !restantsCarrousel.length) throw semaineVide();
   // Jamais de créneau abandonné en silence : s'il en reste sans sujet, la réponse le dit, avec le geste à faire.
   // La vraie raison, réseau par réseau : un créneau resté vide sur un réseau sans phrase de fin manque de fin, pas de sujets.
   const posees = new Set(placements.map((x) => x.creneau));
@@ -259,6 +354,36 @@ export async function tirerLaSemaine(lundi: string, reseaux: readonly Reseau[] |
   const sansSujet = videsParReseau.some((r) => !sansFin.includes(r));
   const raisons = [...(sansFin.length ? [PHRASES.manque_fins(nommer(sansFin).join(", "))] : []), ...(sansSujet ? [PHRASES.manque_sujets] : [])];
   const manque = restants.length > tirees.length && raisons.length ? PHRASES.manque_tete(toutes.length, deCalendrier.length + restants.length) + raisons.join(" Par ailleurs, ") : undefined;
-  const messages = [message, manque].filter((m): m is string => Boolean(m));
-  return { propositions: toutes, ...(messages.length ? { message: messages.join(" ") } : {}) };
+
+  // Carrousels : un même cas d'usage n'est pas pris deux fois dans la semaine, tous types confondus (sinon `repete`, comme les vidéos).
+  const titresDejaPris = [...titresRetenus, ...placements.map((x) => identiteDe(x.sujet))];
+  const placementsCarrousel = affecterSujets(restantsCarrousel, libresCarrousel, titresDejaPris);
+  const tireesCarrousel: LigneSemainePorte[] = [];
+  for (const { sujet: s, repete, creneau } of placementsCarrousel) {
+    const c = restantsCarrousel[creneau];
+    const libelle = s.metier?.libelle ?? s.metier?.code;
+    tireesCarrousel.push({
+      cle: cleTirage(lundi, c.reseau, s.signature),
+      jour: c.jour,
+      reseau: c.reseau,
+      type: "carrousel",
+      heure: isoParis(c.instant).slice(11, 16),
+      titre: titreDe(s),
+      pourquoi: `${libelle ? `${libelle} · ` : ""}Un carrousel dans la semaine (${parReseau[c.reseau] ?? 0} par semaine).${repete ? ` ${PHRASES.cas_repete}` : ""}`,
+      sujet: s,
+    });
+  }
+  if (!toutes.length && !tireesCarrousel.length) throw semaineVide();
+  const posesCarrousel = new Set(placementsCarrousel.map((x) => x.creneau));
+  const videsCarrousel = restantsCarrousel.filter((_, k) => !posesCarrousel.has(k)).map((c) => c.reseau);
+  const carrouselsSansFin = [...new Set(videsCarrousel)].filter((r) => !libresCarrousel.some((s) => s.fins[r]));
+  const messagesCarrousel: string[] = [];
+  if (formatCarrouselAbsent) messagesCarrousel.push(PHRASES.carrousel_format);
+  else if (videsCarrousel.length && !libresCarrousel.length && !finCarrouselManquante) messagesCarrousel.push(PHRASES.carrousel_sujets);
+  else if (videsCarrousel.length) {
+    if (carrouselsSansFin.length) messagesCarrousel.push(PHRASES.carrousel_fins(nommer(carrouselsSansFin).join(", ")));
+    if (!tireesCarrousel.length && carrouselsSansFin.length < new Set(videsCarrousel).size) messagesCarrousel.push(PHRASES.carrousel_sujets);
+  }
+  const messages = [message, manque, ...messagesCarrousel].filter((m): m is string => Boolean(m));
+  return { propositions: [...toutes, ...tireesCarrousel], ...(messages.length ? { message: messages.join(" ") } : {}) };
 }
