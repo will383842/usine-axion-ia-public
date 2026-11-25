@@ -8,12 +8,16 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 const exigerSession = vi.fn(async () => undefined);
 const interrupteurAllume = vi.fn<(code: string) => Promise<boolean>>(async () => true);
 const envoyerPlafondAutomatique = vi.fn();
+const envoyerAutonomie = vi.fn();
+const couperAutonomie = vi.fn();
 vi.mock("@/services/auth", () => ({ exigerSession: () => exigerSession() }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/donnees", async (original) => ({ ...((await original()) as object), interrupteurAllume: (c: string) => interrupteurAllume(c) }));
 vi.mock("@/reglages/plafond-automatique", async (original) => ({
   ...((await original()) as object),
   envoyerPlafondAutomatique: (...a: unknown[]) => envoyerPlafondAutomatique(...a),
+  envoyerAutonomie: (...a: unknown[]) => envoyerAutonomie(...a),
+  couperAutonomie: (...a: unknown[]) => couperAutonomie(...a),
 }));
 
 const url = process.env.DATABASE_URL;
@@ -59,6 +63,8 @@ describe("plafond-ecran · action serveur", () => {
     interrupteurAllume.mockReset();
     interrupteurAllume.mockResolvedValue(true);
     envoyerPlafondAutomatique.mockReset();
+    envoyerAutonomie.mockReset();
+    couperAutonomie.mockReset();
   });
 
   it("sans session : rejette, rien n'est envoyé", async () => {
@@ -81,7 +87,7 @@ describe("plafond-ecran · action serveur", () => {
     for (const s of ["", "-1", "100,01", "abc", "1e2", "20,555", "1000", "1 0", "1\u00a00", " 1 0 "]) {
       expect(await enregistrerPlafondAutomatique(s), s).toEqual({
         ok: false,
-        message: "Indiquez un montant entre 0 et 100 €, avec au plus deux chiffres après la virgule.",
+        message: "Indiquez un montant entre 0 et 100\u00A0€, avec au plus deux chiffres après la virgule.",
       });
     }
     expect(envoyerPlafondAutomatique).not.toHaveBeenCalled();
@@ -93,17 +99,17 @@ describe("plafond-ecran · action serveur", () => {
     const r = await enregistrerPlafondAutomatique("20,5");
     expect(envoyerPlafondAutomatique).toHaveBeenCalledWith(2050);
     expect(r.ok).toBe(true);
-    expect(r.message).toMatch(/restent éteints/);
+    expect(r.message).toMatch(/Le Studio a accepté le plafond/);
     const refus: Array<[unknown, string]> = [
       [{ ok: false, raison: "arret" }, "Tout est arrêté : rien n'a été envoyé."],
       [{ ok: false, raison: "pas_branche" }, "Le lien avec le Studio est éteint : rien n'a été envoyé."],
-      [{ ok: false, raison: "sans_reponse" }, "Le Studio ne répond pas : le plafond n'a pas changé. Réessayez plus tard."],
-      [{ ok: false, raison: "refuse", statut: 429 }, "Le Studio a refusé l'envoi : le plafond n'a pas changé. Le détail est dans le journal."],
+      [{ ok: false, raison: "sans_reponse" }, "Le Studio ne répond pas : rien n'a changé. Réessayez plus tard."],
+      [{ ok: false, raison: "refuse", statut: 429 }, "Le Studio a refusé l'envoi : rien n'a changé. Le détail est dans le journal."],
       [
         { ok: false, raison: "reponse_inattendue", statut: 200 },
-        "Le Studio a répondu de façon inattendue : le plafond n'est pas noté comme accepté. Le détail est dans le journal.",
+        "Le Studio a répondu de façon inattendue : ce réglage n'est pas noté comme accepté. Le détail est dans le journal.",
       ],
-      [{ ok: false, raison: "hors_bornes" }, "Indiquez un montant entre 0 et 100 €, avec au plus deux chiffres après la virgule."],
+      [{ ok: false, raison: "hors_bornes" }, "Indiquez un montant entre 0 et 100\u00A0€, avec au plus deux chiffres après la virgule."],
     ];
     for (const [resultat, message] of refus) {
       envoyerPlafondAutomatique.mockResolvedValue(resultat);
@@ -115,28 +121,127 @@ describe("plafond-ecran · action serveur", () => {
   });
 });
 
+describe("plafond-ecran · allumer et éteindre", () => {
+  beforeEach(() => {
+    exigerSession.mockReset();
+    exigerSession.mockResolvedValue(undefined);
+    interrupteurAllume.mockReset();
+    interrupteurAllume.mockResolvedValue(true);
+    envoyerAutonomie.mockReset();
+    couperAutonomie.mockReset();
+  });
+  const ok = { ok: true, actif: true, plafond_cents: 2000, deja: false };
+
+  it("allumer sans confirmation « allumer » : refusé, aucun appel", async () => {
+    const { allumerAutonomie } = await import("@/app/reglages/plafond/actions");
+    for (const c of [undefined, "", "oui", "Allumer", "allumer "]) {
+      const r = await allumerAutonomie("20", c as unknown as string);
+      expect(r.ok, String(c)).toBe(false);
+    }
+    expect(envoyerAutonomie).not.toHaveBeenCalled();
+  });
+
+  it("allumer : session et écran exigés ; au-dessus de 100 € ou à 0 : refusé sans appel", async () => {
+    const { allumerAutonomie } = await import("@/app/reglages/plafond/actions");
+    exigerSession.mockRejectedValueOnce(new Error("NEXT_REDIRECT"));
+    await expect(allumerAutonomie("20", "allumer")).rejects.toThrow();
+    interrupteurAllume.mockResolvedValueOnce(false);
+    expect(await allumerAutonomie("20", "allumer")).toEqual({ ok: false, message: "Cet écran est éteint." });
+    for (const s of ["0", "0,00", "100,01", "101", "abc", "", "1 0"]) expect((await allumerAutonomie(s, "allumer")).ok, s).toBe(false);
+    expect(envoyerAutonomie).not.toHaveBeenCalled();
+  });
+
+  it("allumer avec confirmation : envoie « allumé » et le plafond en centimes entiers", async () => {
+    const { allumerAutonomie } = await import("@/app/reglages/plafond/actions");
+    envoyerAutonomie.mockResolvedValue(ok);
+    const r = await allumerAutonomie("20", "allumer");
+    expect(envoyerAutonomie).toHaveBeenCalledWith({ actif: true, plafondCents: 2000 });
+    expect(r.ok).toBe(true);
+    expect(r.message).toMatch(/allumée/);
+    envoyerAutonomie.mockResolvedValue({ ok: true, actif: true, plafond_cents: 10000, deja: false });
+    await allumerAutonomie("100", "allumer");
+    expect(envoyerAutonomie).toHaveBeenLastCalledWith({ actif: true, plafondCents: 10000 });
+  });
+
+  it("allumer : le Studio se tait ou refuse → message clair, rien n'a changé", async () => {
+    const { allumerAutonomie } = await import("@/app/reglages/plafond/actions");
+    envoyerAutonomie.mockResolvedValue({ ok: false, raison: "sans_reponse" });
+    expect(await allumerAutonomie("20", "allumer")).toEqual({ ok: false, message: "Le Studio n'a pas confirmé : l'autonomie est PEUT-ÊTRE allumée. Rechargez la page pour lire l'état, ou éteignez-la." });
+    envoyerAutonomie.mockRejectedValue(new Error("panne"));
+    expect((await allumerAutonomie("20", "allumer")).ok).toBe(false);
+  });
+
+  it("allumer sans réponse nette : jamais « rien n'a changé », toujours « PEUT-ÊTRE allumée »", async () => {
+    const { allumerAutonomie } = await import("@/app/reglages/plafond/actions");
+    const peutEtre = { ok: false, message: "Le Studio n'a pas confirmé : l'autonomie est PEUT-ÊTRE allumée. Rechargez la page pour lire l'état, ou éteignez-la." };
+    for (const r of [{ ok: false, raison: "sans_reponse" }, { ok: false, raison: "reponse_inattendue", statut: 200 }, { ok: false, raison: "refuse", statut: 502 }]) {
+      envoyerAutonomie.mockResolvedValue(r);
+      expect(await allumerAutonomie("20", "allumer"), JSON.stringify(r)).toEqual(peutEtre);
+    }
+    envoyerAutonomie.mockRejectedValue(new Error("panne"));
+    expect(await allumerAutonomie("20", "allumer")).toEqual(peutEtre);
+    envoyerAutonomie.mockResolvedValue({ ok: false, raison: "refuse", statut: 400 });
+    expect((await allumerAutonomie("20", "allumer")).message).toMatch(/rien n'a changé/);
+    envoyerAutonomie.mockResolvedValue({ ok: false, raison: "arret_en_vol" });
+    expect((await allumerAutonomie("20", "allumer")).message).toMatch(/éteinte aussitôt/);
+  });
+
+  it("éteindre ne dépend que de la session : possible même si l'écran est éteint", async () => {
+    const { eteindreAutonomie } = await import("@/app/reglages/plafond/actions");
+    interrupteurAllume.mockResolvedValue(false);
+    couperAutonomie.mockResolvedValue({ ok: true, actif: false, plafond_cents: 2000, deja: false });
+    expect((await eteindreAutonomie()).ok).toBe(true);
+    expect(couperAutonomie).toHaveBeenCalledTimes(1);
+    exigerSession.mockRejectedValueOnce(new Error("NEXT_REDIRECT"));
+    await expect(eteindreAutonomie()).rejects.toThrow();
+    expect(couperAutonomie).toHaveBeenCalledTimes(1);
+  });
+
+  it("éteindre : immédiat, sans confirmation ; Studio muet : message clair", async () => {
+    const { eteindreAutonomie } = await import("@/app/reglages/plafond/actions");
+    couperAutonomie.mockResolvedValue({ ok: true, actif: false, plafond_cents: 2000, deja: false });
+    const r = await eteindreAutonomie();
+    expect(couperAutonomie).toHaveBeenCalledTimes(1);
+    expect(r.ok).toBe(true);
+    expect(r.message).toMatch(/éteinte/);
+    couperAutonomie.mockResolvedValue({ ok: false, raison: "sans_reponse" });
+    expect(await eteindreAutonomie()).toEqual({ ok: false, message: "Le Studio ne répond pas : l'extinction n'est pas confirmée. L'autonomie peut encore être allumée ; éteignez-la aussi dans le Studio." });
+  });
+});
+
 describe("plafond-ecran · textes de l'écran", () => {
   const dossier = "src/app/reglages/plafond";
   const sources = () => readdirSync(dossier).map((f) => readFileSync(join(dossier, f), "utf8"));
-  it("dit « éteints » et « Vous seul pourrez les allumer », sans geste pour allumer", () => {
+  it("l'écran montre les 4 blocs : interrupteur, plafond, dépensé ce mois-ci, plafonds par vidéo", () => {
     const tout = sources().join("\n");
-    expect(tout).toContain("éteints");
-    expect(tout).toContain("Vous seul pourrez les allumer");
-    for (const interdit of ['role="switch"', 'type="checkbox"', "BoutonInterrupteur", "Allumer", "allumerEcran", "EcranEteint"]) expect(tout, interdit).not.toContain(interdit);
+    expect(tout).toContain("Ce que l&apos;Usine dépense seule");
+    expect(tout).toContain('role="switch"');
+    expect(tout).toContain("Plafond du mois, en euros");
+    expect(tout).toContain("Dépensé ce mois-ci");
+    expect(tout).toContain("LIGNES_PLAFONDS_VIDEO");
+    expect(tout).toContain("Oui, allumer");
+    expect(tout).toContain("Le Studio ne répond pas");
+  });
+  it("l'effet de « Tout arrêter » est dit à l'écran ; « Éteindre maintenant » reste proposé quand l'état n'est pas lu ; le formulaire n'est pas remonté par une clé d'état", () => {
+    const page = readFileSync(join(dossier, "page.tsx"), "utf8");
+    expect(page).toMatch(/« Tout arrêter » éteint aussi ce que l&apos;Usine dépense seule ; la reprise ne le rallume jamais, seul cet écran le peut/);
+    expect(page).toMatch(/\{studio\.connu \? \([\s\S]*?\) : \([\s\S]*?<BoutonEteindre \/>/);
+    expect(page).toMatch(/Cet écran est éteint\.[\s\S]*?<BoutonEteindre \/>/);
+    expect(page).not.toMatch(/<FormulairePlafond[^>]*\bkey=/);
+    const bouton = readFileSync("src/arret/BoutonToutArreter.tsx", "utf8");
+    expect(bouton).toMatch(/éteint aussi ce que l&apos;Usine dépense seule/);
+    expect(bouton).toMatch(/seul l&apos;écran « Ce que l&apos;Usine dépense seule » peut le rallumer/);
+  });
+  it("ne dit plus « restent éteints » ni « Vous seul pourrez les allumer »", () => {
+    const tout = sources().join("\n");
+    expect(tout).not.toContain("restent éteints");
+    expect(tout).not.toContain("Vous seul pourrez les allumer");
+    expect(tout).toContain("ne se règle plus dans le Studio");
   });
   it("aucun mot interdit, aucun montant écrit en dur", () => {
     const tout = sources().join("\n");
     expect(tout).not.toMatch(/\b(CRM|lead|batch|job|prompt|token|workflow|persona|pipeline|aimant|séquence|likez|Grenoble|Buffer)\b/i);
-    expect(tout).not.toMatch(/\d+\s?€/);
-  });
-  it("dit avant l'envoi que le premier envoi accepté bascule le Studio à sens unique", () => {
-    const page = readFileSync(join(dossier, "page.tsx"), "utf8");
-    expect(page).toContain("au premier envoi accepté");
-    expect(page).toContain("à sens unique");
-    expect(page).toContain("piloté par l&apos;Usine");
-    expect(page).toContain("L&apos;Usine en automatique");
-    expect(page).toContain("devient sans effet");
-    expect(page.indexOf("à sens unique")).toBeLessThan(page.indexOf("<FormulairePlafond"));
+    expect(tout.replace(/\/\*[\s\S]*?\*\//g, "")).not.toMatch(/\d+\s?€/); // hors commentaires (la citation de l'ordre du fondateur en contient un)
   });
   it("la page lit l'interrupteur plafond.ecran et exige la session", () => {
     const page = readFileSync(join(dossier, "page.tsx"), "utf8");

@@ -18,26 +18,33 @@ interface Props {
   className?: string;
   /** Contrôle fait au toucher, avant le délai : s'il rend `false`, rien ne démarre (l'écran montre lui-même la raison). */
   avant?: () => boolean;
+  /** Appelé `true` au départ du décompte, `false` à sa fin (annulé ou joué) : l'écran verrouille ses champs pendant les 10 s. */
+  surDecompte?: (enCours: boolean) => void;
+  /** Quitter la page ou démonter le bouton pendant le décompte ANNULE au lieu de jouer (pour un geste qui ne doit jamais partir sans le délai, comme allumer). */
+  annulerSiQuitte?: boolean;
 }
 
 /**
  * « Annuler » 10 s plutôt qu'une confirmation : le geste s'affiche comme fait, l'action part au bout de 10 s.
- * Si Will quitte la page avant, l'action part tout de suite (elle n'est jamais perdue en silence).
+ * Si Will quitte la page avant, l'action part tout de suite (elle n'est jamais perdue en silence), sauf avec `annulerSiQuitte` : alors elle est annulée.
  */
-export function Annulable({ libelle, message, action, className = "bouton-second", avant }: Props) {
+export function Annulable({ libelle, message, action, className = "bouton-second", avant, surDecompte, annulerSiQuitte = false }: Props) {
   const [reste, setReste] = useState<number | null>(null);
   const [refus, setRefus] = useState<string | null>(null);
   const minuterie = useRef<ReturnType<typeof setInterval> | null>(null);
   const enAttente = useRef(false);
   const actionRef = useRef(action);
+  const decompteRef = useRef(surDecompte);
   useEffect(() => {
     actionRef.current = action;
-  }, [action]);
+    decompteRef.current = surDecompte;
+  }, [action, surDecompte]);
 
   const arreter = useCallback(() => {
     if (minuterie.current) clearInterval(minuterie.current);
     minuterie.current = null;
     setReste(null);
+    decompteRef.current?.(false);
   }, []);
 
   const jouer = useCallback(() => {
@@ -58,6 +65,7 @@ export function Annulable({ libelle, message, action, className = "bouton-second
     enAttente.current = true;
     const fin = Date.now() + DELAI_ANNULER_MS;
     setReste(Math.ceil(DELAI_ANNULER_MS / 1000));
+    decompteRef.current?.(true);
     minuterie.current = setInterval(() => {
       const r = fin - Date.now();
       if (r <= 0) jouer();
@@ -70,13 +78,20 @@ export function Annulable({ libelle, message, action, className = "bouton-second
     arreter();
   };
 
+  const quitter = useCallback(() => {
+    if (annulerSiQuitte) {
+      enAttente.current = false;
+      arreter(); // remet l'écran à zéro (retour par le cache du navigateur : plus de décompte figé, champs libres)
+    } else jouer();
+  }, [annulerSiQuitte, jouer, arreter]);
+
   useEffect(() => {
-    window.addEventListener("pagehide", jouer);
+    window.addEventListener("pagehide", quitter);
     return () => {
-      window.removeEventListener("pagehide", jouer);
-      jouer();
+      window.removeEventListener("pagehide", quitter);
+      quitter();
     };
-  }, [jouer]);
+  }, [quitter]);
 
   if (reste === null) {
     return (

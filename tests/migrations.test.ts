@@ -4,6 +4,7 @@
  * Exige DATABASE_URL (PostgreSQL 16) ; sans elle, ces essais sont sautés (la CI la fournit toujours).
  */
 import { randomBytes } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { copyFile, mkdir, mkdtemp, readdir } from "node:fs/promises";
 import path from "node:path";
 import { Pool } from "pg";
@@ -63,6 +64,17 @@ describe.skipIf(!url)("migrations", () => {
     for (const t of TABLES_BASES) expect(enBase.has(t), t).toBe(true);
   });
 
+  it("050 est rejouable, renomme l'écran du plafond et ne touche jamais à son état allumé", async () => {
+    const lire = async () => (await p.query("SELECT nom, allume FROM interrupteur WHERE code = 'plafond.ecran'")).rows;
+    const avant = await lire();
+    expect(avant[0].nom).toBe("Ce que l'Usine dépense seule");
+    await p.query("UPDATE interrupteur SET allume = true WHERE code = 'plafond.ecran'");
+    await p.query(readFileSync("migrations/050-ecran-autonomie.sql", "utf8"));
+    expect(await lire()).toEqual([{ nom: "Ce que l'Usine dépense seule", allume: true }]);
+    await p.query("UPDATE interrupteur SET allume = false WHERE code = 'plafond.ecran'");
+    expect((await p.query("SELECT code FROM interrupteur WHERE code LIKE 'autonomie%' OR code LIKE 'usine.autonomie%'")).rows).toEqual([]);
+  });
+
   it("032 copie les données existantes : nouvelles tables complètes, anciennes conservées, compteur d'id repris", async () => {
     const s32 = `essai_${randomBytes(4).toString("hex")}`;
     const admin = new Pool({ connectionString: url });
@@ -97,7 +109,7 @@ describe.skipIf(!url)("migrations", () => {
       const dernierAvant = (await q.query("SELECT jour::text, compte, genere_le FROM agregat_crm_dernier ORDER BY jour, compte")).rows;
       expect(avant).toHaveLength(3);
 
-      expect((await jouerMigrations(q)).jouees).toEqual(["032-agregats-reseau-cle.sql", "033-calendrier-etat-proposition.sql", "034-interrupteur-tout-arreter.sql", "035-releve-historique.sql", "036-commandes-studio.sql", "037-interrupteur-planification.sql", "038-interrupteur-plafond-ecran.sql", "039-sur-le-site.sql", "040-interrupteurs-manquants.sql", "041-interrupteur-second-code.sql", "042-second-code-courriel.sql", "043-compte-des-lignes.sql", "044-deja-fabrique-vise.sql", "045-interrupteur-comptes.sql", "046-diffuseur-neutre.sql", "047-interrupteur-semaine-carrousels.sql", "048-tutoriels-reserve.sql", "049-tutoriels-commande-pause.sql"]);
+      expect((await jouerMigrations(q)).jouees).toEqual(["032-agregats-reseau-cle.sql", "033-calendrier-etat-proposition.sql", "034-interrupteur-tout-arreter.sql", "035-releve-historique.sql", "036-commandes-studio.sql", "037-interrupteur-planification.sql", "038-interrupteur-plafond-ecran.sql", "039-sur-le-site.sql", "040-interrupteurs-manquants.sql", "041-interrupteur-second-code.sql", "042-second-code-courriel.sql", "043-compte-des-lignes.sql", "044-deja-fabrique-vise.sql", "045-interrupteur-comptes.sql", "046-diffuseur-neutre.sql", "047-interrupteur-semaine-carrousels.sql", "048-tutoriels-reserve.sql", "049-tutoriels-commande-pause.sql", "050-ecran-autonomie.sql"]);
 
       // (a) mêmes nombres de lignes dans les nouvelles tables
       expect((await q.query("SELECT count(*)::int AS n FROM agregat_crm")).rows[0].n).toBe(3);
