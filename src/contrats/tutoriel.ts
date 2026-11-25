@@ -4,7 +4,7 @@ import { z } from "zod";
 export const ETATS_TIRAGE_TUTORIEL = ["demande", "pris", "echec"] as const;
 export type EtatTirageTutoriel = (typeof ETATS_TIRAGE_TUTORIEL)[number];
 
-export const ETATS_STUDIO_TUTORIEL = ["pris", "fait", "a_revoir", "en_reserve"] as const;
+export const ETATS_STUDIO_TUTORIEL = ["pris", "fait", "a_revoir", "refusee", "en_reserve"] as const;
 export type EtatStudioTutoriel = (typeof ETATS_STUDIO_TUTORIEL)[number];
 
 /** Raisons d'attente connues du Studio (liste ouverte : une raison inconnue est lue comme une attente). `bail_occupe` : un autre tirage tient le bail. */

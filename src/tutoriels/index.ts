@@ -17,6 +17,7 @@ import { appelerStudio, lireOccupesDuStudio } from "@/passerelles/studio";
 import { SQL_LIGNES_SEMAINE, lignesDeLaSemaine, lireOccupes, type LigneBase } from "@/planification/regles";
 import { lireQuotas, lireReglagesTirage } from "@/reglages";
 import {
+  ENVOIS_COMMANDE_MAX,
   ESSAIS_MAX_PAR_SEMAINE,
   INTERRUPTEUR_TUTORIEL,
   MINUTES_ENTRE_DEMANDES,
@@ -29,6 +30,7 @@ import {
   lireReponseSuivi,
   lireReponseTirage,
   lundiCible,
+  pauseCommandeMinutes,
 } from "./regles";
 
 export interface ResultatTutoriels {
@@ -119,24 +121,40 @@ async function demander(maintenant: Date, fait: string[]): Promise<void> {
   }
 }
 
-/** (d) Suivre : 10 relectures au plus, une par clé toutes les 30 minutes. */
+/** (d) Suivre : 10 relectures au plus, une par clé toutes les 30 minutes. Avant « à valider » : la fabrication ; après la pose : jusqu'à `prevue_le`, pour retirer le créneau si le Studio dit « à revoir » ou « refusée ». */
 async function suivre(maintenant: Date, fait: string[]): Promise<void> {
-  const lignes = await requete<{ cle: string }>(
-    `SELECT cle FROM tutoriel_tirage
-      WHERE etat_tirage = 'pris' AND a_valider_le IS NULL AND archive_le IS NULL AND (etat_studio IS NULL OR etat_studio IN ('pris', 'fait'))
-        AND (relue_le IS NULL OR relue_le <= $1) ORDER BY relue_le ASC NULLS FIRST, cle LIMIT $2`,
-    [minutesAvant(maintenant, MINUTES_ENTRE_RELECTURES), RELECTURES_MAX],
+  const lignes = await requete<{ cle: string; a_valider_le: Date | null; calendrier_ligne: string | null }>(
+    `SELECT t.cle, t.a_valider_le, t.calendrier_ligne::text AS calendrier_ligne FROM tutoriel_tirage t LEFT JOIN calendrier_ligne c ON c.id = t.calendrier_ligne
+      WHERE t.etat_tirage = 'pris' AND t.archive_le IS NULL AND (t.etat_studio IS NULL OR t.etat_studio IN ('pris', 'fait'))
+        AND (t.a_valider_le IS NULL OR (c.id IS NOT NULL AND c.archive_le IS NULL AND c.prevue_le > $3))
+        AND (t.relue_le IS NULL OR t.relue_le <= $1) ORDER BY t.relue_le ASC NULLS FIRST, t.cle LIMIT $2`,
+    [minutesAvant(maintenant, MINUTES_ENTRE_RELECTURES), RELECTURES_MAX, maintenant],
   );
-  for (const { cle } of lignes) {
+  for (const { cle, a_valider_le, calendrier_ligne } of lignes) {
     const r = await appeler(`usine/tutoriels/${cle}`, { contrat: 2 });
     if (!r) break;
     const lu = lireReponseSuivi(r.statut, r.corps);
+    const etatStocke = lu.genre === "perdu" ? (lu.etat === "refusee" ? "a_revoir" : lu.etat) : null;
+    if (a_valider_le) {
+      // Déjà « à valider » : seul un état perdu compte (le créneau est retiré, rien n'est supprimé) ; le reste ne change rien.
+      if (lu.genre === "perdu" && calendrier_ligne) {
+        await transaction(async () => {
+          await requete(`UPDATE calendrier_ligne SET archive_le = now(), modifie_le = now() WHERE id = $1 AND archive_le IS NULL`, [calendrier_ligne]);
+          await requete(`UPDATE tutoriel_tirage SET etat_studio = $2, relue_le = $3, modifie_le = now() WHERE cle = $1`, [cle, etatStocke, maintenant]);
+        });
+        await journaliser("tutoriel", "Un tutoriel de la réserve est à revoir ou refusé : son créneau est retiré du calendrier, un autre essai suivra.", { cible: cle, donnees: { etat: lu.etat } });
+        fait.push("retire");
+      } else {
+        await requete(`UPDATE tutoriel_tirage SET relue_le = $2 WHERE cle = $1`, [cle, maintenant]);
+      }
+      continue;
+    }
     if (lu.genre === "a_valider") {
       await requete(`UPDATE tutoriel_tirage SET etat_studio = 'fait', video_id = $2, a_valider_le = $3, relue_le = $3, modifie_le = now() WHERE cle = $1`, [cle, lu.videoId, maintenant]);
       await journaliser("tutoriel", "Un tutoriel de la réserve est prêt à être validé dans le Studio.", { cible: cle, donnees: { etat: "a_valider" } });
       fait.push("a_valider");
     } else if (lu.genre === "perdu") {
-      await requete(`UPDATE tutoriel_tirage SET etat_studio = $2, relue_le = $3, modifie_le = now() WHERE cle = $1`, [cle, lu.etat, maintenant]);
+      await requete(`UPDATE tutoriel_tirage SET etat_studio = $2, relue_le = $3, modifie_le = now() WHERE cle = $1`, [cle, etatStocke, maintenant]);
       await journaliser("tutoriel", "Un tutoriel de la réserve est à revoir : un autre essai suivra.", { cible: cle, donnees: { etat: lu.etat } });
       fait.push("perdu");
     } else if (lu.genre === "en_cours") {
@@ -149,7 +167,8 @@ async function suivre(maintenant: Date, fait: string[]): Promise<void> {
 }
 
 /** (e) Poser : le créneau de la semaine visée (sinon la suivante), sous verrou de ligne ; une seule ligne par tirage. */
-async function poser(maintenant: Date, fait: string[]): Promise<void> {
+export async function poser(maintenant: Date, fait: string[]): Promise<void> {
+  // La date du créneau est posée par l'Usine pour ce tutoriel seul : `date_choisie = true` la met hors de portée de l'horloge de la semaine (aucun appel de programmation d'ici).
   const lignes = await requete<{ cle: string; lundi: string; reseau: string }>(
     `SELECT cle, lundi::text, reseau FROM tutoriel_tirage
       WHERE a_valider_le IS NOT NULL AND calendrier_ligne IS NULL AND archive_le IS NULL AND video_id IS NOT NULL ORDER BY lundi, essai`,
@@ -180,7 +199,7 @@ async function poser(maintenant: Date, fait: string[]): Promise<void> {
       const [courant] = await requete<{ calendrier_ligne: string | null }>(`SELECT calendrier_ligne::text FROM tutoriel_tirage WHERE cle = $1 FOR UPDATE`, [t.cle]);
       if (!courant || courant.calendrier_ligne) return false;
       const [l] = await requete<{ id: string }>(
-        `INSERT INTO calendrier_ligne (reseau, compte, type_contenu, prevue_le, etat, date_choisie, note) VALUES ($1, $2, 'video', $3, 'brouillon', false, $4) RETURNING id::text`,
+        `INSERT INTO calendrier_ligne (reseau, compte, type_contenu, prevue_le, etat, date_choisie, note) VALUES ($1, $2, 'video', $3, 'brouillon', true, $4) RETURNING id::text`,
         [RESEAU_TUTORIEL, compte, instant, NOTE_LIGNE_TUTORIEL],
       );
       await requete(`UPDATE tutoriel_tirage SET calendrier_ligne = $2, modifie_le = now() WHERE cle = $1`, [t.cle, l.id]);
@@ -193,17 +212,33 @@ async function poser(maintenant: Date, fait: string[]): Promise<void> {
   }
 }
 
-/** Propose au Studio, avec `videoId`, chaque ligne de tutoriel dont la commande n'est pas partie (même clé de commande : jamais deux). */
-async function commander(fait: string[]): Promise<void> {
-  const lignes = await requete<{ id: string }>(
-    `SELECT t.calendrier_ligne::text AS id FROM tutoriel_tirage t JOIN calendrier_ligne c ON c.id = t.calendrier_ligne
+/**
+ * Propose au Studio, avec `videoId`, chaque ligne de tutoriel dont la commande n'est pas partie (même clé de commande : jamais deux).
+ * Une commande refusée n'est pas renvoyée à chaque passage : pause de 1 h, 2 h, 4 h… puis arrêt après 6 envois, avec une ligne au journal.
+ */
+async function commander(maintenant: Date, fait: string[]): Promise<void> {
+  const lignes = await requete<{ id: string; cle: string; commande_essais: number }>(
+    `SELECT t.calendrier_ligne::text AS id, t.cle, t.commande_essais FROM tutoriel_tirage t JOIN calendrier_ligne c ON c.id = t.calendrier_ligne
       WHERE t.a_valider_le IS NOT NULL AND t.archive_le IS NULL AND c.archive_le IS NULL AND c.prevue_le > now()
+        AND t.commande_essais < $1 AND (t.commande_prochaine_le IS NULL OR t.commande_prochaine_le <= $2)
         AND NOT EXISTS (SELECT 1 FROM commande_studio s WHERE s.calendrier_ligne = t.calendrier_ligne AND s.archive_le IS NULL AND s.etat_envoi IN ('envoyee', 'mise_de_cote_studio'))
       ORDER BY t.lundi, t.essai LIMIT 5`,
+    [ENVOIS_COMMANDE_MAX, maintenant],
   );
-  for (const { id } of lignes) {
+  for (const { id, cle, commande_essais } of lignes) {
     const r = await proposerAuStudio(id);
-    fait.push(r.etat_envoi === "envoyee" || r.etat_envoi === "mise_de_cote_studio" ? "commande" : "commande_a_rejouer");
+    if (r.etat_envoi === "envoyee" || r.etat_envoi === "mise_de_cote_studio") {
+      fait.push("commande");
+      continue;
+    }
+    fait.push("commande_a_rejouer");
+    if (r.etat_envoi !== "non_envoyee") continue; // rien n'est parti (interrupteur, ligne absente) : pas de pause
+    const essais = commande_essais + 1;
+    await requete(`UPDATE tutoriel_tirage SET commande_essais = $2, commande_prochaine_le = $3, modifie_le = now() WHERE cle = $1`, [cle, essais, new Date(maintenant.getTime() + pauseCommandeMinutes(essais) * 60_000)]);
+    if (essais >= ENVOIS_COMMANDE_MAX) {
+      await journaliser("tutoriel", "La commande de ce tutoriel n'est plus renvoyée au Studio après plusieurs refus : placez le créneau vous-même dans le Studio.", { cible: cle, donnees: { etat: "commande_abandonnee", essais } });
+      fait.push("commande_abandonnee");
+    }
   }
 }
 
@@ -221,7 +256,7 @@ export async function passerTutoriels(maintenant: Date = new Date()): Promise<Re
       await demander(maintenant, fait);
       await suivre(maintenant, fait);
       await poser(maintenant, fait);
-      await commander(fait);
+      await commander(maintenant, fait);
       return { fait };
     } finally {
       await client.query(`SELECT pg_advisory_unlock(hashtext('tutoriels'))`);

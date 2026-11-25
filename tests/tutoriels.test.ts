@@ -3,6 +3,7 @@
  * Pièces pures d'abord ; puis, sur une vraie base (DATABASE_URL), tout le cycle avec une doublure du Studio. Données fictives, aucun appel réel.
  */
 import { randomBytes } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { Pool } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { ajouterJours } from "@/calendrier/regles";
@@ -68,6 +69,22 @@ describe("tutoriels · pièces pures", () => {
   it("T13 · le proxy laisse passer la route de l'horloge des tutoriels, et elle seule autour", () => {
     expect(estPublic("/api/horloge/tutoriels")).toBe(true);
     for (const x of ["/api/horloge/tutoriels/x", "/api/horloge/tutorielss", "/api/tutoriels"]) expect(estPublic(x)).toBe(false);
+  });
+});
+
+describe("tutoriels · serveur", () => {
+  it("R3 · la ligne des tutoriels ne peut jamais appeler la semaine, même si `.env.horloge` définit `HORLOGE_URL` ; commentaire « ou »", () => {
+    const sh = readFileSync("deploiement/proposer-semaine.sh", "utf8");
+    const cron = readFileSync("deploiement/crontab", "utf8");
+    const ligne = cron.split("\n").find((l) => l.startsWith("*/30"))!;
+    expect(ligne).toMatch(/^\*\/30 \* \* \* \* root HORLOGE_URL_FORCEE=http:\/\/127\.0\.0\.1:3000\/api\/horloge\/tutoriels /);
+    expect(ligne).not.toMatch(/ HORLOGE_URL=/);
+    // La variable forcée est lue AVANT le fichier d'environnement et l'emporte sur `HORLOGE_URL`.
+    expect(sh.indexOf("HORLOGE_URL_FORCEE")).toBeGreaterThan(-1);
+    expect(sh.indexOf("HORLOGE_URL_FORCEE")).toBeLessThan(sh.indexOf(". \"$ENV_FICHIER\""));
+    expect(sh).toMatch(/URL="\$\{URL_FORCEE:-\$\{HORLOGE_URL:-/);
+    expect(cron).toMatch(/HORLOGE_ACTIVE ≠ 1 ou /);
+    expect(cron).not.toMatch(/HORLOGE_ACTIVE ≠ 1 et /);
   });
 });
 
@@ -304,6 +321,101 @@ describe.skipIf(!url)("tutoriels · sur une vraie base, avec une doublure du Stu
     expect(appels("usine/tutoriels")).toHaveLength(2);
     expect((await lignes(s.lundi)).map((x) => x.etat_studio)).toEqual(["a_revoir", "en_reserve"]);
     expect(appels("usine/commandes")).toHaveLength(0);
+  });
+
+  /** Un tirage `pris` puis « à valider » : créneau posé et commande envoyée ; rend la semaine et la ligne. */
+  const jusquALaPose = async (videoId: string) => {
+    const s = semaine();
+    tirage = { etat: "pris", elementId: "el-1" };
+    suivi = { etat: "pris", elementId: "el-1", aValider: false };
+    await passer(s.t());
+    suivi = { etat: "fait", elementId: "el-1", videoId, aValider: true };
+    await passer(s.t(31));
+    const [t] = await lignes(s.lundi);
+    expect(t.calendrier_ligne).not.toBeNull();
+    return { s, cle: t.cle as string, ligne: t.calendrier_ligne as string };
+  };
+  const suivis = (cle: string) => appels(`usine/tutoriels/${cle}`).length;
+
+  it("R1 · le suivi relit la clé après la pose, jusqu'à `prevue_le` ; `a_revoir` ou `refusee` : le créneau est retiré (archivé) et écrit au journal", async () => {
+    for (const etat of ["a_revoir", "refusee"]) {
+      const { s, cle, ligne } = await jusquALaPose(`vid-r1-${etat}`);
+      const avant = suivis(cle);
+      await passer(s.t(62)); // toujours « à valider » : relu une fois, rien ne bouge
+      expect(suivis(cle)).toBe(avant + 1);
+      expect((await p.query("SELECT archive_le FROM calendrier_ligne WHERE id = $1", [ligne])).rows[0].archive_le).toBeNull();
+      suivi = { etat, elementId: "el-1", aValider: false };
+      await passer(s.t(93));
+      const [t] = await lignes(s.lundi);
+      expect(t.etat_studio).toBe("a_revoir");
+      expect((await p.query("SELECT archive_le FROM calendrier_ligne WHERE id = $1", [ligne])).rows[0].archive_le).not.toBeNull();
+      const j = await p.query("SELECT donnees FROM journal WHERE sujet = 'tutoriel' AND cible = $1 AND message LIKE '%retiré%'", [cle]);
+      expect(j.rows).toHaveLength(1);
+      expect((await p.query("SELECT count(*)::int AS n FROM tutoriel_tirage WHERE cle = $1", [cle])).rows[0].n).toBe(1); // rien de supprimé
+    }
+  });
+
+  it("R1 · après `prevue_le`, plus aucune relecture ; une relecture « à valider » ne réécrit ni la date ni le journal", async () => {
+    const { s, cle, ligne } = await jusquALaPose("vid-r1-borne");
+    const [avant] = await lignes(s.lundi);
+    await passer(s.t(62));
+    const [apres] = await lignes(s.lundi);
+    expect(apres.a_valider_le.getTime()).toBe(avant.a_valider_le.getTime());
+    expect((await p.query("SELECT count(*)::int AS n FROM journal WHERE sujet = 'tutoriel' AND cible = $1 AND message LIKE '%prêt à être validé%'", [cle])).rows[0].n).toBe(1);
+    const vu = suivis(cle);
+    await p.query("UPDATE calendrier_ligne SET prevue_le = $2 WHERE id = $1", [ligne, new Date(s.t(100).getTime() - 3_600_000)]);
+    await passer(s.t(100));
+    expect(suivis(cle)).toBe(vu);
+  });
+
+  it("R2 · la ligne du tutoriel a `date_choisie = true` : l'horloge de la semaine ne la déplace pas", async () => {
+    const { ligne } = await jusquALaPose("vid-r2");
+    const [l] = (await p.query("SELECT date_choisie FROM calendrier_ligne WHERE id = $1", [ligne])).rows;
+    expect(l.date_choisie).toBe(true);
+  });
+
+  it("R4 · une commande refusée (400) n'est pas renvoyée à chaque passage : pause croissante, arrêt après 6 envois, une ligne claire au journal", async () => {
+    const s = semaine();
+    let cleR4 = "";
+    const commandesR4 = () => appels("usine/commandes").filter((c) => (c[1] as { cle: string }).cle === cleR4);
+    appelerStudio.mockImplementation(async (chemin: string) => {
+      if (chemin === "usine/tutoriels") return { envoye: true, statut: 200, corps: tirage };
+      if (chemin.startsWith("usine/tutoriels/")) return { envoye: true, statut: 200, corps: suivi };
+      if (chemin === "usine/commandes") return { envoye: true, statut: 400, corps: { erreur: "refus" } };
+      throw new Error(`chemin inattendu ${chemin}`);
+    });
+    tirage = { etat: "pris", elementId: "el-1" };
+    await passer(s.t());
+    suivi = { etat: "fait", elementId: "el-1", videoId: "vid-r4", aValider: true };
+    await passer(s.t(31));
+    cleR4 = (appels("usine/commandes")[0][1] as { cle: string }).cle;
+    expect(commandesR4()).toHaveLength(1);
+    await passer(s.t(62)); // moins d'une heure après : pause
+    await passer(s.t(85));
+    expect(commandesR4()).toHaveLength(1);
+    await passer(s.t(31 + 61)); // 1 h après : deuxième envoi
+    expect(commandesR4()).toHaveLength(2);
+    await passer(s.t(31 + 61 + 90)); // la pause a doublé (2 h)
+    expect(commandesR4()).toHaveLength(2);
+    for (let i = 1; i <= 40; i++) await passer(s.t(31 + 61 + 24 * 60 * i / 4));
+    expect(commandesR4()).toHaveLength(6);
+    const j = await p.query("SELECT 1 FROM journal WHERE sujet = 'tutoriel' AND cible = $1 AND message LIKE '%plus renvoyée%'", [`tuto-${s.lundi}-1`]);
+    expect(j.rowCount).toBe(1);
+  });
+
+  it("R5 · la pose seule, sans le verrou consultatif : deux poses simultanées donnent une seule ligne (le `FOR UPDATE` tient)", async () => {
+    const s = semaine();
+    tirage = { etat: "pris", elementId: "el-1" };
+    await passer(s.t());
+    // Le suivi pose `a_valider_le` ; la pose est ensuite appelée directement, deux fois à la fois.
+    await p.query("UPDATE tutoriel_tirage SET a_valider_le = $2, video_id = 'vid-r5', etat_studio = 'fait' WHERE lundi = $1 AND archive_le IS NULL", [s.lundi, s.t(31)]);
+    const { poser } = await import("@/tutoriels");
+    const a: string[] = [];
+    const b: string[] = [];
+    await Promise.all([poser(s.t(31), a), poser(s.t(31), b)]);
+    expect([...a, ...b].filter((x) => x === "pose")).toHaveLength(1);
+    const [t] = await lignes(s.lundi);
+    expect((await p.query("SELECT count(*)::int AS n FROM calendrier_ligne WHERE note = 'Tutoriel de la réserve' AND id = $1", [t.calendrier_ligne])).rows[0].n).toBe(1);
   });
 
   it("T13 · route `POST /api/horloge/tutoriels` : sans secret ou secret faux, 401 sans détail, aucun appel ; avec le secret, un passage", async () => {

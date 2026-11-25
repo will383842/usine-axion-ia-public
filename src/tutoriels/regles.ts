@@ -11,6 +11,9 @@ export const ESSAIS_MAX_PAR_SEMAINE = 2;
 export const MINUTES_ENTRE_DEMANDES = 60;
 export const MINUTES_ENTRE_RELECTURES = 30;
 export const RELECTURES_MAX = 10;
+/** Commande refusée : pause de 1 h, 2 h, 4 h… entre deux envois, arrêt après 6 envois (le fondateur place le créneau dans le Studio). */
+export const ENVOIS_COMMANDE_MAX = 6;
+export const pauseCommandeMinutes = (envoisRefuses: number) => 60 * 2 ** Math.max(0, envoisRefuses - 1);
 export const ID_LIGNE_TUTORIEL = "v-tutoriel";
 export const NOTE_LIGNE_TUTORIEL = "Tutoriel de la réserve";
 
@@ -45,7 +48,7 @@ export function lireReponseTirage(statut: number, corps: unknown): ReponseTirage
 export type ReponseSuivi =
   | { genre: "en_cours"; etat: "pris" | "fait"; videoId?: string }
   | { genre: "a_valider"; videoId: string }
-  | { genre: "perdu"; etat: Extract<EtatStudioTutoriel, "a_revoir" | "en_reserve"> }
+  | { genre: "perdu"; etat: Extract<EtatStudioTutoriel, "a_revoir" | "refusee" | "en_reserve"> }
   | { genre: "rejouer" };
 
 /** Réponse du suivi : `aValider: true` sans `videoId` n'est pas un feu vert (on relit plus tard). */
@@ -54,7 +57,7 @@ export function lireReponseSuivi(statut: number, corps: unknown): ReponseSuivi {
   const lu = lectureTirageTutoriel.safeParse(corps);
   if (!lu.success) return { genre: "rejouer" };
   const r = lu.data;
-  if (r.etat === "a_revoir" || r.etat === "en_reserve") return { genre: "perdu", etat: r.etat };
+  if (r.etat === "a_revoir" || r.etat === "refusee" || r.etat === "en_reserve") return { genre: "perdu", etat: r.etat };
   if (r.aValider) return r.videoId ? { genre: "a_valider", videoId: r.videoId } : { genre: "rejouer" };
   return { genre: "en_cours", etat: r.etat, ...(r.videoId ? { videoId: r.videoId } : {}) };
 }
