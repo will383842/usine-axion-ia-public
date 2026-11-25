@@ -50,11 +50,11 @@ describe.skipIf(!url)("migration 040 · interrupteurs manquants", () => {
     for (const code of CODES) expect((await p.query(`SELECT 1 FROM interrupteur WHERE code = $1`, [code])).rowCount).toBe(0);
     // Un interrupteur posé et allumé par le fondateur avant la 040 : il reste tel quel.
     await p.query(`INSERT INTO interrupteur (code, nom, description, allume) VALUES ('journal', 'Journal posé à la main', 'Posé avant.', true)`);
-    const AJOUTES_APRES = ["connexion.second-code", "connexion.second-code-courriel", "comptes.actif", "semaine.carrousels", "tutoriel.reserve"]; // 041, 042, 045, 047 et 048
-    const autres = (await lire(p)).filter((l) => !CODES.includes(l.code));
+    const AJOUTES_APRES = ["connexion.second-code", "connexion.second-code-courriel", "comptes.actif", "semaine.carrousels", "tutoriel.reserve", "plafond.ecran"]; // 041, 042, 045, 047 et 048 ; 050 renomme plafond.ecran (nom et aide seulement)
+    const autres = (await lire(p)).filter((l) => !CODES.includes(l.code) && l.code !== "plafond.ecran");
     const posee = (await lire(p)).find((l) => l.code === "journal");
 
-    expect((await jouerMigrations(p)).jouees).toEqual(["040-interrupteurs-manquants.sql", "041-interrupteur-second-code.sql", "042-second-code-courriel.sql", "043-compte-des-lignes.sql", "044-deja-fabrique-vise.sql", "045-interrupteur-comptes.sql", "046-diffuseur-neutre.sql", "047-interrupteur-semaine-carrousels.sql", "048-tutoriels-reserve.sql", "049-tutoriels-commande-pause.sql"]);
+    expect((await jouerMigrations(p)).jouees).toEqual(["040-interrupteurs-manquants.sql", "041-interrupteur-second-code.sql", "042-second-code-courriel.sql", "043-compte-des-lignes.sql", "044-deja-fabrique-vise.sql", "045-interrupteur-comptes.sql", "046-diffuseur-neutre.sql", "047-interrupteur-semaine-carrousels.sql", "048-tutoriels-reserve.sql", "049-tutoriels-commande-pause.sql", "050-ecran-autonomie.sql"]);
     const apres = await lire(p);
     expect(apres.filter((l) => !CODES.includes(l.code) && !AJOUTES_APRES.includes(l.code))).toEqual(autres);
     expect(apres.find((l) => l.code === "journal")).toEqual(posee);

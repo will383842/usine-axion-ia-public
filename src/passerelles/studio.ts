@@ -55,16 +55,39 @@ export async function lireOccupesDuStudio(du: string, au: string): Promise<Repon
 }
 
 /**
- * Envoie (PUT) le plafond des achats automatiques au Studio, en centimes entiers de 0 à PLAFOND_AUTO_MAX_CENTS (sinon lève, sans aucun appel).
- * La porte exige l'état d'autonomie avec le plafond : il est écrit ici en littéral « éteint », jamais tiré d'un paramètre ni d'un réglage.
- * Cette fonction n'allume jamais : allumer sera une fiche à part, sur ordre écrit du fondateur.
+ * Lit (POST, lecture seule) l'état de l'autonomie au Studio : allumée ou non, plafond, dépensé ce mois-ci. Aucune écriture côté Studio.
  * Rend `{ envoye: false }`, sans aucun appel, tant que l'interrupteur ou le secret manque.
  */
-export async function reglerPlafondDuStudio(plafondCents: number): Promise<ReponseStudio> {
-  if (!Number.isSafeInteger(plafondCents) || plafondCents < 0 || plafondCents > PLAFOND_AUTO_MAX_CENTS) throw new Error("plafond du Studio hors bornes");
+export async function lireAutonomieDuStudio(): Promise<ReponseStudio> {
   const secret = process.env.STUDIO_PORTE_SECRET ?? "";
   if (secret.length < SECRET_MIN || !(await interrupteurAllume(INTERRUPTEUR_STUDIO))) return { envoye: false };
-  const corps = corpsPlafondStudio.parse({ contrat: 2, automatique: false, plafond_automatique_cents: plafondCents });
+  const reponse = await fetch(`${HOTE}/api/usine/reglages/autonomie`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${secret}`, "content-type": "application/json" },
+    body: "{}",
+    redirect: "error",
+  });
+  const texte = await reponse.text();
+  let json: unknown = null;
+  try {
+    json = texte ? JSON.parse(texte) : null;
+  } catch {
+    json = null;
+  }
+  return { envoye: true, statut: reponse.status, corps: json };
+}
+
+/**
+ * Envoie (PUT) l'état de l'autonomie et son plafond au Studio, en centimes entiers de 0 à PLAFOND_AUTO_MAX_CENTS (sinon lève, sans aucun appel ; allumer avec 0 lève aussi).
+ * L'état est un paramètre : seul l'appelant décide. Dans l'Usine, « allumé » ne part que de l'action d'allumage, après la confirmation « allumer »,
+ * sur l'ordre écrit du fondateur du 25/11 (« oui sur l'autonomie de l'usine » ; plafond de 20 € réglable par l'écran de l'Usine).
+ * Rend `{ envoye: false }`, sans aucun appel, tant que l'interrupteur ou le secret manque.
+ */
+export async function reglerPlafondDuStudio(automatique: boolean, plafondCents: number): Promise<ReponseStudio> {
+  if (!Number.isSafeInteger(plafondCents) || plafondCents < 0 || plafondCents > PLAFOND_AUTO_MAX_CENTS) throw new Error("plafond du Studio hors bornes");
+  const corps = corpsPlafondStudio.parse({ contrat: 2, automatique, plafond_automatique_cents: plafondCents });
+  const secret = process.env.STUDIO_PORTE_SECRET ?? "";
+  if (secret.length < SECRET_MIN || !(await interrupteurAllume(INTERRUPTEUR_STUDIO))) return { envoye: false };
   const reponse = await fetch(`${HOTE}/api/usine/reglages/budget`, {
     method: "PUT",
     headers: { authorization: `Bearer ${secret}`, "content-type": "application/json" },

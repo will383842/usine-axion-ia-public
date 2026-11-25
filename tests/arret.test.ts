@@ -9,6 +9,16 @@ import { Pool } from "pg";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { estPublic } from "@/proxy";
 
+const reglerPlafondDuStudio = vi.fn();
+const lireAutonomieDuStudio = vi.fn();
+vi.mock("@/passerelles/studio", async (original) => ({
+  ...((await original()) as object),
+  reglerPlafondDuStudio: (...a: unknown[]) => reglerPlafondDuStudio(...a),
+  lireAutonomieDuStudio: () => lireAutonomieDuStudio(),
+}));
+vi.mock("@/services/auth", () => ({ exigerSession: async () => undefined }));
+vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+
 const url = process.env.DATABASE_URL;
 const schema = `essai_${randomBytes(4).toString("hex")}`;
 const SECRET = "secret-d-essai-de-la-porte-0123456789";
@@ -119,6 +129,30 @@ describe.skipIf(!url)("arrêt · Tout arrêter", () => {
     expect(src).toMatch(/export async function toutArreter/);
     expect(src).toMatch(/export async function reprendreTout/);
     expect(src).toMatch(/exigerSession\(\)/);
+  });
+
+  it("toutArreter envoie « éteint » au Studio malgré l'arrêt ; Studio muet : l'arrêt reste posé, une ligne au journal ; reprendreTout n'envoie rien", async () => {
+    const { toutArreter, reprendreTout } = await import("@/arret/actions");
+    const { estArrete } = await import("@/arret");
+    const nJournal = async () => (await p.query("SELECT count(*)::int AS n FROM journal")).rows[0].n as number;
+    reglerPlafondDuStudio.mockReset();
+    lireAutonomieDuStudio.mockReset();
+    lireAutonomieDuStudio.mockResolvedValue({ envoye: false });
+    reglerPlafondDuStudio.mockResolvedValue({ envoye: true, statut: 200, corps: { automatique: false, plafond_automatique_cents: 0, deja: false } });
+    await toutArreter();
+    expect(await estArrete()).toBe(true);
+    expect(reglerPlafondDuStudio).toHaveBeenCalledTimes(1);
+    expect(reglerPlafondDuStudio.mock.calls[0][0]).toBe(false);
+    await reprendreTout();
+    expect(await estArrete()).toBe(false);
+    expect(reglerPlafondDuStudio).toHaveBeenCalledTimes(1); // la reprise ne rallume ni n'envoie rien
+    reglerPlafondDuStudio.mockReset();
+    reglerPlafondDuStudio.mockRejectedValue(new Error("réseau"));
+    const j0 = await nJournal();
+    await expect(toutArreter()).resolves.toBeUndefined();
+    expect(await estArrete()).toBe(true);
+    expect(await nJournal()).toBeGreaterThan(j0 + 1); // l'arrêt + au moins une ligne pour l'extinction non envoyée
+    await reprendreTout();
   });
 
   it("porte : éteinte sans secret (404), 401 sans en-tête ou faux, sinon l'état sans aucune donnée de personne", async () => {

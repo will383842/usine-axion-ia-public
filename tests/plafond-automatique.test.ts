@@ -6,14 +6,15 @@ import { Pool } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const reglerPlafondDuStudio = vi.fn();
-let reelle: (c: number) => Promise<unknown>;
+const lireAutonomieDuStudio = vi.fn();
+let reelle: (a: boolean, c: number) => Promise<unknown>;
 vi.mock("@/passerelles/studio", async (original) => {
-  const vrai = (await original()) as { reglerPlafondDuStudio: (c: number) => Promise<unknown> };
-  return { ...vrai, __reelle: vrai.reglerPlafondDuStudio, reglerPlafondDuStudio: (...a: unknown[]) => reglerPlafondDuStudio(...a) };
+  const vrai = (await original()) as { reglerPlafondDuStudio: (a: boolean, c: number) => Promise<unknown> };
+  return { ...vrai, __reelle: vrai.reglerPlafondDuStudio, reglerPlafondDuStudio: (...a: unknown[]) => reglerPlafondDuStudio(...a), lireAutonomieDuStudio: () => lireAutonomieDuStudio() };
 });
 
 import { lireSaisieEuros } from "@/reglages/plafond-automatique";
-import { PLAFOND_AUTO_MAX_CENTS } from "@/contrats";
+import { PLAFOND_AUTO_MAX_CENTS, corpsPlafondStudio, reponsePlafondStudio, reponseAutonomieStudio } from "@/contrats";
 
 describe("plafond automatique · saisie en euros", () => {
   it("convertit en centimes par la chaîne", () => {
@@ -64,14 +65,16 @@ describe.skipIf(!url)("plafond automatique · en base, avec une doublure du Stud
     const { jouerMigrations } = await import("@/lib/migrations");
     utiliserPool(p);
     await jouerMigrations(p);
-    reelle = ((await import("@/passerelles/studio")) as unknown as { __reelle: (c: number) => Promise<unknown> }).__reelle;
+    reelle = ((await import("@/passerelles/studio")) as unknown as { __reelle: (a: boolean, c: number) => Promise<unknown> }).__reelle;
   });
   afterAll(async () => {
     await p?.end();
   });
   beforeEach(async () => {
     reglerPlafondDuStudio.mockReset();
+    lireAutonomieDuStudio.mockReset();
     reglerPlafondDuStudio.mockResolvedValue(reponse());
+    lireAutonomieDuStudio.mockResolvedValue({ envoye: false });
     await arret(false);
     await (await import("@/donnees")).ecrireReglage(CLE, {}); // illisible : lirePlafondAutomatique() rend null
     await reperer();
@@ -91,16 +94,82 @@ describe.skipIf(!url)("plafond automatique · en base, avec une doublure du Stud
   it("200 conforme : une passerelle appelée, réglage écrit, une ligne de journal", async () => {
     const { envoyerPlafondAutomatique, lirePlafondAutomatique } = await import("@/reglages/plafond-automatique");
     const r = await envoyerPlafondAutomatique(2000);
-    expect(r).toEqual({ ok: true, plafond_cents: 2000, deja: false });
+    expect(r).toEqual({ ok: true, actif: false, plafond_cents: 2000, deja: false });
     expect(reglerPlafondDuStudio).toHaveBeenCalledTimes(1);
-    expect(reglerPlafondDuStudio).toHaveBeenCalledWith(2000);
-    expect(await brut()).toEqual({ plafond_cents: 2000, accepte_le: expect.any(String), version: 1 });
+    expect(reglerPlafondDuStudio).toHaveBeenCalledWith(false, 2000);
+    expect(await brut()).toEqual({ actif: false, plafond_cents: 2000, accepte_le: expect.any(String), version: 2 });
     expect((await lirePlafondAutomatique())?.plafond_cents).toBe(2000);
     const j = await journal();
     expect(j).toHaveLength(1);
     expect(j[0].sujet).toBe("reglage");
-    expect(j[0].message).toMatch(/accepté par le Studio/);
-    expect(j[0].message).toMatch(/restent éteints/);
+    expect(j[0].message).toMatch(/acceptée par le Studio/);
+    expect(j[0].message).toMatch(/éteinte/);
+    expect(j[0].donnees).toMatchObject({ avant: null, apres: { actif: false, plafond_cents: 2000 } });
+  });
+
+  it("allumer : envoyé et noté seulement si l'état et le plafond reçus sont exactement ceux envoyés ; journal avant et après", async () => {
+    const { envoyerAutonomie, lirePlafondAutomatique } = await import("@/reglages/plafond-automatique");
+    reglerPlafondDuStudio.mockResolvedValue(reponse({ automatique: true }));
+    expect(await envoyerAutonomie({ actif: true, plafondCents: 2000 })).toEqual({ ok: true, actif: true, plafond_cents: 2000, deja: false });
+    expect(reglerPlafondDuStudio).toHaveBeenCalledWith(true, 2000);
+    expect(await brut()).toEqual({ actif: true, plafond_cents: 2000, accepte_le: expect.any(String), version: 2 });
+    expect((await lirePlafondAutomatique())?.actif).toBe(true);
+    const j = await journal();
+    expect(j[0].message).toMatch(/allumée/);
+    expect(j[0].donnees).toMatchObject({ avant: null, apres: { actif: true, plafond_cents: 2000 } });
+    // éteindre ensuite : l'avant est l'état allumé
+    reglerPlafondDuStudio.mockResolvedValue(reponse());
+    await reperer();
+    await envoyerAutonomie({ actif: false, plafondCents: 2000 });
+    expect((await journal())[0].donnees).toMatchObject({ avant: { actif: true, plafond_cents: 2000 }, apres: { actif: false } });
+  });
+
+  it("allumer à 0 ou au-dessus de la borne : refusé sans aucun appel", async () => {
+    const { envoyerAutonomie } = await import("@/reglages/plafond-automatique");
+    for (const c of [0, 10001, -5]) expect(await envoyerAutonomie({ actif: true, plafondCents: c })).toMatchObject({ ok: false, raison: "hors_bornes" });
+    expect(reglerPlafondDuStudio).not.toHaveBeenCalled();
+  });
+
+  it("l'état reçu diffère de l'envoi : rien n'est écrit, alerte au journal", async () => {
+    const { envoyerAutonomie } = await import("@/reglages/plafond-automatique");
+    reglerPlafondDuStudio.mockResolvedValue(reponse({ automatique: false })); // allumer demandé, éteint reçu
+    expect(await envoyerAutonomie({ actif: true, plafondCents: 2000 })).toMatchObject({ ok: false, raison: "reponse_inattendue" });
+    expect(await brut()).toEqual({});
+    expect((await journal()).some((l) => /^Alerte/.test(l.message))).toBe(true);
+  });
+
+  it("l'ancien réglage (version 1) se lit comme éteint", async () => {
+    const { ecrireReglage } = await import("@/donnees");
+    const { lirePlafondAutomatique } = await import("@/reglages/plafond-automatique");
+    await ecrireReglage(CLE, { plafond_cents: 1500, accepte_le: "2026-11-01T10:00:00.000Z", version: 1 });
+    expect(await lirePlafondAutomatique()).toMatchObject({ actif: false, plafond_cents: 1500 });
+  });
+
+  it("couperAutonomie : envoie « éteint » même sous arrêt ; Studio muet : journal, pas d'exception", async () => {
+    const { couperAutonomie } = await import("@/reglages/plafond-automatique");
+    await arret(true);
+    reglerPlafondDuStudio.mockResolvedValue(reponse({ plafond_automatique_cents: 0 })); // rien lu ni noté : plafond 0
+    expect(await couperAutonomie()).toMatchObject({ ok: true, actif: false });
+    expect(reglerPlafondDuStudio).toHaveBeenCalledWith(false, expect.any(Number));
+    reglerPlafondDuStudio.mockRejectedValue(new Error("réseau"));
+    await reperer();
+    expect(await couperAutonomie()).toMatchObject({ ok: false, raison: "sans_reponse" });
+    expect((await journal()).length).toBeGreaterThan(0);
+    await arret(false);
+  });
+
+  it("lireAutonomieStudio : lecture conforme, ou « inconnu » en cas de panne ou de réponse illisible", async () => {
+    const { lireAutonomieStudio } = await import("@/reglages/plafond-automatique");
+    lireAutonomieDuStudio.mockResolvedValue({ envoye: true, statut: 200, corps: { automatique: true, plafond_automatique_cents: 2000, utilise_automatique_cents: 350, mois: "2026-11", pilote: "usine", extra: 1 } });
+    expect(await lireAutonomieStudio()).toEqual({ connu: true, automatique: true, plafond_cents: 2000, utilise_cents: 350, mois: "2026-11", pilote: "usine" });
+    lireAutonomieDuStudio.mockRejectedValue(new Error("réseau"));
+    expect(await lireAutonomieStudio()).toEqual({ connu: false });
+    lireAutonomieDuStudio.mockResolvedValue({ envoye: true, statut: 500, corps: null });
+    expect(await lireAutonomieStudio()).toEqual({ connu: false });
+    lireAutonomieDuStudio.mockResolvedValue({ envoye: false });
+    expect(await lireAutonomieStudio()).toEqual({ connu: false });
+    lireAutonomieDuStudio.mockResolvedValue({ envoye: true, statut: 200, corps: { automatique: true } });
+    expect(await lireAutonomieStudio()).toEqual({ connu: false });
   });
 
   it("rejeu (deja) : ok, valeur inchangée", async () => {
@@ -108,7 +177,7 @@ describe.skipIf(!url)("plafond automatique · en base, avec une doublure du Stud
     await envoyerPlafondAutomatique(2000);
     const avantRejeu = await brut();
     reglerPlafondDuStudio.mockResolvedValue(reponse({ deja: true }));
-    expect(await envoyerPlafondAutomatique(2000)).toEqual({ ok: true, plafond_cents: 2000, deja: true });
+    expect(await envoyerPlafondAutomatique(2000)).toEqual({ ok: true, actif: false, plafond_cents: 2000, deja: true });
     expect(await brut()).toEqual(avantRejeu);
   });
 
@@ -164,10 +233,12 @@ describe.skipIf(!url)("plafond automatique · en base, avec une doublure du Stud
   });
 
   it("passerelle réelle, sans réseau : éteinte rend { envoye: false } ; hors bornes lève avant tout", async () => {
-    expect(await reelle(2000)).toEqual({ envoye: false });
-    await expect(reelle(10001)).rejects.toThrow();
-    await expect(reelle(-1)).rejects.toThrow();
-    await expect(reelle(1.5)).rejects.toThrow();
+    expect(await reelle(false, 2000)).toEqual({ envoye: false });
+    expect(await reelle(true, 2000)).toEqual({ envoye: false });
+    await expect(reelle(false, 10001)).rejects.toThrow();
+    await expect(reelle(false, -1)).rejects.toThrow();
+    await expect(reelle(false, 1.5)).rejects.toThrow();
+    await expect(reelle(true, 0)).rejects.toThrow();
   });
 });
 
@@ -177,17 +248,39 @@ describe("plafond automatique · garde-fous statiques", () => {
       const c = join(dossier, n);
       return statSync(c).isDirectory() ? fichiers(c) : [c];
     });
-  it("aucun fichier de src/ ne peut produire l'état allumé", () => {
+  /* Ordre écrit du fondateur du 25/11 (« oui sur l'autonomie de l'usine », 20 € modifiables dans la console) : seul `allumerAutonomie`, après `confirmation === "allumer"`, peut produire l'état allumé. */
+  it("aucun littéral « automatique: true » dans src/ ; « actif: true » seulement dans allumerAutonomie, après la confirmation", () => {
+    let trouves = 0;
     for (const f of fichiers("src").filter((x) => /\.(ts|tsx)$/.test(x))) {
       const t = readFileSync(f, "utf8");
       expect(t, f).not.toMatch(/automatique\s*:\s*(true|!)/);
+      const n = t.match(/envoyerAutonomie\(\{\s*actif\s*:\s*true/g)?.length ?? 0;
+      if (n > 0) {
+        expect(f.replace(/\\/g, "/")).toBe("src/app/reglages/plafond/actions.ts");
+        trouves += n;
+        const corps = t.slice(t.indexOf("export async function allumerAutonomie"));
+        expect(corps.indexOf('confirmation !== "allumer"')).toBeGreaterThan(-1);
+        expect(corps.indexOf('confirmation !== "allumer"')).toBeLessThan(corps.search(/actif\s*:\s*true/));
+      }
     }
+    expect(trouves).toBe(1);
   });
-  it("la passerelle écrit l'état éteint en littéral, une seule fois, avec un seul paramètre", () => {
+  it("la passerelle prend l'état en paramètre, sans littéral, et envoie en PUT", () => {
     const t = readFileSync("src/passerelles/studio.ts", "utf8");
-    expect(t.match(/automatique: false/g)).toHaveLength(1);
-    expect(t).toMatch(/function reglerPlafondDuStudio\(plafondCents: number\)/);
+    expect(t).not.toMatch(/automatique:\s*(true|false)/);
+    expect(t).toMatch(/function reglerPlafondDuStudio\(automatique: boolean, plafondCents: number\)/);
     expect(t).toMatch(/method: "PUT"/);
+    expect(t).toMatch(/\/api\/usine\/reglages\/autonomie/);
+  });
+  it("le contrat refuse « allumé » avec 0, à l'envoi comme à la réception", () => {
+    expect(corpsPlafondStudio.safeParse({ contrat: 2, automatique: true, plafond_automatique_cents: 0 }).success).toBe(false);
+    expect(corpsPlafondStudio.safeParse({ contrat: 2, automatique: true, plafond_automatique_cents: 2000 }).success).toBe(true);
+    expect(corpsPlafondStudio.safeParse({ contrat: 2, automatique: false, plafond_automatique_cents: 0 }).success).toBe(true);
+    expect(corpsPlafondStudio.safeParse({ contrat: 2, automatique: true, plafond_automatique_cents: 10001 }).success).toBe(false);
+    expect(reponsePlafondStudio.safeParse({ automatique: true, plafond_automatique_cents: 0, deja: false }).success).toBe(false);
+    expect(reponsePlafondStudio.safeParse({ automatique: true, plafond_automatique_cents: 2000, deja: false }).success).toBe(true);
+    expect(reponseAutonomieStudio.safeParse({ automatique: false, plafond_automatique_cents: 0, utilise_automatique_cents: 0, mois: "2026-11", pilote: "aucun" }).success).toBe(true);
+    expect(reponseAutonomieStudio.safeParse({ automatique: false, plafond_automatique_cents: 0, utilise_automatique_cents: 0, mois: "2026-11", pilote: "autre" }).success).toBe(false);
   });
   it("aucune migration ne crée d'interrupteur d'autonomie", () => {
     for (const f of readdirSync("migrations")) {

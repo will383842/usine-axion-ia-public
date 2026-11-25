@@ -2,20 +2,60 @@
 
 import { useState } from "react";
 import { Annulable } from "@/components/Annulable";
-import { enregistrerPlafondAutomatique } from "./actions";
+import { allumerAutonomie, enregistrerPlafondAutomatique, eteindreAutonomie } from "./actions";
 
-/** Saisie en euros ; l'envoi part au bout de 10 s, sauf « Annuler ». */
-export function FormulairePlafond({ initial, aide }: { initial: string; aide: string }) {
+type Message = { texte: string; erreur: boolean };
+
+/**
+ * Interrupteur + plafond en euros, pré-remplis avec l'état lu dans le Studio. Rien ne part avant le geste d'enregistrement :
+ * allumer = résumé, « Oui, allumer », puis 10 s pour annuler ; éteindre = tout de suite.
+ */
+export function FormulairePlafond({ allumeInitial, initial, resume }: { allumeInitial: boolean; initial: string; resume: string }) {
+  const [allume, setAllume] = useState(allumeInitial);
+  const [reel, setReel] = useState(allumeInitial);
   const [saisie, setSaisie] = useState(initial);
-  const [message, setMessage] = useState<{ texte: string; erreur: boolean } | null>(null);
+  const [enResume, setEnResume] = useState(false);
+  const [message, setMessage] = useState<Message | null>(null);
 
-  const envoyer = async () => {
-    const r = await enregistrerPlafondAutomatique(saisie);
-    setMessage({ texte: r.message, erreur: !r.ok });
+  const montrer = (r: { ok: boolean; message: string }) => setMessage({ texte: r.message, erreur: !r.ok });
+  const toucher = () => {
+    setMessage(null);
+    setEnResume(false);
+  };
+
+  const allumer = async () => {
+    const r = await allumerAutonomie(saisie, "allumer");
+    montrer(r);
+    if (r.ok) {
+      setReel(true);
+      setEnResume(false);
+    }
+  };
+  const eteindre = async () => {
+    const r = await eteindreAutonomie();
+    montrer(r);
+    if (r.ok) setReel(false);
+  };
+  const plafondSeul = async () => {
+    montrer(await enregistrerPlafondAutomatique(saisie));
   };
 
   return (
     <section className="flex flex-col gap-4 rounded-xl border border-trait bg-surface p-4">
+      <label className="flex min-h-11 items-center justify-between gap-3 font-semibold">
+        <span>Ce que l&apos;Usine dépense seule</span>
+        <input
+          type="checkbox"
+          role="switch"
+          className="h-8 w-14"
+          checked={allume}
+          onChange={(e) => {
+            setAllume(e.target.checked);
+            toucher();
+          }}
+        />
+      </label>
+      <p className="text-texte-doux">{allume ? "Allumé : l'Usine peut acheter seule, dans la limite du plafond." : "Éteint : chaque dépense de l'Usine vous demande votre accord."}</p>
       <label className="flex flex-col gap-2 font-semibold">
         Plafond du mois, en euros
         <input
@@ -27,17 +67,37 @@ export function FormulairePlafond({ initial, aide }: { initial: string; aide: st
           value={saisie}
           onChange={(e) => {
             setSaisie(e.target.value);
-            setMessage(null);
+            toucher();
           }}
         />
       </label>
-      <p className="text-texte-doux">{aide}</p>
       {message && (
         <p role={message.erreur ? "alert" : "status"} className={message.erreur ? "rounded-lg bg-terracotta-doux px-3 py-2 font-semibold text-terracotta-fonce" : "font-semibold"}>
           {message.texte}
         </p>
       )}
-      <Annulable libelle="Envoyer au Studio" message="Plafond envoyé au Studio dans 10 s." action={envoyer} className="bouton" />
+      {allume && enResume && (
+        <div className="flex flex-col gap-3 rounded-lg border border-trait p-3">
+          <p className="font-semibold">Avant d&apos;allumer</p>
+          <p>{resume.replace("{plafond}", saisie)}</p>
+          <p>Après « Oui, allumer », vous aurez encore 10 secondes pour annuler.</p>
+          <Annulable libelle="Oui, allumer" message="Allumage envoyé au Studio dans 10 s." action={allumer} className="bouton" />
+          <button type="button" className="inline-flex min-h-11 items-center font-semibold underline" onClick={() => setEnResume(false)}>
+            Revenir
+          </button>
+        </div>
+      )}
+      {allume && !enResume && (
+        <button type="button" className="bouton" onClick={() => setEnResume(true)}>
+          {reel ? "Enregistrer le nouveau plafond" : "Continuer"}
+        </button>
+      )}
+      {!allume && reel && (
+        <button type="button" className="bouton" onClick={eteindre}>
+          Éteindre maintenant
+        </button>
+      )}
+      {!allume && !reel && <Annulable libelle="Enregistrer le plafond" message="Plafond envoyé au Studio dans 10 s." action={plafondSeul} className="bouton" />}
     </section>
   );
 }
