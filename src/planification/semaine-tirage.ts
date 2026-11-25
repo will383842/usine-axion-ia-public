@@ -339,22 +339,6 @@ export async function tirerLaSemaine(lundi: string, reseaux: readonly Reseau[] |
   }
 
   const toutes = [...deCalendrier, ...tirees];
-  const semaineVide = () => {
-    if (!creneaux.length && grille.length) return new ErreurPorte(409, "semaine_passee", PHRASES.semaine_passee);
-    if (restants.length) return new ErreurPorte(409, "aucun_sujet", libres.length ? PHRASES.aucun_sujet_sans_fin(nommer(avecCompte).join(", ")) : PHRASES.aucun_sujet);
-    return new ErreurPorte(409, "semaine_pleine", PHRASES.semaine_pleine);
-  };
-  // Allumé, des créneaux carrousel libres suffisent à ne pas répondre « semaine pleine » : on rend les carrousels (409 seulement s'il n'en sort aucun).
-  if (!toutes.length && !restantsCarrousel.length) throw semaineVide();
-  // Jamais de créneau abandonné en silence : s'il en reste sans sujet, la réponse le dit, avec le geste à faire.
-  // La vraie raison, réseau par réseau : un créneau resté vide sur un réseau sans phrase de fin manque de fin, pas de sujets.
-  const posees = new Set(placements.map((x) => x.creneau));
-  const videsParReseau = restants.filter((_, k) => !posees.has(k)).map((c) => c.reseau);
-  const sansFin = [...new Set(videsParReseau)].filter((r) => !libres.some((s) => s.fins[r]));
-  const sansSujet = videsParReseau.some((r) => !sansFin.includes(r));
-  const raisons = [...(sansFin.length ? [PHRASES.manque_fins(nommer(sansFin).join(", "))] : []), ...(sansSujet ? [PHRASES.manque_sujets] : [])];
-  const manque = restants.length > tirees.length && raisons.length ? PHRASES.manque_tete(toutes.length, deCalendrier.length + restants.length) + raisons.join(" Par ailleurs, ") : undefined;
-
   // Carrousels : un même cas d'usage n'est pas pris deux fois dans la semaine, tous types confondus (sinon `repete`, comme les vidéos).
   const titresDejaPris = [...titresRetenus, ...placements.map((x) => identiteDe(x.sujet))];
   const placementsCarrousel = affecterSujets(restantsCarrousel, libresCarrousel, titresDejaPris);
@@ -373,6 +357,21 @@ export async function tirerLaSemaine(lundi: string, reseaux: readonly Reseau[] |
       sujet: s,
     });
   }
+  const semaineVide = () => {
+    if (!creneaux.length && grille.length) return new ErreurPorte(409, "semaine_passee", PHRASES.semaine_passee);
+    if (restants.length) return new ErreurPorte(409, "aucun_sujet", libres.length ? PHRASES.aucun_sujet_sans_fin(nommer(avecCompte).join(", ")) : PHRASES.aucun_sujet);
+    return new ErreurPorte(409, "semaine_pleine", PHRASES.semaine_pleine);
+  };
+  // Jamais de créneau abandonné en silence : s'il en reste sans sujet, la réponse le dit, avec le geste à faire.
+  // La vraie raison, réseau par réseau : un créneau resté vide sur un réseau sans phrase de fin manque de fin, pas de sujets.
+  const posees = new Set(placements.map((x) => x.creneau));
+  const videsParReseau = restants.filter((_, k) => !posees.has(k)).map((c) => c.reseau);
+  const sansFin = [...new Set(videsParReseau)].filter((r) => !libres.some((s) => s.fins[r]));
+  const sansSujet = videsParReseau.some((r) => !sansFin.includes(r));
+  const raisons = [...(sansFin.length ? [PHRASES.manque_fins(nommer(sansFin).join(", "))] : []), ...(sansSujet ? [PHRASES.manque_sujets] : [])];
+  const manque = restants.length > tirees.length && raisons.length ? PHRASES.manque_tete(toutes.length + tireesCarrousel.length, deCalendrier.length + restants.length + restantsCarrousel.length) + raisons.join(" Par ailleurs, ") : undefined;
+
+  // Allumé, des carrousels rendus suffisent à ne pas répondre « semaine pleine » (409 seulement s'il n'en sort aucun).
   if (!toutes.length && !tireesCarrousel.length) throw semaineVide();
   const posesCarrousel = new Set(placementsCarrousel.map((x) => x.creneau));
   const videsCarrousel = restantsCarrousel.filter((_, k) => !posesCarrousel.has(k)).map((c) => c.reseau);
