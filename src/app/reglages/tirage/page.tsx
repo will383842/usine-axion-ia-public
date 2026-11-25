@@ -5,6 +5,7 @@ import { lireReglagesTirage } from "@/reglages";
 import { exigerSession } from "@/services/auth";
 import { enregistrerTirage } from "../actions";
 import { Bloc, Entete, Nombre, Retour } from "../Champs";
+import { PlafondsVideo } from "./PlafondsVideo";
 
 export const metadata: Metadata = { title: "Poids et plafond" };
 export const dynamic = "force-dynamic";
@@ -30,6 +31,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ e
       <Bloc titre="Plafond par commande">
         <Nombre nom="plafond" libelle="Plafond par défaut (€)" defaut={r.plafondLotEur} min={1} pas={0.5} />
       </Bloc>
+      <PlafondsVideo />
       <button type="submit" className="bouton self-start">
         Enregistrer
       </button>
