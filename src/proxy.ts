@@ -4,13 +4,14 @@
  * Le proxy ne suffit pas : chaque action serveur et chaque page appelle aussi exigerSession().
  * N-26 : seule une session complète (mot de passe ET second code) passe ; une session partielle n'ouvre que /connexion.
  * La route de l'horloge (/api/horloge/semaine) est publique pour le proxy : elle exige son propre secret (401 sans détail).
+ * Celle des tutoriels de la réserve (/api/horloge/tutoriels) aussi : même secret, même refus sans détail.
  * La porte du studio (/api/porte/**, dont /api/porte/planification/semaine) n'a pas de session : chacune de ses routes exige le secret partagé (src/porte/acces.ts).
  */
 import { NextResponse, type NextRequest } from "next/server";
 import { sessionComplete } from "@/auth/session";
 import { NOM_COOKIE_SESSION } from "@/lib/jeton-session";
 
-const PUBLICS = [/^\/connexion\/?$/, /^\/api\/sante\/?$/, /^\/api\/porte\/(sujets|sujets\/retenir|sujets\/retenir-lot|metiers|arret|planification\/semaine)\/?$/, /^\/api\/agregats-crm\/?$/, /^\/api\/horloge\/semaine\/?$/];
+const PUBLICS = [/^\/connexion\/?$/, /^\/api\/sante\/?$/, /^\/api\/porte\/(sujets|sujets\/retenir|sujets\/retenir-lot|metiers|arret|planification\/semaine)\/?$/, /^\/api\/agregats-crm\/?$/, /^\/api\/horloge\/semaine\/?$/, /^\/api\/horloge\/tutoriels\/?$/];
 
 export function estPublic(pathname: string): boolean {
   return PUBLICS.some((r) => r.test(pathname));

@@ -17,6 +17,8 @@ import { lireQuotas, lireReglagesTirage } from "@/reglages";
 import type { QuotasParReseau } from "@/reglages/quotas";
 import { LIBELLE_RESEAU, type RythmesParReseau } from "@/reglages/modele";
 import { RESEAUX_PAR_DEFAUT } from "@/tirage/charger";
+import { tirageTutorielEnCours } from "@/tutoriels";
+import { INTERRUPTEUR_TUTORIEL, rythmesSansTutoriel } from "@/tutoriels/regles";
 import { ECART_MINUTES, HEURES, SQL_LIGNES_SEMAINE, instantDeParis, isoParis, jourParis, lignesDeLaSemaine, proposerSemaine, type LigneBase, type LigneSemaine } from "./regles";
 
 /** Interrupteur du plan #63 : éteint (par défaut), la semaine ne compte que des vidéos. */
@@ -188,7 +190,9 @@ export async function tirerLaSemaine(lundi: string, reseaux: readonly Reseau[] |
   const lignes = await requete<LigneBase>(SQL_LIGNES_SEMAINE, [lundi, dimanche]);
   const reelles = lignesDeLaSemaine(lignes).filter((l) => demandees.includes(l.reseau));
   // Premier appel : exactement le chemin d'avant (vidéos seules, rythmes d'origine), qu'il y ait des carrousels ou non.
-  const virtuelles = lignesVirtuelles(avecCompte, rythmes, comptes);
+  // Réserve de tutoriels : tant qu'un tutoriel de cette semaine est pris au Studio sans créneau posé, une place vidéo de son réseau reste libre (créneaux virtuels seulement ; éteint : rien ne change).
+  const tutorielEnCours = (await interrupteurAllume(INTERRUPTEUR_TUTORIEL)) && (await tirageTutorielEnCours(lundi));
+  const virtuelles = lignesVirtuelles(avecCompte, tutorielEnCours ? rythmesSansTutoriel(rythmes) : rythmes, comptes);
   const { propositions: propositionsVideo } = proposerSemaine({ lignes: [...reelles, ...virtuelles], lundi, rythmes, quotas, occupes: [], maintenant: minuit, etaler: true });
   // Carrousels (plan #63) : éteint, rien ne change. Allumé, un SECOND appel pose K créneaux carrousel en plus ; les vidéos et lignes du premier appel y sont des lignes fixes, donc elles ne bougent pas.
   const carrouselsAllumes = await interrupteurAllume(INTERRUPTEUR_SEMAINE_CARROUSELS);

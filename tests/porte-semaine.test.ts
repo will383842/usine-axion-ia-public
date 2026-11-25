@@ -524,6 +524,49 @@ describe.skipIf(!url)("porte · semaine · sur une vraie base", () => {
     expect(r.propositions.some((l) => l.reseau === "instagram")).toBe(false);
   });
 
+  describe("créneau tutoriel (plan #65)", () => {
+    const poserTirage = () =>
+      p.query(`INSERT INTO tutoriel_tirage (cle, lundi, essai, reseau, etat_tirage, etat_studio, element_id) VALUES ('tuto-${LUNDI}-1', $1, 1, 'instagram', 'pris', 'pris', 'el-1')`, [LUNDI]);
+    const allumerTuto = () => p.query("UPDATE interrupteur SET allume = true WHERE code = 'tutoriel.reserve'");
+
+    it("T-S1 · interrupteur éteint, tirage `pris` présent : la réponse est identique à celle sans tirage", async () => {
+      const sans = await semaine();
+      await poserTirage();
+      expect(await semaine()).toEqual(sans);
+      expect(videos(sans).filter((v) => v.reseau === "instagram")).toHaveLength(6);
+    });
+
+    it("T-S2 · allumé, tirage `pris` sans ligne pour ce lundi : une proposition vidéo Instagram de moins, rien d'autre ne change, seulement des SELECT", async () => {
+      const sans = await semaine();
+      await poserTirage();
+      await allumerTuto();
+      const sauve = p.query.bind(p);
+      requetes = [];
+      const espion = vi.spyOn(p, "query").mockImplementation(((sql: unknown, ...reste: unknown[]) => {
+        requetes.push(typeof sql === "string" ? sql : (sql as { text: string }).text);
+        return (sauve as (...a: unknown[]) => unknown)(sql, ...reste);
+      }) as never);
+      let avec: Reponse;
+      try {
+        avec = await semaine();
+      } finally {
+        espion.mockRestore();
+      }
+      for (const sql of requetes) expect(sql, sql).toMatch(/^\s*SELECT\b/);
+      expect(videos(avec).filter((v) => v.reseau === "instagram")).toHaveLength(5);
+      // Les créneaux Facebook restent les mêmes (les sujets, rangés par heure, peuvent passer d'un créneau à l'autre).
+      const creneauxFacebook = (r: Reponse) => r.propositions.filter((l) => l.reseau === "facebook").map((l) => `${l.jour} ${l.heure}`);
+      expect(creneauxFacebook(avec)).toEqual(creneauxFacebook(sans));
+      expect(avec.propositions).toHaveLength(sans.propositions.length - 1);
+      // Une fois la ligne posée, c'est une ligne réelle qui consomme la place : plus de place retirée en double.
+      const [{ id }] = (await p.query(`INSERT INTO calendrier_ligne (reseau, compte, type_contenu, prevue_le, date_choisie) VALUES ('instagram', 'instagram:essai', 'video', $1, true) RETURNING id`, [instantDeParis("2099-03-03", "12:30")])).rows;
+      await p.query("UPDATE tutoriel_tirage SET calendrier_ligne = $1", [id]);
+      const posee = await semaine();
+      expect(videos(posee).filter((v) => v.reseau === "instagram")).toHaveLength(5);
+      expect(posee.propositions.filter((l) => l.reseau === "instagram")).toHaveLength(5);
+    });
+  });
+
   describe("carrousels dans la semaine (plan #63)", () => {
     // Relevé de la réponse du code d'AVANT la PR (src/planification/semaine-tirage.ts de 9318cc5), sur les mêmes données fictives : cle, jour, réseau, type, heure.
     const AVANT_LA_PR = [

@@ -62,6 +62,10 @@ export const COLONNES_USINE = {
     "id", "type_contenu", "metier", "taille", "service", "douleur", "cas_usage", "sujet", "actualite", "format", "structure", "signature",
     "code_version", "fabrique_le", "note", "cree_le", "modifie_le", "archive_le", "vise_le", "vise_reseau",
   ],
+  tutoriel_tirage: [
+    "cle", "lundi", "essai", "reseau", "etat_tirage", "etat_studio", "element_id", "video_id", "raison", "a_valider_le", "calendrier_ligne", "demandee_le", "relue_le",
+    "cree_le", "modifie_le", "archive_le",
+  ],
   releve_mot: ["id", "semaine", "mot", "compte", "commentaires", "messages", "demandes_guide", "abonnes_gagnes", "cree_le", "modifie_le", "archive_le"],
 } as const;
 

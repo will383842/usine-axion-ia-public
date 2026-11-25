@@ -25,6 +25,8 @@ export interface LigneAProposer {
   type_contenu: string;
   prevue_le: Date;
   lot_ligne: string | null;
+  /** Seulement pour une ligne née d'un tutoriel validé de la réserve. */
+  video_id?: string | null;
 }
 
 /** SHA-256 hexadécimal de « usine|calendrier_ligne|<id> » : stable pour une même ligne. */
@@ -48,6 +50,7 @@ export function corpsDeLigne(ligne: LigneAProposer, maintenant: Date): CorpsOuRe
     instant: ligne.prevue_le.toISOString(),
     compteCible: ligne.compte,
     ...(ligne.lot_ligne ? { repere: `usine:${ligne.lot_ligne}` } : {}),
+    ...(ligne.video_id ? { videoId: ligne.video_id } : {}),
   });
   return lu.success ? { ok: true, corps: lu.data } : { ok: false, phrase: "Cette ligne n'est pas prête à être proposée." };
 }

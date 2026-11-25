@@ -42,7 +42,10 @@ export async function proposerAuStudio(calendrierLigneId: string): Promise<Resul
   if (!(await commandesAllumees())) return { message: PHRASE_ETEINT, etat_envoi: null };
   if (!/^\d+$/.test(calendrierLigneId)) return { message: "Cette ligne n'existe plus.", etat_envoi: null };
   const [ligne] = await requete<LigneAProposer>(
-    `SELECT id::text, reseau, compte, type_contenu, prevue_le, lot_ligne FROM calendrier_ligne WHERE id = $1 AND archive_le IS NULL`,
+    `SELECT c.id::text, c.reseau, c.compte, c.type_contenu, c.prevue_le, c.lot_ligne, t.video_id
+       FROM calendrier_ligne c
+       LEFT JOIN tutoriel_tirage t ON t.calendrier_ligne = c.id AND t.archive_le IS NULL AND t.a_valider_le IS NOT NULL
+      WHERE c.id = $1 AND c.archive_le IS NULL`,
     [calendrierLigneId],
   );
   if (!ligne) return { message: "Cette ligne n'existe plus.", etat_envoi: null };

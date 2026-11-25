@@ -24,6 +24,7 @@ export const corpsCommandeStudio = z.strictObject({
   instant: instantUtc,
   compteCible: z.string().min(1).max(200),
   repere: z.string().min(1).max(200).optional(),
+  videoId: z.string().regex(/^[A-Za-z0-9._:-]{1,100}$/).optional(),
 });
 export type CorpsCommandeStudio = z.infer<typeof corpsCommandeStudio>;
 

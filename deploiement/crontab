@@ -5,3 +5,6 @@ MAILTO=""
 # Horloge hebdomadaire (U-HORLOGE) : le lundi à 6 h UTC, l'application propose la semaine (sans IA, « à valider »). Même fichier de pose que ci-dessus (une seule copie dans /etc/cron.d).
 # Éteinte : HORLOGE_ACTIVE absent du fichier d'environnement, et interrupteur « horloge.semaine » éteint.
 0 6 * * 1 root /opt/usine-axion-ia/deploiement/proposer-semaine.sh >> /var/log/usine-horloge.log 2>&1
+
+# Réserve de tutoriels : toutes les 30 minutes, l'application fait un passage (demander, suivre, poser). Rien ne part tant que HORLOGE_ACTIVE ≠ 1 et que l'interrupteur « tutoriel.reserve » est éteint.
+*/30 * * * * root HORLOGE_URL=http://127.0.0.1:3000/api/horloge/tutoriels /opt/usine-axion-ia/deploiement/proposer-semaine.sh >> /var/log/usine-tutoriels.log 2>&1
