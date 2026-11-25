@@ -197,6 +197,18 @@ describe("plafond-ecran · allumer et éteindre", () => {
     expect(couperAutonomie).toHaveBeenCalledTimes(1);
   });
 
+  it("éteindre : réponse inattendue ou 5xx = « extinction non confirmée, peut encore être allumée », jamais « pas noté comme accepté »", async () => {
+    const { eteindreAutonomie } = await import("@/app/reglages/plafond/actions");
+    for (const r of [{ ok: false as const, raison: "reponse_inattendue" as const, statut: 200 }, { ok: false as const, raison: "refuse" as const, statut: 503 }]) {
+      couperAutonomie.mockResolvedValue(r);
+      const m = await eteindreAutonomie();
+      expect(m.ok).toBe(false);
+      expect(m.message).toMatch(/l'extinction n'est pas confirmée\. L'autonomie peut encore être allumée/);
+    }
+    couperAutonomie.mockResolvedValue({ ok: false, raison: "refuse", statut: 400 });
+    expect((await eteindreAutonomie()).message).toMatch(/refusé/);
+  });
+
   it("éteindre : immédiat, sans confirmation ; Studio muet : message clair", async () => {
     const { eteindreAutonomie } = await import("@/app/reglages/plafond/actions");
     couperAutonomie.mockResolvedValue({ ok: true, actif: false, plafond_cents: 2000, deja: false });
@@ -231,6 +243,14 @@ describe("plafond-ecran · textes de l'écran", () => {
     const bouton = readFileSync("src/arret/BoutonToutArreter.tsx", "utf8");
     expect(bouton).toMatch(/éteint aussi ce que l&apos;Usine dépense seule/);
     expect(bouton).toMatch(/seul l&apos;écran « Ce que l&apos;Usine dépense seule » peut le rallumer/);
+  });
+  it("« Éteindre » depuis l'écran éteint (et quand l'état n'est pas lu) dit que le réglage passe à l'Usine", () => {
+    const page = readFileSync("src/app/reglages/plafond/page.tsx", "utf8");
+    const phrase = "passe le réglage de l&apos;autonomie à l&apos;Usine : l&apos;interrupteur du Studio ne sert plus ensuite";
+    expect(page.split(phrase).length - 1).toBe(2);
+    const eteint = page.slice(page.indexOf("Cet écran est éteint."), page.indexOf("const studio = await"));
+    expect(eteint).toContain(phrase);
+    expect(eteint.indexOf(phrase)).toBeLessThan(eteint.indexOf("<BoutonEteindre />"));
   });
   it("ne dit plus « restent éteints » ni « Vous seul pourrez les allumer »", () => {
     const tout = sources().join("\n");

@@ -8,9 +8,10 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 const reglerPlafondDuStudio = vi.fn();
 const lireAutonomieDuStudio = vi.fn();
 let reelle: (a: boolean, c: number) => Promise<unknown>;
+let lectureReelle: () => Promise<unknown>;
 vi.mock("@/passerelles/studio", async (original) => {
-  const vrai = (await original()) as { reglerPlafondDuStudio: (a: boolean, c: number) => Promise<unknown> };
-  return { ...vrai, __reelle: vrai.reglerPlafondDuStudio, reglerPlafondDuStudio: (...a: unknown[]) => reglerPlafondDuStudio(...a), lireAutonomieDuStudio: () => lireAutonomieDuStudio() };
+  const vrai = (await original()) as { reglerPlafondDuStudio: (a: boolean, c: number) => Promise<unknown>; lireAutonomieDuStudio: () => Promise<unknown> };
+  return { ...vrai, __reelle: vrai.reglerPlafondDuStudio, __lecture: vrai.lireAutonomieDuStudio, reglerPlafondDuStudio: (...a: unknown[]) => reglerPlafondDuStudio(...a), lireAutonomieDuStudio: () => lireAutonomieDuStudio() };
 });
 
 import { lireSaisieEuros } from "@/reglages/plafond-automatique";
@@ -65,7 +66,9 @@ describe.skipIf(!url)("plafond automatique · en base, avec une doublure du Stud
     const { jouerMigrations } = await import("@/lib/migrations");
     utiliserPool(p);
     await jouerMigrations(p);
-    reelle = ((await import("@/passerelles/studio")) as unknown as { __reelle: (a: boolean, c: number) => Promise<unknown> }).__reelle;
+    const passerelle = (await import("@/passerelles/studio")) as unknown as { __reelle: (a: boolean, c: number) => Promise<unknown>; __lecture: () => Promise<unknown> };
+    reelle = passerelle.__reelle;
+    lectureReelle = passerelle.__lecture;
   });
   afterAll(async () => {
     await p?.end();
@@ -160,6 +163,60 @@ describe.skipIf(!url)("plafond automatique · en base, avec une doublure du Stud
     }
   });
 
+  const ARRET_PUIS = (reussite: boolean) => async (actif: boolean, cents: number) => {
+    if (actif) {
+      await arret(true);
+      throw new Error("délai dépassé");
+    }
+    if (!reussite) throw new Error("réseau");
+    return reponse({ automatique: false, plafond_automatique_cents: cents });
+  };
+  it("allumage qui expire alors que « Tout arrêter » est posé : l'extinction part quand même, le miroir reste éteint", async () => {
+    const { envoyerAutonomie, lirePlafondAutomatique } = await import("@/reglages/plafond-automatique");
+    reglerPlafondDuStudio.mockReset();
+    reglerPlafondDuStudio.mockImplementation(ARRET_PUIS(true));
+    try {
+      expect(await envoyerAutonomie({ actif: true, plafondCents: 2000 })).toEqual({ ok: false, raison: "arret_en_vol" });
+      expect(reglerPlafondDuStudio.mock.calls).toEqual([
+        [true, 2000],
+        [false, 0], // rien lu au Studio ni noté ici : plafond 0 avec « éteint »
+      ]);
+      expect((await lirePlafondAutomatique())?.actif ?? false).toBe(false);
+    } finally {
+      await arret(false);
+    }
+  });
+  it("allumage en 5xx ou réponse inattendue sous « Tout arrêter » : extinction envoyée ; si elle échoue aussi, la raison d'origine reste (« peut-être allumée »)", async () => {
+    const { envoyerAutonomie } = await import("@/reglages/plafond-automatique");
+    for (const brute of [{ envoye: true, statut: 503, corps: null }, reponse({ automatique: false })]) {
+      reglerPlafondDuStudio.mockReset();
+      reglerPlafondDuStudio.mockImplementation(async (actif: boolean) => {
+        if (actif) {
+          await arret(true);
+          return brute;
+        }
+        throw new Error("réseau");
+      });
+      try {
+        const r = await envoyerAutonomie({ actif: true, plafondCents: 2000 });
+        expect(r.ok).toBe(false);
+        expect(["refuse", "reponse_inattendue"]).toContain((r as { raison: string }).raison);
+        expect(reglerPlafondDuStudio.mock.calls.map((c) => c[0])).toEqual([true, false]);
+      } finally {
+        await arret(false);
+      }
+    }
+  });
+  it("allumage refusé (4xx) ou sans arrêt posé : aucune extinction envoyée", async () => {
+    const { envoyerAutonomie } = await import("@/reglages/plafond-automatique");
+    reglerPlafondDuStudio.mockReset();
+    reglerPlafondDuStudio.mockResolvedValue({ envoye: true, statut: 400, corps: null });
+    await envoyerAutonomie({ actif: true, plafondCents: 2000 });
+    reglerPlafondDuStudio.mockResolvedValue({ envoye: true, statut: 503, corps: null });
+    await envoyerAutonomie({ actif: true, plafondCents: 2000 });
+    expect(reglerPlafondDuStudio.mock.calls.map((c) => c[0])).toEqual([true, true]);
+  });
+
   it("le Studio a répondu 200 mais l'écriture locale échoue : rien ne lève, le résultat reste « accepté », alerte au journal", async () => {
     const donnees = await import("@/donnees");
     const { envoyerAutonomie } = await import("@/reglages/plafond-automatique");
@@ -205,6 +262,64 @@ describe.skipIf(!url)("plafond automatique · en base, avec une doublure du Stud
     expect(await couperAutonomie()).toMatchObject({ ok: false, raison: "sans_reponse" });
     expect((await journal()).length).toBeGreaterThan(0);
     await arret(false);
+  });
+
+  it("couperAutonomie : plafond envoyé avec « éteint » = celui lu au Studio (borné), sinon le dernier noté, sinon 0 ; jamais « allumé »", async () => {
+    const { couperAutonomie, envoyerAutonomie } = await import("@/reglages/plafond-automatique");
+    const lu = (cents: number) => ({ envoye: true, statut: 200, corps: { automatique: true, plafond_automatique_cents: cents, utilise_automatique_cents: 0, mois: "2099-12", pilote: "usine" } });
+    reglerPlafondDuStudio.mockImplementation(async (actif: boolean, c: number) => reponse({ automatique: actif, plafond_automatique_cents: c }));
+    lireAutonomieDuStudio.mockResolvedValue(lu(3500));
+    await couperAutonomie();
+    expect(reglerPlafondDuStudio).toHaveBeenLastCalledWith(false, 3500);
+    lireAutonomieDuStudio.mockResolvedValue(lu(PLAFOND_AUTO_MAX_CENTS));
+    await couperAutonomie();
+    expect(reglerPlafondDuStudio).toHaveBeenLastCalledWith(false, PLAFOND_AUTO_MAX_CENTS);
+    await envoyerAutonomie({ actif: false, plafondCents: 1234 }); // dernier réglage noté : 12,34 €
+    reglerPlafondDuStudio.mockClear();
+    lireAutonomieDuStudio.mockResolvedValue({ envoye: true, statut: 426, corps: null });
+    await couperAutonomie();
+    expect(reglerPlafondDuStudio).toHaveBeenLastCalledWith(false, 1234);
+    lireAutonomieDuStudio.mockRejectedValue(new Error("réseau"));
+    await couperAutonomie();
+    expect(reglerPlafondDuStudio).toHaveBeenLastCalledWith(false, 1234);
+    await (await import("@/donnees")).ecrireReglage(CLE, {});
+    await couperAutonomie();
+    expect(reglerPlafondDuStudio).toHaveBeenLastCalledWith(false, 0);
+    expect(reglerPlafondDuStudio.mock.calls.every((c) => c[0] === false)).toBe(true);
+  });
+
+  it("lecture refusée en 426 : « contrat », et aucune écriture (ni réglage, ni journal, ni envoi)", async () => {
+    const { lireAutonomieStudio } = await import("@/reglages/plafond-automatique");
+    const avant = await brut();
+    lireAutonomieDuStudio.mockResolvedValue({ envoye: true, statut: 426, corps: { code: "contrat_inconnu" } });
+    expect(await lireAutonomieStudio()).toEqual({ connu: false, refus: "contrat" });
+    expect(await brut()).toEqual(avant);
+    expect(await journal()).toEqual([]);
+    expect(reglerPlafondDuStudio).not.toHaveBeenCalled();
+  });
+
+  it("passerelle réelle : la lecture envoie POST avec le corps exactement {\"contrat\":2}, sans redirection", async () => {
+    const appels: { url: string; init: RequestInit }[] = [];
+    vi.stubGlobal(["fe", "tch"].join(""), async (url: string, init: RequestInit) => {
+      appels.push({ url, init });
+      return new Response(JSON.stringify({ automatique: false }), { status: 200 });
+    });
+    const secret = process.env.STUDIO_PORTE_SECRET;
+    process.env.STUDIO_PORTE_SECRET = "s".repeat(40);
+    await p.query("UPDATE interrupteur SET allume = true WHERE code = 'studio.sortant'");
+    try {
+      expect(await lectureReelle()).toEqual({ envoye: true, statut: 200, corps: { automatique: false } });
+      expect(appels).toHaveLength(1);
+      expect(appels[0].url).toMatch(/\/api\/usine\/reglages\/autonomie$/);
+      expect(appels[0].init.method).toBe("POST");
+      expect(appels[0].init.redirect).toBe("error");
+      expect(JSON.parse(String(appels[0].init.body))).toEqual({ contrat: 2 });
+    } finally {
+      vi.unstubAllGlobals();
+      await p.query("UPDATE interrupteur SET allume = false WHERE code = 'studio.sortant'");
+      if (secret === undefined) delete process.env.STUDIO_PORTE_SECRET;
+      else process.env.STUDIO_PORTE_SECRET = secret;
+    }
   });
 
   it("lireAutonomieStudio : lecture conforme, ou « inconnu » en cas de panne ou de réponse illisible", async () => {

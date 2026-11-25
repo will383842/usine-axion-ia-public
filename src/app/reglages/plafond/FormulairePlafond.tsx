@@ -45,6 +45,7 @@ export function FormulairePlafond({ allumeInitial, initial, resume }: { allumeIn
   const [saisie, setSaisie] = useState(initial);
   const [enResume, setEnResume] = useState(false);
   const [verrou, setVerrou] = useState(false);
+  const [enVol, setEnVol] = useState(false); // l'envoi est parti : tout reste verrouillé jusqu'à la réponse du Studio
   const [message, setMessage] = useState<Message | null>(null);
 
   const montrer = (r: { ok: boolean; message: string }) => setMessage({ texte: r.message, erreur: !r.ok });
@@ -54,21 +55,37 @@ export function FormulairePlafond({ allumeInitial, initial, resume }: { allumeIn
   };
 
   const allumer = async () => {
-    const r = await allumerAutonomie(saisie, "allumer");
-    montrer(r);
-    if (r.ok) {
-      setReel(true);
-      setEnResume(false);
+    setEnVol(true);
+    try {
+      const r = await allumerAutonomie(saisie, "allumer");
+      montrer(r);
+      if (r.ok) {
+        setReel(true);
+        setEnResume(false);
+      }
+    } finally {
+      setEnVol(false);
     }
   };
   const eteindre = async () => {
-    const r = await eteindreAutonomie();
-    montrer(r);
-    if (r.ok) setReel(false);
+    setEnVol(true);
+    try {
+      const r = await eteindreAutonomie();
+      montrer(r);
+      if (r.ok) setReel(false);
+    } finally {
+      setEnVol(false);
+    }
   };
   const plafondSeul = async () => {
-    montrer(await enregistrerPlafondAutomatique(saisie));
+    setEnVol(true);
+    try {
+      montrer(await enregistrerPlafondAutomatique(saisie));
+    } finally {
+      setEnVol(false);
+    }
   };
+  const fige = verrou || enVol;
 
   return (
     <section className="flex flex-col gap-4 rounded-xl border border-trait bg-surface p-4">
@@ -79,7 +96,7 @@ export function FormulairePlafond({ allumeInitial, initial, resume }: { allumeIn
           role="switch"
           className="h-8 w-14"
           checked={allume}
-          disabled={verrou}
+          disabled={fige}
           onChange={(e) => {
             setAllume(e.target.checked);
             toucher();
@@ -96,7 +113,7 @@ export function FormulairePlafond({ allumeInitial, initial, resume }: { allumeIn
           autoComplete="off"
           spellCheck={false}
           value={saisie}
-          disabled={verrou}
+          disabled={fige}
           onChange={(e) => {
             setSaisie(e.target.value);
             toucher();
@@ -108,13 +125,14 @@ export function FormulairePlafond({ allumeInitial, initial, resume }: { allumeIn
           {message.texte}
         </p>
       )}
+      <fieldset disabled={enVol} className="m-0 flex min-w-0 flex-col gap-4 border-0 p-0">
       {allume && enResume && (
         <div className="flex flex-col gap-3 rounded-lg border border-trait p-3">
           <p className="font-semibold">Avant d&apos;allumer</p>
           <p>{resume.replace("{plafond}", saisie)}</p>
           <p>Après « Oui, allumer », vous aurez encore 10 secondes pour annuler.</p>
           <Annulable libelle="Oui, allumer" message="Allumage envoyé au Studio dans 10 s." action={allumer} className="bouton" surDecompte={setVerrou} annulerSiQuitte />
-          <button type="button" className="inline-flex min-h-11 items-center font-semibold underline" disabled={verrou} onClick={() => setEnResume(false)}>
+          <button type="button" className="inline-flex min-h-11 items-center font-semibold underline" disabled={fige} onClick={() => setEnResume(false)}>
             Revenir
           </button>
         </div>
@@ -130,6 +148,7 @@ export function FormulairePlafond({ allumeInitial, initial, resume }: { allumeIn
         </button>
       )}
       {!allume && !reel && <Annulable libelle="Enregistrer le plafond" message="Plafond envoyé au Studio dans 10 s." action={plafondSeul} className="bouton" surDecompte={setVerrou} annulerSiQuitte />}
+      </fieldset>
     </section>
   );
 }

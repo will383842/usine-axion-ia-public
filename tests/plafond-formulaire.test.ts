@@ -143,6 +143,38 @@ describe("« Enregistrer le plafond » : quitter la page n'envoie rien", () => {
   });
 });
 
+describe("le verrou reste posé jusqu'à la réponse du Studio", () => {
+  it("après les 10 s, pendant l'aller-retour : champs, « Revenir » et le bouton d'envoi sont verrouillés ; levés au retour", async () => {
+    let repondre: (r: { ok: boolean; message: string }) => void = () => {};
+    allumerAutonomie.mockImplementationOnce(() => new Promise((res) => void (repondre = res)));
+    demarrerAllumage();
+    await laisserPasser(10_500);
+    expect(allumerAutonomie).toHaveBeenCalledTimes(1);
+    expect(interrupteur().disabled).toBe(true);
+    expect(montantChamp().disabled).toBe(true);
+    expect(bouton("Revenir")!.matches(":disabled")).toBe(true);
+    expect(bouton("Oui, allumer")!.matches(":disabled")).toBe(true);
+    toucher("Oui, allumer");
+    await laisserPasser(11_000);
+    expect(allumerAutonomie).toHaveBeenCalledTimes(1);
+    await act(async () => repondre({ ok: false, message: "Le Studio n'a pas confirmé." }));
+    expect(interrupteur().disabled).toBe(false);
+    expect(montantChamp().disabled).toBe(false);
+    expect(bouton("Oui, allumer")!.matches(":disabled")).toBe(false);
+  });
+  it("même chose pour « Enregistrer le plafond »", async () => {
+    let repondre: (r: { ok: boolean; message: string }) => void = () => {};
+    enregistrerPlafondAutomatique.mockImplementationOnce(() => new Promise((res) => void (repondre = res)));
+    monter(false);
+    toucher("Enregistrer le plafond");
+    await laisserPasser(10_500);
+    expect(interrupteur().disabled).toBe(true);
+    expect(bouton("Enregistrer le plafond")!.matches(":disabled")).toBe(true);
+    await act(async () => repondre({ ok: true, message: "ok" }));
+    expect(interrupteur().disabled).toBe(false);
+  });
+});
+
 describe("bouton d'urgence « Éteindre maintenant » : il dit son résultat", () => {
   const monterBouton = () => act(() => racine.render(createElement(BoutonEteindre)));
   const toucherAsync = async () => act(async () => void bouton("Éteindre maintenant")!.click());
