@@ -87,6 +87,13 @@ describe("allumer : renoncer pendant les 10 s n'envoie rien", () => {
     expect(montantChamp().disabled).toBe(false);
     expect(bouton("Revenir")!.disabled).toBe(false);
   });
+  it("« pagehide » puis retour par le cache (bfcache) : le décompte n'est plus affiché, les champs sont libres", () => {
+    demarrerAllumage();
+    act(() => void window.dispatchEvent(new Event("pagehide")));
+    expect(bouton("Annuler")).toBeUndefined();
+    expect(interrupteur().disabled).toBe(false);
+    expect(montantChamp().disabled).toBe(false);
+  });
   it("« Annuler » : rien ne part ; sans geste, l'allumage part après 10 s, avec le montant saisi, et le message de réussite reste affiché", async () => {
     demarrerAllumage();
     toucher("Annuler");
