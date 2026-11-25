@@ -158,6 +158,14 @@ describe.skipIf(!url)("plafond automatique · en base, avec une doublure du Stud
     await arret(false);
   });
 
+  it("lireAutonomieStudio : la lecture (seule) passe même sous « Tout arrêter »", async () => {
+    const { lireAutonomieStudio } = await import("@/reglages/plafond-automatique");
+    await arret(true);
+    lireAutonomieDuStudio.mockResolvedValue({ envoye: true, statut: 200, corps: { automatique: true, plafond_automatique_cents: 2000, utilise_automatique_cents: 0, mois: "2026-11", pilote: "usine" } });
+    expect(await lireAutonomieStudio()).toMatchObject({ connu: true, automatique: true });
+    await arret(false);
+  });
+
   it("lireAutonomieStudio : lecture conforme, ou « inconnu » en cas de panne ou de réponse illisible", async () => {
     const { lireAutonomieStudio } = await import("@/reglages/plafond-automatique");
     lireAutonomieDuStudio.mockResolvedValue({ envoye: true, statut: 200, corps: { automatique: true, plafond_automatique_cents: 2000, utilise_automatique_cents: 350, mois: "2026-11", pilote: "usine", extra: 1 } });
@@ -264,6 +272,16 @@ describe("plafond automatique · garde-fous statiques", () => {
       }
     }
     expect(trouves).toBe(1);
+  });
+  it("reglerPlafondDuStudio( n'est appelé que dans plafond-automatique.ts ; envoyerAutonomie( n'a que des littéraux actif: true (actions.ts) ou actif: false", () => {
+    for (const f of fichiers("src").filter((x) => /\.(ts|tsx)$/.test(x))) {
+      const nom = f.replace(/\\/g, "/");
+      const t = readFileSync(f, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+      if (!["src/passerelles/studio.ts", "src/reglages/plafond-automatique.ts"].includes(nom)) expect(t, nom).not.toMatch(/reglerPlafondDuStudio\s*\(/);
+      if (nom !== "src/reglages/plafond-automatique.ts") {
+        for (const m of t.matchAll(/envoyerAutonomie\s*\(\s*([^)]*)/g)) expect(m[1], `${nom} : ${m[1]}`).toMatch(/^\{\s*actif\s*:\s*(true|false)\s*,/);
+      }
+    }
   });
   it("la passerelle prend l'état en paramètre, sans littéral, et envoie en PUT", () => {
     const t = readFileSync("src/passerelles/studio.ts", "utf8");

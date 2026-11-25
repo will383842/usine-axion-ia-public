@@ -81,7 +81,7 @@ export function FormulairePlafond({ allumeInitial, initial, resume }: { allumeIn
           <p className="font-semibold">Avant d&apos;allumer</p>
           <p>{resume.replace("{plafond}", saisie)}</p>
           <p>Après « Oui, allumer », vous aurez encore 10 secondes pour annuler.</p>
-          <Annulable libelle="Oui, allumer" message="Allumage envoyé au Studio dans 10 s." action={allumer} className="bouton" />
+          <Annulable libelle="Oui, allumer" message="Allumage envoyé au Studio dans 10 s." action={allumer} className="bouton" annulerSiQuitte />
           <button type="button" className="inline-flex min-h-11 items-center font-semibold underline" onClick={() => setEnResume(false)}>
             Revenir
           </button>
@@ -97,7 +97,7 @@ export function FormulairePlafond({ allumeInitial, initial, resume }: { allumeIn
           Éteindre maintenant
         </button>
       )}
-      {!allume && !reel && <Annulable libelle="Enregistrer le plafond" message="Plafond envoyé au Studio dans 10 s." action={plafondSeul} className="bouton" />}
+      {!allume && !reel && <Annulable libelle="Enregistrer le plafond" message="Plafond envoyé au Studio dans 10 s." action={plafondSeul} className="bouton" annulerSiQuitte />}
     </section>
   );
 }

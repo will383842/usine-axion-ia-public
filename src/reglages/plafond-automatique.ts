@@ -114,9 +114,10 @@ export type EtatStudio =
 /** État lu au Studio (lecture seule, sans rien écrire ici). Panne, refus ou réponse illisible : « inconnu » (échec fermé). */
 export async function lireAutonomieStudio(): Promise<EtatStudio> {
   try {
-    const r = await sousArret("envoi", () => lireAutonomieDuStudio());
-    if (!r.fait || !r.valeur.envoye || r.valeur.statut !== 200) return { connu: false };
-    const l = reponseAutonomieStudio.safeParse(r.valeur.corps);
+    // Lecture seule : hors de `sousArret`, pour que « Éteindre » reste possible pendant « Tout arrêter ».
+    const r = await lireAutonomieDuStudio();
+    if (!r.envoye || r.statut !== 200) return { connu: false };
+    const l = reponseAutonomieStudio.safeParse(r.corps);
     if (!l.success) return { connu: false };
     return {
       connu: true,

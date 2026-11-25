@@ -18,13 +18,15 @@ interface Props {
   className?: string;
   /** Contrôle fait au toucher, avant le délai : s'il rend `false`, rien ne démarre (l'écran montre lui-même la raison). */
   avant?: () => boolean;
+  /** Pour une action qui ne doit jamais partir sans le délai (allumer) : si l'écran est quitté ou le bouton démonté pendant le décompte, l'action est ANNULÉE au lieu d'être jouée. */
+  annulerSiQuitte?: boolean;
 }
 
 /**
  * « Annuler » 10 s plutôt qu'une confirmation : le geste s'affiche comme fait, l'action part au bout de 10 s.
  * Si Will quitte la page avant, l'action part tout de suite (elle n'est jamais perdue en silence).
  */
-export function Annulable({ libelle, message, action, className = "bouton-second", avant }: Props) {
+export function Annulable({ libelle, message, action, className = "bouton-second", avant, annulerSiQuitte = false }: Props) {
   const [reste, setReste] = useState<number | null>(null);
   const [refus, setRefus] = useState<string | null>(null);
   const minuterie = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -70,13 +72,20 @@ export function Annulable({ libelle, message, action, className = "bouton-second
     arreter();
   };
 
+  const quitter = useCallback(() => {
+    if (!annulerSiQuitte) return jouer();
+    enAttente.current = false;
+    if (minuterie.current) clearInterval(minuterie.current);
+    minuterie.current = null;
+  }, [annulerSiQuitte, jouer]);
+
   useEffect(() => {
-    window.addEventListener("pagehide", jouer);
+    window.addEventListener("pagehide", quitter);
     return () => {
-      window.removeEventListener("pagehide", jouer);
-      jouer();
+      window.removeEventListener("pagehide", quitter);
+      quitter();
     };
-  }, [jouer]);
+  }, [quitter]);
 
   if (reste === null) {
     return (

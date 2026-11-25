@@ -62,10 +62,10 @@ export default async function Page() {
           <section className="rounded-xl border border-trait bg-surface p-4">
             <p className="font-semibold">Bon à savoir</p>
             <p>Une fois réglée ici, l&apos;autonomie ne se règle plus dans le Studio (sauf le bouton Éteindre). Vous pouvez donc l&apos;allumer, l&apos;éteindre et changer le plafond depuis cet écran seulement.</p>
+            <p>« Tout arrêter » éteint aussi cette autonomie, même si vous ne l&apos;aviez jamais réglée ici. Ensuite, seul cet écran peut la rallumer.</p>
             <p>Les plafonds par vidéo ci-dessous s&apos;ajoutent à ce plafond du mois.</p>
           </section>
           <FormulairePlafond
-            key={`${studio.automatique}-${plafondInitial}`}
             allumeInitial={studio.automatique}
             initial={enSaisie(plafondInitial)}
             resume={`L'Usine pourra dépenser seule jusqu'à {plafond} € par mois, sans vous demander, puis s'arrêtera. Vous pourrez l'éteindre à tout moment ; « Tout arrêter » l'éteint aussi. Le plafond ne peut pas dépasser ${borne}.`}

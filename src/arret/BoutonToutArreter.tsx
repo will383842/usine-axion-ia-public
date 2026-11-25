@@ -8,6 +8,6 @@ export function BoutonToutArreter({ arrete }: { arrete: boolean }) {
   return arrete ? (
     <Annulable libelle="Reprendre" message="Reprise en cours." className="bouton" action={reprendreTout} />
   ) : (
-    <Annulable libelle="Tout arrêter" message="Tout est arrêté." className="bouton" action={toutArreter} />
+    <Annulable libelle="Tout arrêter" message="Tout est arrêté, et l'autonomie s'éteint. Seul l'écran « Ce que l'Usine dépense seule » pourra la rallumer." className="bouton" action={toutArreter} />
   );
 }

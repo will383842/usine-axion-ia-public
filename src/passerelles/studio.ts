@@ -7,6 +7,8 @@ export const HOTE = "https://studio.axion-ia.com";
 export const INTERRUPTEUR_STUDIO = "studio.sortant";
 
 const SECRET_MIN = 32;
+/** Délai maximal d'un appel d'autonomie : passé ce délai, le Studio est tenu pour muet. */
+const DELAI_MAX_MS = 10_000;
 const CHEMIN = /^[a-z0-9][a-z0-9_-]*(\/[a-z0-9][a-z0-9_-]*)*$/i;
 
 export type ReponseStudio = { envoye: false } | { envoye: true; statut: number; corps: unknown };
@@ -20,6 +22,7 @@ export async function appelerStudio(chemin: string, corps: unknown): Promise<Rep
     method: "POST",
     headers: { authorization: `Bearer ${secret}`, "content-type": "application/json" },
     body: JSON.stringify(corps),
+    signal: AbortSignal.timeout(DELAI_MAX_MS),
     redirect: "error",
   });
   const texte = await reponse.text();
@@ -65,6 +68,7 @@ export async function lireAutonomieDuStudio(): Promise<ReponseStudio> {
     method: "POST",
     headers: { authorization: `Bearer ${secret}`, "content-type": "application/json" },
     body: "{}",
+    signal: AbortSignal.timeout(DELAI_MAX_MS),
     redirect: "error",
   });
   const texte = await reponse.text();
@@ -92,6 +96,7 @@ export async function reglerPlafondDuStudio(automatique: boolean, plafondCents: 
     method: "PUT",
     headers: { authorization: `Bearer ${secret}`, "content-type": "application/json" },
     body: JSON.stringify(corps),
+    signal: AbortSignal.timeout(DELAI_MAX_MS),
     redirect: "error",
   });
   const texte = await reponse.text();
