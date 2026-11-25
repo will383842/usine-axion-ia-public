@@ -27,6 +27,7 @@ export default async function Page() {
         <h1 className="text-3xl font-bold">Ce que l&apos;Usine dépense seule</h1>
         <p>Cet écran est éteint.</p>
         <p>Si l&apos;Usine dépensait seule, vous pouvez quand même l&apos;éteindre :</p>
+        <p>Éteindre d&apos;ici envoie « éteint » au Studio et passe le réglage de l&apos;autonomie à l&apos;Usine : l&apos;interrupteur du Studio ne sert plus ensuite.</p>
         <BoutonEteindre />
         <Link href="/reglages/interrupteurs" className="inline-flex min-h-11 items-center font-semibold underline">
           Ouvrir les interrupteurs
@@ -61,6 +62,7 @@ export default async function Page() {
               <p>L&apos;état n&apos;a pas pu être lu : rien n&apos;est envoyé pour allumer. Réessayez plus tard.</p>
             )}
             <p>Si l&apos;Usine dépensait seule, vous pouvez quand même l&apos;éteindre :</p>
+            <p>Éteindre d&apos;ici envoie « éteint » au Studio et passe le réglage de l&apos;autonomie à l&apos;Usine : l&apos;interrupteur du Studio ne sert plus ensuite.</p>
             <BoutonEteindre />
           </>
         )}

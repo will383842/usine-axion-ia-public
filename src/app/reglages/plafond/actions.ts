@@ -91,7 +91,7 @@ export async function eteindreAutonomie(): Promise<Message> {
     const r = await couperAutonomie();
     revalidatePath("/reglages/plafond");
     if (r.ok) return { ok: true, message: "Autonomie éteinte : l'Usine ne dépense plus rien seule." };
-    if (r.raison === "sans_reponse") return { ok: false, message: "Le Studio ne répond pas : l'extinction n'est pas confirmée. L'autonomie peut encore être allumée ; éteignez-la aussi dans le Studio." };
+    if (r.raison === "sans_reponse" || r.raison === "reponse_inattendue" || (r.raison === "refuse" && (r.statut ?? 0) >= 500)) return { ok: false, message: "Le Studio ne répond pas : l'extinction n'est pas confirmée. L'autonomie peut encore être allumée ; éteignez-la aussi dans le Studio." };
     return enClair(r, "");
   } catch {
     return { ok: false, message: PAS_DE_REPONSE };

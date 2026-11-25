@@ -53,7 +53,19 @@ const EN_CLAIR: Record<RaisonPlafond, string> = {
 const etat = (actif: boolean) => (actif ? "allumée" : "éteinte");
 const sansAccepte = (r: ReglageAutonomie | null) => (r ? { actif: r.actif, plafond_cents: r.plafond_cents } : null);
 
+/** Un allumage sans réponse nette (délai, 5xx, réponse inattendue) a pu être appliqué plus tard par le Studio : si « Tout arrêter » est posé, on coupe. */
+const peutEtreAppliquee = (raison: RaisonPlafond, statut?: number) => raison === "sans_reponse" || raison === "reponse_inattendue" || (raison === "refuse" && (statut ?? 0) >= 500);
+
 async function echec(demande: { actif: boolean; plafond_cents: number }, raison: RaisonPlafond, statut?: number): Promise<ResultatPlafond> {
+  const echoue = await echecNote(demande, raison, statut);
+  if (demande.actif && peutEtreAppliquee(raison, statut) && (await estArrete())) {
+    const coupe = await couperSousArret(demande);
+    if (coupe.ok) return { ok: false, raison: "arret_en_vol" };
+  }
+  return echoue;
+}
+
+async function echecNote(demande: { actif: boolean; plafond_cents: number }, raison: RaisonPlafond, statut?: number): Promise<ResultatPlafond> {
   const avant_usine = sansAccepte(await lirePlafondAutomatique());
   await journaliser("reglage", `Autonomie non envoyée au Studio : ${EN_CLAIR[raison]}. Avant (dernier réglage noté par l'Usine, pas lu au Studio) en données.`, {
     cible: CLE_PLAFOND_AUTO,
@@ -113,18 +125,24 @@ export async function envoyerAutonomie(
   }
   // Course avec « Tout arrêter » : un allumage parti avant l'arrêt peut arriver après l'extinction. On revérifie et on coupe.
   if (actif && (await estArrete())) {
-    const coupe = await couperAutonomie();
-    try {
-      await journaliser("reglage", coupe.ok ? "Alerte : tout a été arrêté pendant l'allumage ; l'autonomie a été éteinte aussitôt." : "Alerte : tout a été arrêté pendant l'allumage ; l'extinction n'a pas été confirmée, l'autonomie est peut-être allumée.", {
-        cible: CLE_PLAFOND_AUTO,
-        donnees: { demande, extinction_confirmee: coupe.ok },
-      });
-    } catch {
-      /* le résultat rendu dit déjà l'essentiel */
-    }
+    const coupe = await couperSousArret(demande);
     return coupe.ok ? { ok: false, raison: "arret_en_vol" } : { ok: false, raison: "sans_reponse" };
   }
   return { ok: true, actif, plafond_cents: plafondCents, deja: lue.data.deja };
+}
+
+/** Coupe l'autonomie parce que « Tout arrêter » est posé pendant un allumage, et le note au journal (sans jamais lever). */
+async function couperSousArret(demande: { actif: boolean; plafond_cents: number }): Promise<ResultatPlafond> {
+  const coupe = await couperAutonomie();
+  try {
+    await journaliser("reglage", coupe.ok ? "Alerte : tout a été arrêté pendant l'allumage ; l'autonomie a été éteinte aussitôt." : "Alerte : tout a été arrêté pendant l'allumage ; l'extinction n'a pas été confirmée, l'autonomie est peut-être allumée.", {
+      cible: CLE_PLAFOND_AUTO,
+      donnees: { demande, extinction_confirmee: coupe.ok },
+    });
+  } catch {
+    /* le résultat rendu dit déjà l'essentiel */
+  }
+  return coupe;
 }
 
 /** Règle seulement le plafond, autonomie éteinte. */
@@ -155,7 +173,11 @@ export async function lireAutonomieStudio(): Promise<EtatStudio> {
   }
 }
 
-/** « Tout arrêter » et « Éteindre » : envoie « éteint » au Studio sans passer par `sousArret`. Garde le plafond lu au Studio, sinon le dernier accepté, sinon 0. Ne lève jamais. */
+/**
+ * « Tout arrêter » et « Éteindre » : envoie « éteint » au Studio sans passer par `sousArret`. Ne lève jamais.
+ * Plafond envoyé avec « éteint » (il n'allume rien, `actif` vaut toujours false) : 1) celui lu au Studio, borné par PLAFOND_AUTO_MAX_CENTS ;
+ * 2) à défaut (426, panne, réponse illisible), le dernier plafond noté par l'Usine ; 3) à défaut, 0. Ainsi l'extinction ne change pas le plafond du Studio quand on le connaît.
+ */
 export async function couperAutonomie(): Promise<ResultatPlafond> {
   let plafond = 0;
   try {
