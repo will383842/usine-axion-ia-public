@@ -33,6 +33,11 @@ export default async function Page() {
       <section className="flex flex-col gap-4 rounded-2xl border border-trait bg-surface p-5">
         <h1 className="text-3xl font-bold">Ce que l&apos;Usine dépense seule</h1>
         <p>Cet écran est éteint.</p>
+        <form action={eteindreSansEtat}>
+          <button type="submit" className="bouton">
+            Éteindre maintenant
+          </button>
+        </form>
         <Link href="/reglages/interrupteurs" className="inline-flex min-h-11 items-center font-semibold underline">
           Ouvrir les interrupteurs
         </Link>

@@ -1,7 +1,7 @@
 /** PLAFOND-USINE-a · envoi de l'état de l'autonomie et de son plafond au Studio, dernier réglage accepté, lecture de l'état du Studio. Allumer n'est décidé que par l'appelant (action d'allumage, après confirmation). */
 import "server-only";
 import { z } from "zod";
-import { sousArret } from "@/arret";
+import { estArrete, sousArret } from "@/arret";
 import { ecrireReglage, journaliser, lireReglage } from "@/donnees";
 import { PLAFOND_AUTO_MAX_CENTS, reponseAutonomieStudio, reponsePlafondStudio, type RaisonPlafond, type ResultatPlafond } from "@/contrats";
 import { lireAutonomieDuStudio, reglerPlafondDuStudio } from "@/passerelles/studio";
@@ -93,13 +93,24 @@ export async function envoyerAutonomie(
     }
     return echec(demande, "reponse_inattendue", statut);
   }
-  const avant = await lirePlafondAutomatique();
-  await journaliser("reglage", `Autonomie acceptée par le Studio : ${etat(actif)}, plafond ${plafondCents / 100} € par mois.`, {
-    cible: CLE_PLAFOND_AUTO,
-    donnees: { avant: sansAccepte(avant), apres: demande, deja: lue.data.deja },
-  });
-  if (!(lue.data.deja && avant?.plafond_cents === plafondCents && avant.actif === actif)) {
-    await ecrireReglage(CLE_PLAFOND_AUTO, { actif, plafond_cents: plafondCents, accepte_le: new Date().toISOString(), version: 2 });
+  // Course avec « Tout arrêter » : l'allumage a pu partir avant l'arrêt et arriver après son extinction. On revérifie, et on éteint de nouveau.
+  if (actif && (await estArrete())) {
+    await journaliser("reglage", "Alerte : l'arrêt a été posé pendant l'allumage de l'autonomie ; extinction renvoyée au Studio.", { cible: CLE_PLAFOND_AUTO, donnees: { demande } });
+    await couperAutonomie();
+    return { ok: false, raison: "arret" };
+  }
+  // Le Studio a confirmé : un échec d'écriture locale ne doit pas faire croire que l'envoi a échoué.
+  try {
+    const avant = await lirePlafondAutomatique();
+    await journaliser("reglage", `Autonomie acceptée par le Studio : ${etat(actif)}, plafond ${plafondCents / 100} € par mois. L'avant est le dernier réglage noté par l'Usine.`, {
+      cible: CLE_PLAFOND_AUTO,
+      donnees: { avant: sansAccepte(avant), apres: demande, deja: lue.data.deja },
+    });
+    if (!(lue.data.deja && avant?.plafond_cents === plafondCents && avant.actif === actif)) {
+      await ecrireReglage(CLE_PLAFOND_AUTO, { actif, plafond_cents: plafondCents, accepte_le: new Date().toISOString(), version: 2 });
+    }
+  } catch {
+    await journaliser("reglage", "Le Studio a confirmé, mais le miroir local n'a pas pu être noté. L'état du Studio fait foi.", { cible: CLE_PLAFOND_AUTO, donnees: { apres: demande } }).catch(() => undefined);
   }
   return { ok: true, actif, plafond_cents: plafondCents, deja: lue.data.deja };
 }

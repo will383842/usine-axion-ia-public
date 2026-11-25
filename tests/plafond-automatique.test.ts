@@ -145,6 +145,30 @@ describe.skipIf(!url)("plafond automatique · en base, avec une doublure du Stud
     expect(await lirePlafondAutomatique()).toMatchObject({ actif: false, plafond_cents: 1500 });
   });
 
+  it("course allumer / Tout arrêter : si l'arrêt est posé pendant l'envoi d'un allumage, l'Usine éteint de nouveau et l'écrit au journal", async () => {
+    const { envoyerAutonomie } = await import("@/reglages/plafond-automatique");
+    reglerPlafondDuStudio.mockImplementation(async (actif: boolean) => {
+      if (actif) await arret(true); // « Tout arrêter » posé pendant que l'allumage est en vol
+      return reponse({ automatique: actif, plafond_automatique_cents: actif ? 2000 : 0 });
+    });
+    const r = await envoyerAutonomie({ actif: true, plafondCents: 2000 });
+    expect(r).toMatchObject({ ok: false, raison: "arret" });
+    expect(reglerPlafondDuStudio.mock.calls.map((c) => c[0])).toEqual([true, false]); // allumage, puis extinction
+    expect((await journal()).some((l) => /Alerte/.test(l.message) && /arrêt/.test(l.message))).toBe(true);
+    expect(await brut()).not.toMatchObject({ actif: true });
+    await arret(false);
+  });
+
+  it("écriture locale qui échoue après un 200 : l'envoi reste réussi (le Studio a confirmé), l'échec est journalisé", async () => {
+    const { envoyerAutonomie } = await import("@/reglages/plafond-automatique");
+    const donnees = await import("@/donnees");
+    const espion = vi.spyOn(donnees, "ecrireReglage").mockRejectedValueOnce(new Error("base"));
+    reglerPlafondDuStudio.mockResolvedValue(reponse({ automatique: true }));
+    expect(await envoyerAutonomie({ actif: true, plafondCents: 2000 })).toMatchObject({ ok: true, actif: true });
+    expect((await journal()).some((l) => /miroir|noté localement/i.test(l.message))).toBe(true);
+    espion.mockRestore();
+  });
+
   it("couperAutonomie : envoie « éteint » même sous arrêt ; Studio muet : journal, pas d'exception", async () => {
     const { couperAutonomie } = await import("@/reglages/plafond-automatique");
     await arret(true);

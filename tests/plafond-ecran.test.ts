@@ -163,12 +163,40 @@ describe("plafond-ecran · allumer et éteindre", () => {
     expect(envoyerAutonomie).toHaveBeenLastCalledWith({ actif: true, plafondCents: 10000 });
   });
 
-  it("allumer : le Studio se tait ou refuse → message clair, rien n'a changé", async () => {
+  it("allumer : le Studio refuse nettement (400) ou le lien est éteint → message clair, rien n'a changé", async () => {
     const { allumerAutonomie } = await import("@/app/reglages/plafond/actions");
-    envoyerAutonomie.mockResolvedValue({ ok: false, raison: "sans_reponse" });
-    expect(await allumerAutonomie("20", "allumer")).toEqual({ ok: false, message: "Le Studio ne répond pas : rien n'a changé. Réessayez plus tard." });
+    envoyerAutonomie.mockResolvedValue({ ok: false, raison: "refuse", statut: 400 });
+    expect(await allumerAutonomie("20", "allumer")).toEqual({ ok: false, message: "Le Studio a refusé l'envoi : rien n'a changé. Le détail est dans le journal." });
+    envoyerAutonomie.mockResolvedValue({ ok: false, raison: "pas_branche" });
+    expect((await allumerAutonomie("20", "allumer")).message).toMatch(/rien n'a été envoyé/);
+  });
+
+  it("allumer : Studio muet, réponse inattendue ou panne → « peut-être allumée », jamais « rien n'a changé »", async () => {
+    const { allumerAutonomie } = await import("@/app/reglages/plafond/actions");
+    const cas: unknown[] = [{ ok: false, raison: "sans_reponse" }, { ok: false, raison: "reponse_inattendue", statut: 200 }, { ok: false, raison: "refuse", statut: 502 }];
+    for (const c of cas) {
+      envoyerAutonomie.mockResolvedValue(c);
+      const r = await allumerAutonomie("20", "allumer");
+      expect(r.ok).toBe(false);
+      expect(r.message).toMatch(/peut-être allumée/);
+      expect(r.message).not.toMatch(/rien n'a changé/);
+    }
     envoyerAutonomie.mockRejectedValue(new Error("panne"));
-    expect((await allumerAutonomie("20", "allumer")).ok).toBe(false);
+    expect((await allumerAutonomie("20", "allumer")).message).toMatch(/peut-être allumée/);
+  });
+
+  it("éteindre ne dépend que de la session : possible même écran éteint", async () => {
+    const { eteindreAutonomie } = await import("@/app/reglages/plafond/actions");
+    interrupteurAllume.mockResolvedValue(false);
+    couperAutonomie.mockResolvedValue({ ok: true, actif: false, plafond_cents: 0, deja: false });
+    expect((await eteindreAutonomie()).ok).toBe(true);
+    expect(couperAutonomie).toHaveBeenCalledTimes(1);
+  });
+
+  it("l'écran éteint propose quand même « Éteindre maintenant »", () => {
+    const page = readFileSync("src/app/reglages/plafond/page.tsx", "utf8");
+    const eteint = page.slice(page.indexOf("Cet écran est éteint"), page.indexOf("const studio"));
+    expect(eteint).toContain("Éteindre maintenant");
   });
 
   it("éteindre : immédiat, sans confirmation ; Studio muet : message clair", async () => {

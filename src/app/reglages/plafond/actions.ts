@@ -10,6 +10,7 @@ const euros = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 2 });
 const montant = (centimes: number) => `${euros.format(centimes / 100)} €`;
 const BORNES = `Indiquez un montant entre 0 et ${montant(PLAFOND_AUTO_MAX_CENTS)}, avec au plus deux chiffres après la virgule.`;
 const BORNES_ALLUMER = `Pour allumer, indiquez un montant supérieur à 0 et au plus ${montant(PLAFOND_AUTO_MAX_CENTS)}, avec au plus deux chiffres après la virgule.`;
+const PEUT_ETRE_ALLUMEE = "Le Studio n'a pas confirmé : l'autonomie est peut-être allumée. Rechargez la page pour lire l'état, ou éteignez-la.";
 const PAS_DE_REPONSE = "Le Studio ne répond pas : rien n'a changé. Réessayez plus tard.";
 
 type Message = { ok: boolean; message: string };
@@ -66,18 +67,19 @@ export async function allumerAutonomie(saisie: string, confirmation: string): Pr
   const centimes = lireSaisieEuros(String(saisie));
   if (centimes === null || centimes === 0) return { ok: false, message: BORNES_ALLUMER };
   try {
-    const r = enClair(await envoyerAutonomie({ actif: true, plafondCents: centimes }), `Autonomie allumée : l'Usine peut dépenser seule jusqu'à ${montant(centimes)} par mois.`);
+    const res = await envoyerAutonomie({ actif: true, plafondCents: centimes });
     revalidatePath("/reglages/plafond");
-    return r;
+    // Un allumage sans confirmation claire a pu être appliqué : jamais « rien n'a changé ».
+    if (!res.ok && (res.raison === "sans_reponse" || res.raison === "reponse_inattendue" || (res.raison === "refuse" && (res.statut ?? 0) >= 500))) return { ok: false, message: PEUT_ETRE_ALLUMEE };
+    return enClair(res, `Autonomie allumée : l'Usine peut dépenser seule jusqu'à ${montant(centimes)} par mois.`);
   } catch {
-    return { ok: false, message: PAS_DE_REPONSE };
+    return { ok: false, message: PEUT_ETRE_ALLUMEE };
   }
 }
 
 /** Éteint ce que l'Usine dépense seule, tout de suite : sans confirmation ni délai (c'est le sens sûr). */
 export async function eteindreAutonomie(): Promise<Message> {
-  await exigerSession();
-  if (!(await ecranAllume())) return { ok: false, message: "Cet écran est éteint." };
+  await exigerSession(); // éteindre ne dépend que de la session, jamais de l'interrupteur de l'écran
   try {
     const r = await couperAutonomie();
     revalidatePath("/reglages/plafond");

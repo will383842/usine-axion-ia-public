@@ -81,10 +81,10 @@ export function Annulable({ libelle, message, action, className = "bouton-second
   const quitter = useCallback(() => {
     if (annulerSiQuitte) {
       enAttente.current = false;
-      if (minuterie.current) clearInterval(minuterie.current);
-      minuterie.current = null;
+      arreter(); // aussi l'affichage : au retour par le cache du navigateur, le décompte ne reste pas figé
+      decompteRef.current?.(false);
     } else jouer();
-  }, [annulerSiQuitte, jouer]);
+  }, [annulerSiQuitte, jouer, arreter]);
 
   useEffect(() => {
     window.addEventListener("pagehide", quitter);
