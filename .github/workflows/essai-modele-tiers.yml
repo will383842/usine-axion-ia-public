@@ -195,7 +195,7 @@ jobs:
           # La fiche vient du fichier d'evenement du runner (depot public : jamais par env:, jamais affichee).
           FICHE="$(jq -r '.inputs.fiche // empty' "$GITHUB_EVENT_PATH")"
           [ -n "$FICHE" ] || { echo "::error::Fiche vide."; exit 1; }
-          RAPPEL="CONSIGNES FIXES : travaille sur la fiche ci-dessous seulement. Ne touche jamais a .github/, aux Dockerfile*, a deploiement/, a scripts/, aux migrations, a pilotage/ et docs/, aux fichiers d'authentification et de session, aux passerelles sortantes (src/passerelles/), aux gardes et leurs tests, ni aux fichiers de secrets ou d'environnement. N'ajoute aucun appel reseau. Ne modifie ni package.json ni le fichier de verrouillage. Lance les tests cibles existants qui concernent ta fiche, s'il y en a (par exemple pnpm exec vitest run <fichier de test> ; aucune base de donnees n'est disponible ici). Verifie aussi les types et le style : pnpm exec tsc --noEmit (ignore les erreurs des fichiers que tu n'as pas modifies), puis pnpm exec eslint <fichiers modifies>. SEULES commandes autorisees : celles-ci, git status et git diff. Lance-les telles quelles depuis le dossier courant : sans cd, sans git -C, sans tube (|), sans redirection (2>&1, >) ; toute autre forme est refusee, n'insiste pas. Pas de commit : laisse les modifications dans l'arbre de travail."
+          RAPPEL="CONSIGNES FIXES : travaille sur la fiche ci-dessous seulement. Ne touche jamais a .github/, aux Dockerfile*, a deploiement/, a scripts/, aux migrations, a pilotage/ et docs/, aux fichiers d'authentification et de session, aux passerelles sortantes (src/passerelles/), aux gardes et leurs tests, ni aux fichiers de secrets ou d'environnement. N'ajoute aucun appel reseau. Ne modifie ni package.json ni le fichier de verrouillage. Lance les tests cibles existants qui concernent ta fiche, s'il y en a (par exemple pnpm exec vitest run <fichier de test> ; aucune base de donnees n'est disponible ici). Verifie aussi les types et le style : pnpm exec tsc --noEmit (ignore les erreurs des fichiers que tu n'as pas modifies), puis pnpm exec eslint <fichiers modifies>. SEULES commandes autorisees : celles-ci, git status et git diff, plus la lecture seule (ls, cat, head, tail, wc, grep, git log, git show). Lance-les telles quelles depuis le dossier courant : sans cd, sans git -C, sans tube (|), sans redirection (2>&1, >) ; toute autre forme est refusee, n'insiste pas. Pas de commit : laisse les modifications dans l'arbre de travail. Si tu ne termines pas tout, laisse quand meme tes modifications partielles dans les fichiers et decris ce qui reste dans RESTE.md a la racine."
           set +e
           sudo -u essai -H --preserve-env=ANTHROPIC_BASE_URL,ANTHROPIC_AUTH_TOKEN,ANTHROPIC_MODEL,ANTHROPIC_DEFAULT_OPUS_MODEL,ANTHROPIC_DEFAULT_SONNET_MODEL,ANTHROPIC_SMALL_FAST_MODEL,CLAUDE_CODE_SUBAGENT_MODEL,CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC,CLAUDE_CODE_ATTRIBUTION_HEADER env "PATH=$PATH" sh -c 'cd /srv/essai && exec "$@"' sh claude -p "$RAPPEL
 
@@ -205,7 +205,7 @@ jobs:
             --settings /srv/reglages-essai.json \
             --permission-mode acceptEdits \
             --setting-sources user --strict-mcp-config \
-            --allowedTools "Read" "Edit" "Write" "Glob" "Grep" "Bash(pnpm exec vitest run:*)" "Bash(git status)" "Bash(git diff:*)" "Bash(pnpm exec tsc --noEmit:*)" "Bash(pnpm exec eslint:*)" \
+            --allowedTools "Read" "Edit" "Write" "Glob" "Grep" "Bash(pnpm exec vitest run:*)" "Bash(git status)" "Bash(git status:*)" "Bash(ls:*)" "Bash(cat:*)" "Bash(head:*)" "Bash(tail:*)" "Bash(wc:*)" "Bash(grep:*)" "Bash(git log:*)" "Bash(git show:*)" "Bash(git diff:*)" "Bash(pnpm exec tsc --noEmit:*)" "Bash(pnpm exec eslint:*)" \
             --disallowedTools "WebFetch" "WebSearch" "Bash(node:*)" "Bash(npm:*)" "Bash(npx:*)" "Bash(git commit:*)" "Bash(git config:*)" \
             > "$RUNNER_TEMP/essai/essai-$NOM.json" 2> "$RUNNER_TEMP/essai/essai-$NOM.err"
           CODE=$?
@@ -347,10 +347,87 @@ jobs:
           # passerelles/ (seul endroit autorise a parler au reseau), authentification, session, mot de passe, connexion, second code,
           # porte, reglages, opposition, proxy, instrumentation, lexique, migrations, demarrage, bases ; dans tests/ : les essais
           # des gardes, du deploiement, des bases et des fixtures de bases.
-          INTERDIT='(^|/)\.git[^/]*|(^|/)\.dockerignore$|(^|/)(Dockerfile|docker-compose)[^/]*$|(^|/)\.env|(^|/)\.npmrc$|(^|/)\.mcp\.json$|(^|/)\.claude/|(^|/)\.husky/|(^|/)\.vscode/|(^|/)\.devcontainer/|(^|/)\.pnpmfile\.c?js$|(^|/)(AGENTS|CLAUDE)\.md$|(^|/)package\.json$|(^|/)(pnpm-lock\.yaml|package-lock\.json|yarn\.lock|npm-shrinkwrap\.json|bun\.lockb?|pnpm-workspace\.yaml)$|(^|/)tsconfig[^/]*\.json$|(^|/)[^/]*\.config\.[^/]*$|^(scripts/|deploiement/|pilotage/|docs/|migrations/|bases\.source\.json$|src/passerelles/|src/auth/|src/porte/|src/reglages/|src/opposition/|src/proxy\.ts$|src/instrumentation\.ts$|src/app/api/|src/app/connexion/|src/app/reglages/|src/lib/(lexique|migrations|demarrage|jeton-session|mot-de-passe|plages-cloudflare|suite-sure|bases-copie|empreinte-bases)\.ts$|tests/(garde|deploiement/|demarrage|migrations|fixtures-bases/|porte|second-code|connexion|suite-sure|bases-|commandes-protection))|authent|auth\.|(^|/)auth/|session|secret|credential|\.pem$|\.key$|^tests/actions-serveur-gardees\.test\.ts$|^tests/contrat/|^tests/fixtures/porte-v2/|^src/contrats/porte\.ts$|^tests/arret\.test\.ts$|^src/arret/|^tests/opposition\.test\.ts$|^tests/sauvegarde\.test\.ts$|^tests/interrupteurs-[^/]*\.test\.ts$|^src/commandes/protection\.ts$|^src/(agregats|tirage)/signature\.ts$|^src/lib/base\.ts$|^src/donnees/schema\.ts$'
+          INTERDIT='(^|/)\.prettierrc[^/]*$|(^|/)prettier\.config\.[^/]*$|(^|/)\.prettierignore$|(^|/)\.editorconfig$|(^|/)\.git[^/]*|(^|/)\.dockerignore$|(^|/)(Dockerfile|docker-compose)[^/]*$|(^|/)\.env|(^|/)\.npmrc$|(^|/)\.mcp\.json$|(^|/)\.claude/|(^|/)\.husky/|(^|/)\.vscode/|(^|/)\.devcontainer/|(^|/)\.pnpmfile\.c?js$|(^|/)(AGENTS|CLAUDE)\.md$|(^|/)package\.json$|(^|/)(pnpm-lock\.yaml|package-lock\.json|yarn\.lock|npm-shrinkwrap\.json|bun\.lockb?|pnpm-workspace\.yaml)$|(^|/)tsconfig[^/]*\.json$|(^|/)[^/]*\.config\.[^/]*$|^(scripts/|deploiement/|pilotage/|docs/|migrations/|bases\.source\.json$|src/passerelles/|src/auth/|src/porte/|src/reglages/|src/opposition/|src/proxy\.ts$|src/instrumentation\.ts$|src/app/api/|src/app/connexion/|src/app/reglages/|src/lib/(lexique|migrations|demarrage|jeton-session|mot-de-passe|plages-cloudflare|suite-sure|bases-copie|empreinte-bases)\.ts$|tests/(garde|deploiement/|demarrage|migrations|fixtures-bases/|porte|second-code|connexion|suite-sure|bases-|commandes-protection))|authent|auth\.|(^|/)auth/|session|secret|credential|\.pem$|\.key$|^tests/actions-serveur-gardees\.test\.ts$|^tests/contrat/|^tests/fixtures/porte-v2/|^src/contrats/porte\.ts$|^tests/arret\.test\.ts$|^src/arret/|^tests/opposition\.test\.ts$|^tests/sauvegarde\.test\.ts$|^tests/interrupteurs-[^/]*\.test\.ts$|^src/commandes/protection\.ts$|^src/(agregats|tirage)/signature\.ts$|^src/lib/base\.ts$|^src/donnees/schema\.ts$'
           if grep -Eiq "$INTERDIT" "$RUNNER_TEMP/touches.txt"; then
             echo "::error::Fichier(s) interdit(s) touche(s) :"; grep -Ei "$INTERDIT" "$RUNNER_TEMP/touches.txt"; exit 1
           fi
+
+      # Mise en forme automatique, dans le job de CONFIANCE seulement (apres la garde des chemins interdits, avant l'artefact).
+      # 1) fins de ligne LF sur les fichiers texte modifies ; 2) Prettier SEULEMENT sur ces fichiers, version exacte du package.json
+      # de la BASE (HEAD = commit de depart), configuration de la BASE (la garde interdit .prettierrc*, prettier.config.*,
+      # .prettierignore, .editorconfig, package.json et *.config.* dans le correctif : aucun fichier de configuration executable ne
+      # vient du modele). Plugins : ceux declares par la BASE seulement, installes sans scripts dans un dossier a part.
+      # Aucune sortie de Prettier ni de npm n'est affichee (depot public : jamais de code du modele dans le journal).
+      # Une erreur de Prettier ne fait pas echouer le job : le correctif reste tel quel, avec un avertissement.
+      # 3) le correctif de l'artefact est RECALCULE apres la mise en forme.
+      - name: Mise en forme automatique (LF + Prettier de la base) et recalcul du correctif
+        env:
+          NOM: ${{ inputs.nom }}
+        run: |
+          PATCH="$RUNNER_TEMP/essai/essai-$NOM.patch"
+          RESUME="Mise en forme automatique :"
+          git -c core.quotePath=false diff --cached --no-renames --diff-filter=AM --name-only | grep -E '\.(ts|tsx|js|mjs|cjs|json|md|css|yml|yaml|php|py|sql|txt)$' > "$RUNNER_TEMP/forme-candidats.txt" || true
+          : > "$RUNNER_TEMP/forme-texte.txt"
+          while IFS= read -r f; do
+            # Fichier ordinaire et texte seulement (jamais un binaire, jamais un lien).
+            if [ -f "$f" ] && [ ! -L "$f" ] && grep -Iq '' "$f"; then printf '%s\n' "$f" >> "$RUNNER_TEMP/forme-texte.txt"; fi
+          done < "$RUNNER_TEMP/forme-candidats.txt"
+          NB_CR=0
+          while IFS= read -r f; do
+            if grep -q $'\r' "$f"; then sed -i 's/\r$//' "$f" && NB_CR=$((NB_CR + 1)); fi
+          done < "$RUNNER_TEMP/forme-texte.txt"
+          RESUME="$RESUME LF normalise sur $NB_CR fichier(s)."
+          # Prettier : seulement si la BASE le declare (racine ou frontend/), jamais depuis le correctif.
+          ENVDIR="$RUNNER_TEMP/prettier-env"
+          NB_PRET=0
+          for DIR in . frontend; do
+            if [ "$DIR" = "." ]; then PKG="package.json"; SEL='^'; else PKG="$DIR/package.json"; SEL="^$DIR/"; fi
+            git show "HEAD:$PKG" > "$RUNNER_TEMP/base-pkg.json" 2>/dev/null || continue
+            node -e '
+              const p = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+              const d = Object.assign({}, p.dependencies, p.devDependencies);
+              const ok = v => /^[\^~]?\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$/.test(v || "");
+              const ex = v => v.replace(/^[\^~]/, "");
+              if (!ok(d.prettier)) process.exit(0);
+              const out = ["prettier@" + ex(d.prettier)];
+              for (const [n, v] of Object.entries(d)) { if (/^prettier-plugin-[a-z0-9-]+$/.test(n) && ok(v)) out.push(n + "@" + ex(v)); }
+              if (ok(d.tailwindcss) && out.some(x => x.startsWith("prettier-plugin-tailwindcss@"))) out.push("tailwindcss@" + ex(d.tailwindcss));
+              console.log(out.join("\n"));
+            ' "$RUNNER_TEMP/base-pkg.json" > "$RUNNER_TEMP/prettier-specs.txt" 2>/dev/null || true
+            [ -s "$RUNNER_TEMP/prettier-specs.txt" ] || continue
+            grep -E "${SEL}.*\.(ts|tsx|js|mjs|cjs|json|md|css|yml|yaml)$" "$RUNNER_TEMP/forme-texte.txt" > "$RUNNER_TEMP/prettier-fichiers.txt" || true
+            [ -s "$RUNNER_TEMP/prettier-fichiers.txt" ] || continue
+            rm -rf "$ENVDIR"; mkdir -p "$ENVDIR"
+            printf '{"private":true}\n' > "$ENVDIR/package.json"
+            if ! ( cd "$ENVDIR" && xargs -d '\n' npm install --ignore-scripts --no-audit --no-fund --no-package-lock --save-exact < "$RUNNER_TEMP/prettier-specs.txt" ) > "$RUNNER_TEMP/prettier-npm.log" 2>&1; then
+              echo "::warning::Prettier : installation impossible (version ou plugin de la base) ; fichiers laisses tels quels."
+              RESUME="$RESUME Prettier ($DIR) : installation impossible, saute."; continue
+            fi
+            # node_modules du dossier a part, visible seulement pendant Prettier (les plugins de la BASE se resolvent depuis la config).
+            if [ -e "$DIR/node_modules" ]; then echo "::warning::node_modules deja present : Prettier saute."; RESUME="$RESUME Prettier ($DIR) : saute."; continue; fi
+            ln -s "$ENVDIR/node_modules" "$DIR/node_modules"
+            if xargs -d '\n' "$ENVDIR/node_modules/.bin/prettier" --write --ignore-unknown -- < "$RUNNER_TEMP/prettier-fichiers.txt" > "$RUNNER_TEMP/prettier-sortie.log" 2>&1; then
+              NB_PRET=$((NB_PRET + $(wc -l < "$RUNNER_TEMP/prettier-fichiers.txt")))
+              RESUME="$RESUME Prettier ($DIR) passe sur $(wc -l < "$RUNNER_TEMP/prettier-fichiers.txt") fichier(s)."
+            else
+              echo "::warning::Prettier a echoue (sortie non affichee : depot public) ; fichiers laisses tels quels."
+              RESUME="$RESUME Prettier ($DIR) : ECHEC, fichiers laisses tels quels (verifier le style avec la CI de la PR)."
+            fi
+            rm -f "$DIR/node_modules"
+          done
+          [ "$NB_PRET" -gt 0 ] || RESUME="$RESUME Prettier non execute (absent de la base, echec ou rien a formater)."
+          # Recalcul du correctif a partir de l'arbre mis en forme (memes options que l'etape du coder).
+          if [ -s "$RUNNER_TEMP/forme-texte.txt" ]; then
+            xargs -d '\n' git -c core.fsmonitor=false -c core.hooksPath=/dev/null add -- < "$RUNNER_TEMP/forme-texte.txt"
+          fi
+          git -c core.fsmonitor=false -c core.hooksPath=/dev/null diff --cached --binary --full-index --no-renames HEAD > "$PATCH.nouveau"
+          [ -s "$PATCH.nouveau" ] || { echo "::error::Correctif vide apres mise en forme."; exit 1; }
+          mv "$PATCH.nouveau" "$PATCH"
+          if git -c core.quotePath=false diff --cached --no-renames --name-only | grep -qx 'RESTE.md'; then
+            RESUME="$RESUME RESTE.md est dans le correctif : le lire (travail partiel), ne pas le committer."
+          fi
+          echo "$RESUME"
+          { echo "## Mise en forme"; echo; echo "$RESUME"; echo; } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Resume pour le pilote et artefact du correctif valide
         env:
