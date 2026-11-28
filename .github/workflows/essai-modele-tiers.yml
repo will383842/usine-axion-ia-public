@@ -84,7 +84,9 @@ jobs:
           dest: ${{ runner.tool_cache }}/setup-pnpm
 
       - name: Installer les dependances du depot
-        run: pnpm install --frozen-lockfile --ignore-scripts
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm exec next typegen || echo "::warning::next typegen a echoue : tsc peut signaler des erreurs hors fiche."
 
       # Version figee de Claude Code (derniere stable verifiee le 2026-11-28).
       - name: Installer Claude Code
@@ -163,7 +165,7 @@ jobs:
           # La fiche vient du fichier d'evenement du runner (depot public : jamais par env:, jamais affichee).
           FICHE="$(jq -r '.inputs.fiche // empty' "$GITHUB_EVENT_PATH")"
           [ -n "$FICHE" ] || { echo "::error::Fiche vide."; exit 1; }
-          RAPPEL="CONSIGNES FIXES : travaille sur la fiche ci-dessous seulement. Ne touche jamais a .github/, aux Dockerfile*, a deploiement/, a scripts/, aux migrations, a pilotage/ et docs/, aux fichiers d'authentification et de session, aux passerelles sortantes (src/passerelles/), aux gardes et leurs tests, ni aux fichiers de secrets ou d'environnement. N'ajoute aucun appel reseau. Ne modifie ni package.json ni le fichier de verrouillage. Lance les tests cibles existants qui concernent ta fiche, s'il y en a (par exemple pnpm exec vitest run <fichier de test> ; aucune base de donnees n'est disponible ici). Pas de commit : laisse les modifications dans l'arbre de travail."
+          RAPPEL="CONSIGNES FIXES : travaille sur la fiche ci-dessous seulement. Ne touche jamais a .github/, aux Dockerfile*, a deploiement/, a scripts/, aux migrations, a pilotage/ et docs/, aux fichiers d'authentification et de session, aux passerelles sortantes (src/passerelles/), aux gardes et leurs tests, ni aux fichiers de secrets ou d'environnement. N'ajoute aucun appel reseau. Ne modifie ni package.json ni le fichier de verrouillage. Lance les tests cibles existants qui concernent ta fiche, s'il y en a (par exemple pnpm exec vitest run <fichier de test> ; aucune base de donnees n'est disponible ici). Verifie aussi les types et le style : pnpm exec tsc --noEmit (ignore les erreurs des fichiers que tu n'as pas modifies), puis pnpm exec eslint <fichiers modifies>. SEULES commandes autorisees : celles-ci, git status et git diff. Lance-les telles quelles depuis le dossier courant : sans cd, sans git -C, sans tube (|), sans redirection (2>&1, >) ; toute autre forme est refusee, n'insiste pas. Pas de commit : laisse les modifications dans l'arbre de travail."
           set +e
           sudo -u essai -H --preserve-env=ANTHROPIC_BASE_URL,ANTHROPIC_AUTH_TOKEN,ANTHROPIC_MODEL,ANTHROPIC_DEFAULT_OPUS_MODEL,ANTHROPIC_DEFAULT_SONNET_MODEL,ANTHROPIC_SMALL_FAST_MODEL,CLAUDE_CODE_SUBAGENT_MODEL,CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC,CLAUDE_CODE_ATTRIBUTION_HEADER env "PATH=$PATH" sh -c 'cd /srv/essai && exec "$@"' sh claude -p "$RAPPEL
 
@@ -173,7 +175,7 @@ jobs:
             --settings /srv/reglages-essai.json \
             --permission-mode acceptEdits \
             --setting-sources user --strict-mcp-config \
-            --allowedTools "Read" "Edit" "Write" "Glob" "Grep" "Bash(pnpm exec vitest run:*)" "Bash(git status)" "Bash(git diff:*)" \
+            --allowedTools "Read" "Edit" "Write" "Glob" "Grep" "Bash(pnpm exec vitest run:*)" "Bash(git status)" "Bash(git diff:*)" "Bash(pnpm exec tsc --noEmit:*)" "Bash(pnpm exec eslint:*)" \
             --disallowedTools "WebFetch" "WebSearch" "Bash(node:*)" "Bash(npm:*)" "Bash(npx:*)" "Bash(git commit:*)" "Bash(git config:*)" \
             > "$RUNNER_TEMP/essai/essai-$NOM.json" 2> "$RUNNER_TEMP/essai/essai-$NOM.err"
           CODE=$?
