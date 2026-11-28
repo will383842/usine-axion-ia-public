@@ -391,7 +391,9 @@ jobs:
       # configuration extraite de la BASE (git show) vers un dossier temporaire neuf, passee par --config (ce qui coupe toute
       # recherche de configuration depuis les fichiers du correctif : package.json, package.yaml, .prettierrc*, prettier.config.*),
       # avec --no-editorconfig et --ignore-path (copie de la .prettierignore de la base, sinon /dev/null). Les plugins ne sont
-      # resolus que depuis ce dossier d'installation temporaire (un plugin relatif ou une feuille Tailwind locale est refuse).
+      # resolus que depuis ce dossier d'installation temporaire : apres controle des noms nus, ils sont reecrits en CHEMINS ABSOLUS
+      # resolus dans ce dossier, et Prettier est lance avec ce dossier comme repertoire courant (jamais depuis le correctif : sinon un
+      # fichier du correctif nomme comme le plugin serait importe et execute). Un plugin relatif ou une feuille Tailwind locale est refuse.
       # Si une version est introuvable, le formatage est saute avec un avertissement, sans faire echouer le job.
       # Aucune sortie de Prettier ni de npm n'est affichee (depot public : jamais de code du modele dans le journal).
       # Une erreur de Prettier ne fait pas echouer le job : le correctif reste tel quel, avec un avertissement.
@@ -490,7 +492,7 @@ jobs:
               echo "::warning::Prettier : installation impossible (version ou plugin de la base) ; fichiers laisses tels quels."
               RESUME="$RESUME Prettier ($DIR) : installation impossible, saute."; continue
             fi
-            # Configuration de la BASE, dans le dossier d'installation (les plugins s'y resolvent, jamais depuis le correctif).
+            # Configuration de la BASE, copiee dans le dossier d'installation (jamais lue depuis le correctif).
             CFG=""; UNSUP=0; CRC=0
             node -e '
               const fs = require("fs");
@@ -542,11 +544,34 @@ jobs:
               echo "::warning::Prettier ($DIR) : plugin ou chemin relatif dans la configuration de la base ; saute."
               RESUME="$RESUME Prettier ($DIR) : configuration refusee (plugin relatif), saute."; continue
             fi
+            # Plugins : noms nus -> chemins ABSOLUS resolus dans $ENVDIR (jamais dans le correctif). Ce script ne lit que la configuration
+            # de la base et $ENVDIR ; tout chemin hors de $ENVDIR/node_modules/ fait echouer (formatage saute).
+            if ! ( cd "$ENVDIR" && node -e '
+              const fs = require("fs");
+              const path = require("path");
+              const { createRequire } = require("module");
+              const [cfg, env] = process.argv.slice(1);
+              const racine = path.resolve(env, "node_modules") + path.sep;
+              const rq = createRequire(path.join(env, "package.json"));
+              let j = null;
+              try { j = JSON.parse(fs.readFileSync(cfg, "utf8")); } catch (e) { j = null; }
+              if (!j) process.exit(0);
+              const abs = n => { const p = path.resolve(rq.resolve(n)); if (!p.startsWith(racine)) process.exit(1); return p; };
+              if (Array.isArray(j.plugins)) j.plugins = j.plugins.map(abs);
+              if (Array.isArray(j.overrides)) for (const o of j.overrides) if (o && o.options && Array.isArray(o.options.plugins)) o.options.plugins = o.options.plugins.map(abs);
+              fs.writeFileSync(cfg, JSON.stringify(j) + "\n");
+            ' "$CFG" "$ENVDIR" ) 2>/dev/null; then
+              echo "::warning::Prettier ($DIR) : plugin introuvable dans le dossier d'installation ; saute."
+              RESUME="$RESUME Prettier ($DIR) : plugin non resolu, saute."; continue
+            fi
             # .prettierignore : contenu de la BASE (les motifs sont relatifs a l'emplacement du fichier, donc remis a sa place ; le
             # fichier est interdit dans le correctif), sinon /dev/null.
             IGN=/dev/null
             if git cat-file -e "HEAD:${PFX}.prettierignore" 2>/dev/null && git show "HEAD:${PFX}.prettierignore" > "${PFX}.prettierignore"; then IGN="${PFX}.prettierignore"; fi
-            if xargs -d '\n' "$ENVDIR/node_modules/.bin/prettier" --config "$CFG" --no-editorconfig --ignore-path "$IGN" --write --ignore-unknown -- < "$RUNNER_TEMP/prettier-fichiers.txt" > "$RUNNER_TEMP/prettier-sortie.log" 2>&1; then
+            # Prettier lance depuis $ENVDIR (repertoire courant hors du correctif), fichiers en chemins absolus.
+            [ "$IGN" = /dev/null ] || IGN="$GITHUB_WORKSPACE/$IGN"
+            awk -v w="$GITHUB_WORKSPACE" '{ print w "/" $0 }' "$RUNNER_TEMP/prettier-fichiers.txt" > "$RUNNER_TEMP/prettier-absolus.txt"
+            if ( cd "$ENVDIR" && xargs -d '\n' "$ENVDIR/node_modules/.bin/prettier" --config "$CFG" --no-editorconfig --ignore-path "$IGN" --write --ignore-unknown -- < "$RUNNER_TEMP/prettier-absolus.txt" ) > "$RUNNER_TEMP/prettier-sortie.log" 2>&1; then
               NB_PRET=$((NB_PRET + $(wc -l < "$RUNNER_TEMP/prettier-fichiers.txt")))
               RESUME="$RESUME Prettier ($DIR) passe sur $(wc -l < "$RUNNER_TEMP/prettier-fichiers.txt") fichier(s)."
             else
