@@ -87,8 +87,16 @@ jobs:
           if ! [[ "$BASE" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$ ]] || [[ "$BASE" == *..* || "$BASE" == */ || "$BASE" == *.lock || "$BASE" == *//* ]]; then
             echo "::error::Entree base invalide : nom de branche attendu."; exit 1
           fi
-          SHA=$(gh api "repos/${{ github.repository }}/git/ref/heads/$BASE" --jq .object.sha) || { echo "::error::Branche de depart introuvable."; exit 1; }
+          SHA=$(gh api "repos/${{ github.repository }}/git/ref/heads/$BASE" --jq .object.sha 2>/dev/null) || { echo "::error::Branche de depart introuvable."; exit 1; }
           [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Commit de depart invalide."; exit 1; }
+          # Une base non relue ne doit pas faire executer son code avant le modele (install, typegen, prisma, composer).
+          if [ "$SHA" != "$GITHUB_SHA" ]; then
+            gh api "repos/${{ github.repository }}/compare/$GITHUB_SHA...$SHA" --jq '.files[].filename' > "$RUNNER_TEMP/base-fichiers.txt" 2>/dev/null || { echo "::error::Comparaison de la base impossible."; exit 1; }
+            [ "$(wc -l < "$RUNNER_TEMP/base-fichiers.txt")" -lt 300 ] || { echo "::error::Base trop eloignee (300 fichiers ou plus) : refus."; exit 1; }
+            if grep -Eiq '(^|/)(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.npmrc|\.pnpmfile\.c?js|composer\.(json|lock)|(next|prisma|postcss|tailwind)\.config\.[^/]*)$|(^|/)prisma/|^src/lib/redirections/|^src/lib/i18n/|^src/i18n/|^src/content/preuves-sociales' "$RUNNER_TEMP/base-fichiers.txt"; then
+              echo "::error::La base modifie des fichiers executes a l'installation (dependances, next/prisma config, schema) : refus. Corriger cette PR avec Claude."; exit 1
+            fi
+          fi
           printf 'sha=%s\n' "$SHA" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -346,6 +354,8 @@ jobs:
 
       - name: Resume pour le pilote et artefact du correctif valide
         env:
+          BASE: ${{ inputs.base }}
+          BASE_SHA: ${{ needs.coder.outputs.base_sha }}
           FOURNISSEUR: ${{ inputs.fournisseur }}
           NOM: ${{ inputs.nom }}
         run: |
@@ -375,6 +385,7 @@ jobs:
             echo "## Correctif valide : branche a creer par le pilote"
             echo
             echo "Branche : essai/$FOURNISSEUR/$NOM"
+            echo "Base : ${BASE:-branche par defaut} @ $BASE_SHA (appliquer sur CE commit, git apply --3way ; refuser si la tete de la PR a change)"
             echo "Titre de PR : [essai $FOURNISSEUR] $NOM"
             echo "Artefact : correctif-valide-$FOURNISSEUR-$NOM (patch + JSON)"
             echo
