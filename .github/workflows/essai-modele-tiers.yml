@@ -126,6 +126,8 @@ jobs:
           sudo install -d -o essai -g essai -m 700 /srv/essai
           sudo cp -a "$GITHUB_WORKSPACE/." /srv/essai/ && sudo chown -R essai: /srv/essai
           sudo install -m 644 "$RUNNER_TEMP/reglages-essai.json" /srv/reglages-essai.json
+          # Repertoire neutre : runner ne peut pas entrer dans /srv/essai (700) et essai ne peut pas lire /home/runner.
+          cd /
           sudo -u essai -H git config --global --add safe.directory /srv/essai
           # Auto-controle avant le modele : l'utilisateur isole ne doit ni ecrire dans les fichiers de commandes du runner
           # (GITHUB_ENV, GITHUB_PATH...) ni obtenir sudo. Sinon on echoue sans lancer le modele.
@@ -156,14 +158,14 @@ jobs:
           export CLAUDE_CODE_SUBAGENT_MODEL="$MODELE"
           export ANTHROPIC_SMALL_FAST_MODEL="$MODELE"
           mkdir -p "$RUNNER_TEMP/essai"
-          # Le modele travaille dans la copie /srv/essai ; la sortie JSON est ecrite par ce shell (runner) en chemin absolu.
-          cd /srv/essai
+          # Le modele travaille dans la copie /srv/essai (cd fait par essai) ; la sortie JSON est ecrite par ce shell (runner) en chemin absolu.
+          cd /
           # La fiche vient du fichier d'evenement du runner (depot public : jamais par env:, jamais affichee).
           FICHE="$(jq -r '.inputs.fiche // empty' "$GITHUB_EVENT_PATH")"
           [ -n "$FICHE" ] || { echo "::error::Fiche vide."; exit 1; }
           RAPPEL="CONSIGNES FIXES : travaille sur la fiche ci-dessous seulement. Ne touche jamais a .github/, aux Dockerfile*, a deploiement/, a scripts/, aux migrations, a pilotage/ et docs/, aux fichiers d'authentification et de session, aux passerelles sortantes (src/passerelles/), aux gardes et leurs tests, ni aux fichiers de secrets ou d'environnement. N'ajoute aucun appel reseau. Ne modifie ni package.json ni le fichier de verrouillage. Lance les tests cibles existants qui concernent ta fiche, s'il y en a (par exemple pnpm exec vitest run <fichier de test> ; aucune base de donnees n'est disponible ici). Pas de commit : laisse les modifications dans l'arbre de travail."
           set +e
-          sudo -u essai -H --preserve-env=ANTHROPIC_BASE_URL,ANTHROPIC_AUTH_TOKEN,ANTHROPIC_MODEL,ANTHROPIC_DEFAULT_OPUS_MODEL,ANTHROPIC_DEFAULT_SONNET_MODEL,ANTHROPIC_SMALL_FAST_MODEL,CLAUDE_CODE_SUBAGENT_MODEL,CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC,CLAUDE_CODE_ATTRIBUTION_HEADER env "PATH=$PATH" claude -p "$RAPPEL
+          sudo -u essai -H --preserve-env=ANTHROPIC_BASE_URL,ANTHROPIC_AUTH_TOKEN,ANTHROPIC_MODEL,ANTHROPIC_DEFAULT_OPUS_MODEL,ANTHROPIC_DEFAULT_SONNET_MODEL,ANTHROPIC_SMALL_FAST_MODEL,CLAUDE_CODE_SUBAGENT_MODEL,CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC,CLAUDE_CODE_ATTRIBUTION_HEADER env "PATH=$PATH" sh -c 'cd /srv/essai && exec "$@"' sh claude -p "$RAPPEL
 
           FICHE :
           $FICHE" \
