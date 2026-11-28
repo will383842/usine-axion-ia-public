@@ -37,6 +37,12 @@ on:
         type: string
         default: ""
 
+      max_tours:
+        description: "Plafond d'allers-retours du modele (1 a 150, defaut 80)"
+        required: false
+        type: string
+        default: "80"
+
 permissions: {}
 
 concurrency:
@@ -61,6 +67,7 @@ jobs:
           FOURNISSEUR: ${{ inputs.fournisseur }}
           NOM: ${{ inputs.nom }}
           MODELE_SAISI: ${{ inputs.modele }}
+          MAX_TOURS: ${{ inputs.max_tours }}
           # Booleens seulement : la valeur des secrets n'est exposee qu'a l'etape du modele.
           KIMI_PRESENT: ${{ secrets.KIMI_API_KEY != '' }}
           DEEPSEEK_PRESENT: ${{ secrets.DEEPSEEK_API_KEY != '' }}
@@ -70,6 +77,9 @@ jobs:
           fi
           if [ -n "$MODELE_SAISI" ] && ! [[ "$MODELE_SAISI" =~ ^[A-Za-z0-9][A-Za-z0-9._:/-]{0,63}(\[[0-9a-z]{1,8}\])?$ ]]; then
             echo "::error::Entree modele invalide."; exit 1
+          fi
+          if ! [[ "$MAX_TOURS" =~ ^[0-9]{1,3}$ ]] || [ "$((10#$MAX_TOURS))" -lt 1 ] || [ "$((10#$MAX_TOURS))" -gt 150 ]; then
+            echo "::error::Entree max_tours invalide : entier de 1 a 150."; exit 1
           fi
           case "$FOURNISSEUR" in
             kimi)     [ "$KIMI_PRESENT" = "true" ]     || { echo "::error::Le secret KIMI_API_KEY est vide ou absent : ajoute-le dans les secrets du depot."; exit 1; } ;;
@@ -177,6 +187,7 @@ jobs:
       - name: Lancer Claude Code (modele tiers)
         env:
           NOM: ${{ inputs.nom }}
+          MAX_TOURS: ${{ inputs.max_tours }}
           ANTHROPIC_BASE_URL: ${{ inputs.fournisseur == 'kimi' && 'https://api.moonshot.ai/anthropic' || 'https://api.deepseek.com/anthropic' }}
           ANTHROPIC_AUTH_TOKEN: ${{ inputs.fournisseur == 'kimi' && secrets.KIMI_API_KEY || inputs.fournisseur == 'deepseek' && secrets.DEEPSEEK_API_KEY || '' }}
           CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
@@ -202,6 +213,7 @@ jobs:
           FICHE :
           $FICHE" \
             --output-format json \
+            --max-turns "$((10#$MAX_TOURS))" \
             --settings /srv/reglages-essai.json \
             --permission-mode acceptEdits \
             --setting-sources user --strict-mcp-config \
@@ -242,16 +254,36 @@ jobs:
           if git -c core.fsmonitor=false -c core.hooksPath=/dev/null diff --cached --no-renames --raw | awk '$1 ~ /^:(120000|160000)$/ || $2 ~ /^(120000|160000)$/ {f=1} END{exit !f}'; then
             echo "::error::Lien symbolique ou sous-module dans le correctif du modele."; exit 1
           fi
+          # RESTE.md (travail partiel du modele) : copie a part dans l'artefact, jamais dans le correctif.
+          if [ -f RESTE.md ] && [ ! -L RESTE.md ]; then cp -- RESTE.md "$RUNNER_TEMP/essai/RESTE-$NOM.md"; fi
+          if ! git cat-file -e HEAD:RESTE.md 2>/dev/null; then git rm --cached -q --ignore-unmatch -- RESTE.md; fi
           git -c core.fsmonitor=false -c core.hooksPath=/dev/null diff --cached --binary --full-index --no-renames HEAD > "$RUNNER_TEMP/essai/essai-$NOM.patch"
 
-      - name: Sauver le correctif et la sortie JSON en artefact
+      # Avant tout envoi : la valeur EXACTE de la cle du fournisseur ne doit figurer dans aucun fichier envoye (audit du 28/11).
+      # La cle passe par env: seulement, n'est jamais affichee ; si elle est trouvee (ou si le controle est impossible), rien n'est envoye.
+      - name: Controler l'absence de la cle dans les fichiers a envoyer
+        id: cle
         if: always() && steps.valider.outcome == 'success'
+        env:
+          CLE: ${{ inputs.fournisseur == 'kimi' && secrets.KIMI_API_KEY || inputs.fournisseur == 'deepseek' && secrets.DEEPSEEK_API_KEY || '' }}
+        run: |
+          [ -d "$RUNNER_TEMP/essai" ] || { echo "Rien a envoyer."; exit 0; }
+          [ -n "$CLE" ] || { echo "::error::Cle du fournisseur absente : controle impossible, rien n'est envoye."; exit 1; }
+          RC=0
+          grep -rqF -- "$CLE" "$RUNNER_TEMP/essai" || RC=$?
+          if [ "$RC" -ne 1 ]; then
+            echo "::error::La cle du fournisseur figure dans un fichier a envoyer (ou le controle a echoue) : rien n'est envoye."; exit 1
+          fi
+
+      - name: Sauver le correctif et la sortie JSON en artefact
+        if: always() && steps.valider.outcome == 'success' && steps.cle.outcome == 'success'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: essai-${{ inputs.fournisseur }}-${{ inputs.nom }}
           path: |
             ${{ runner.temp }}/essai/essai-${{ inputs.nom }}.json
             ${{ runner.temp }}/essai/essai-${{ inputs.nom }}.patch
+            ${{ runner.temp }}/essai/RESTE-${{ inputs.nom }}.md
           if-no-files-found: warn
           retention-days: 1
 
@@ -347,19 +379,23 @@ jobs:
           # passerelles/ (seul endroit autorise a parler au reseau), authentification, session, mot de passe, connexion, second code,
           # porte, reglages, opposition, proxy, instrumentation, lexique, migrations, demarrage, bases ; dans tests/ : les essais
           # des gardes, du deploiement, des bases et des fixtures de bases.
-          INTERDIT='(^|/)\.prettierrc[^/]*$|(^|/)prettier\.config\.[^/]*$|(^|/)\.prettierignore$|(^|/)\.editorconfig$|(^|/)\.git[^/]*|(^|/)\.dockerignore$|(^|/)(Dockerfile|docker-compose)[^/]*$|(^|/)\.env|(^|/)\.npmrc$|(^|/)\.mcp\.json$|(^|/)\.claude/|(^|/)\.husky/|(^|/)\.vscode/|(^|/)\.devcontainer/|(^|/)\.pnpmfile\.c?js$|(^|/)(AGENTS|CLAUDE)\.md$|(^|/)package\.json$|(^|/)(pnpm-lock\.yaml|package-lock\.json|yarn\.lock|npm-shrinkwrap\.json|bun\.lockb?|pnpm-workspace\.yaml)$|(^|/)tsconfig[^/]*\.json$|(^|/)[^/]*\.config\.[^/]*$|^(scripts/|deploiement/|pilotage/|docs/|migrations/|bases\.source\.json$|src/passerelles/|src/auth/|src/porte/|src/reglages/|src/opposition/|src/proxy\.ts$|src/instrumentation\.ts$|src/app/api/|src/app/connexion/|src/app/reglages/|src/lib/(lexique|migrations|demarrage|jeton-session|mot-de-passe|plages-cloudflare|suite-sure|bases-copie|empreinte-bases)\.ts$|tests/(garde|deploiement/|demarrage|migrations|fixtures-bases/|porte|second-code|connexion|suite-sure|bases-|commandes-protection))|authent|auth\.|(^|/)auth/|session|secret|credential|\.pem$|\.key$|^tests/actions-serveur-gardees\.test\.ts$|^tests/contrat/|^tests/fixtures/porte-v2/|^src/contrats/porte\.ts$|^tests/arret\.test\.ts$|^src/arret/|^tests/opposition\.test\.ts$|^tests/sauvegarde\.test\.ts$|^tests/interrupteurs-[^/]*\.test\.ts$|^src/commandes/protection\.ts$|^src/(agregats|tirage)/signature\.ts$|^src/lib/base\.ts$|^src/donnees/schema\.ts$'
+          INTERDIT='(^|/)\.prettierrc[^/]*$|(^|/)package\.ya?ml$|(^|/)node_modules/|(^|/)prettier\.config\.[^/]*$|(^|/)\.prettierignore$|(^|/)\.editorconfig$|(^|/)\.git[^/]*|(^|/)\.dockerignore$|(^|/)(Dockerfile|docker-compose)[^/]*$|(^|/)\.env|(^|/)\.npmrc$|(^|/)\.mcp\.json$|(^|/)\.claude/|(^|/)\.husky/|(^|/)\.vscode/|(^|/)\.devcontainer/|(^|/)\.pnpmfile\.c?js$|(^|/)(AGENTS|CLAUDE)\.md$|(^|/)package\.json$|(^|/)(pnpm-lock\.yaml|package-lock\.json|yarn\.lock|npm-shrinkwrap\.json|bun\.lockb?|pnpm-workspace\.yaml)$|(^|/)tsconfig[^/]*\.json$|(^|/)[^/]*\.config\.[^/]*$|^(scripts/|deploiement/|pilotage/|docs/|migrations/|bases\.source\.json$|src/passerelles/|src/auth/|src/porte/|src/reglages/|src/opposition/|src/proxy\.ts$|src/instrumentation\.ts$|src/app/api/|src/app/connexion/|src/app/reglages/|src/lib/(lexique|migrations|demarrage|jeton-session|mot-de-passe|plages-cloudflare|suite-sure|bases-copie|empreinte-bases)\.ts$|tests/(garde|deploiement/|demarrage|migrations|fixtures-bases/|porte|second-code|connexion|suite-sure|bases-|commandes-protection))|authent|auth\.|(^|/)auth/|session|secret|credential|\.pem$|\.key$|^tests/actions-serveur-gardees\.test\.ts$|^tests/contrat/|^tests/fixtures/porte-v2/|^src/contrats/porte\.ts$|^tests/arret\.test\.ts$|^src/arret/|^tests/opposition\.test\.ts$|^tests/sauvegarde\.test\.ts$|^tests/interrupteurs-[^/]*\.test\.ts$|^src/commandes/protection\.ts$|^src/(agregats|tirage)/signature\.ts$|^src/lib/base\.ts$|^src/donnees/schema\.ts$'
           if grep -Eiq "$INTERDIT" "$RUNNER_TEMP/touches.txt"; then
             echo "::error::Fichier(s) interdit(s) touche(s) :"; grep -Ei "$INTERDIT" "$RUNNER_TEMP/touches.txt"; exit 1
           fi
 
       # Mise en forme automatique, dans le job de CONFIANCE seulement (apres la garde des chemins interdits, avant l'artefact).
-      # 1) fins de ligne LF sur les fichiers texte modifies ; 2) Prettier SEULEMENT sur ces fichiers, version exacte du package.json
-      # de la BASE (HEAD = commit de depart), configuration de la BASE (la garde interdit .prettierrc*, prettier.config.*,
-      # .prettierignore, .editorconfig, package.json et *.config.* dans le correctif : aucun fichier de configuration executable ne
-      # vient du modele). Plugins : ceux declares par la BASE seulement, installes sans scripts dans un dossier a part.
+      # 1) fins de ligne LF sur les fichiers texte modifies ; 2) Prettier SEULEMENT sur ces fichiers.
+      # Le correctif n'apporte AUCUNE configuration ni aucun code a Prettier : versions exactes de prettier, de ses plugins et de
+      # tailwindcss lues dans le fichier de verrouillage de la BASE (HEAD = commit de depart), pas dans les plages du package.json ;
+      # configuration extraite de la BASE (git show) vers un dossier temporaire neuf, passee par --config (ce qui coupe toute
+      # recherche de configuration depuis les fichiers du correctif : package.json, package.yaml, .prettierrc*, prettier.config.*),
+      # avec --no-editorconfig et --ignore-path (copie de la .prettierignore de la base, sinon /dev/null). Les plugins ne sont
+      # resolus que depuis ce dossier d'installation temporaire (un plugin relatif ou une feuille Tailwind locale est refuse).
+      # Si une version est introuvable, le formatage est saute avec un avertissement, sans faire echouer le job.
       # Aucune sortie de Prettier ni de npm n'est affichee (depot public : jamais de code du modele dans le journal).
       # Une erreur de Prettier ne fait pas echouer le job : le correctif reste tel quel, avec un avertissement.
-      # 3) le correctif de l'artefact est RECALCULE apres la mise en forme.
+      # 3) le correctif de l'artefact est RECALCULE apres la mise en forme, sans RESTE.md (jamais dans le correctif valide).
       - name: Mise en forme automatique (LF + Prettier de la base) et recalcul du correctif
         env:
           NOM: ${{ inputs.nom }}
@@ -370,61 +406,166 @@ jobs:
           : > "$RUNNER_TEMP/forme-texte.txt"
           while IFS= read -r f; do
             # Fichier ordinaire et texte seulement (jamais un binaire, jamais un lien).
-            if [ -f "$f" ] && [ ! -L "$f" ] && grep -Iq '' "$f"; then printf '%s\n' "$f" >> "$RUNNER_TEMP/forme-texte.txt"; fi
+            if [ -f "$f" ] && [ ! -L "$f" ] && grep -Iq -- '' "$f"; then printf '%s\n' "$f" >> "$RUNNER_TEMP/forme-texte.txt"; fi
           done < "$RUNNER_TEMP/forme-candidats.txt"
           NB_CR=0
           while IFS= read -r f; do
-            if grep -q $'\r' "$f"; then sed -i 's/\r$//' "$f" && NB_CR=$((NB_CR + 1)); fi
+            if grep -q -- $'\r' "$f"; then sed -i -- 's/\r$//' "$f" && NB_CR=$((NB_CR + 1)); fi
           done < "$RUNNER_TEMP/forme-texte.txt"
           RESUME="$RESUME LF normalise sur $NB_CR fichier(s)."
           # Prettier : seulement si la BASE le declare (racine ou frontend/), jamais depuis le correctif.
-          ENVDIR="$RUNNER_TEMP/prettier-env"
           NB_PRET=0
           for DIR in . frontend; do
-            if [ "$DIR" = "." ]; then PKG="package.json"; SEL='^'; else PKG="$DIR/package.json"; SEL="^$DIR/"; fi
-            git show "HEAD:$PKG" > "$RUNNER_TEMP/base-pkg.json" 2>/dev/null || continue
-            node -e '
-              const p = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
-              const d = Object.assign({}, p.dependencies, p.devDependencies);
-              const ok = v => /^[\^~]?\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$/.test(v || "");
-              const ex = v => v.replace(/^[\^~]/, "");
-              if (!ok(d.prettier)) process.exit(0);
-              const out = ["prettier@" + ex(d.prettier)];
-              for (const [n, v] of Object.entries(d)) { if (/^prettier-plugin-[a-z0-9-]+$/.test(n) && ok(v)) out.push(n + "@" + ex(v)); }
-              if (ok(d.tailwindcss) && out.some(x => x.startsWith("prettier-plugin-tailwindcss@"))) out.push("tailwindcss@" + ex(d.tailwindcss));
-              console.log(out.join("\n"));
-            ' "$RUNNER_TEMP/base-pkg.json" > "$RUNNER_TEMP/prettier-specs.txt" 2>/dev/null || true
-            [ -s "$RUNNER_TEMP/prettier-specs.txt" ] || continue
+            if [ "$DIR" = "." ]; then PFX=""; SEL='^'; else PFX="$DIR/"; SEL="^$DIR/"; fi
+            git show "HEAD:${PFX}package.json" > "$RUNNER_TEMP/base-pkg.json" 2>/dev/null || continue
             grep -E "${SEL}.*\.(ts|tsx|js|mjs|cjs|json|md|css|yml|yaml)$" "$RUNNER_TEMP/forme-texte.txt" > "$RUNNER_TEMP/prettier-fichiers.txt" || true
             [ -s "$RUNNER_TEMP/prettier-fichiers.txt" ] || continue
-            rm -rf "$ENVDIR"; mkdir -p "$ENVDIR"
+            # Versions exactes : fichier de verrouillage de la BASE.
+            if git show "HEAD:${PFX}pnpm-lock.yaml" > "$RUNNER_TEMP/base-lock.txt" 2>/dev/null; then KIND=pnpm
+            elif git show "HEAD:${PFX}package-lock.json" > "$RUNNER_TEMP/base-lock.txt" 2>/dev/null; then KIND=npm
+            else
+              echo "::warning::Prettier ($DIR) : aucun fichier de verrouillage a la base ; saute."
+              RESUME="$RESUME Prettier ($DIR) : verrouillage absent, saute."; continue
+            fi
+            SPECS_RC=0
+            node -e '
+              const fs = require("fs");
+              const [pkgF, lockF, kind] = process.argv.slice(1);
+              const p = JSON.parse(fs.readFileSync(pkgF, "utf8"));
+              const d = Object.assign({}, p.dependencies, p.devDependencies);
+              if (!d.prettier) process.exit(0);
+              const lock = fs.readFileSync(lockF, "utf8");
+              const clean = v => { const m = /^(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)(?:\(.*)?$/.exec(String(v || "").trim()); return m ? m[1] : null; };
+              let get;
+              if (kind === "npm") {
+                const pk = JSON.parse(lock).packages || {};
+                get = n => clean((pk["node_modules/" + n] || {}).version);
+              } else {
+                const L = lock.split("\n");
+                let from = 0, to = L.length;
+                const imp = L.findIndex(l => /^importers:\s*$/.test(l));
+                if (imp >= 0) {
+                  const k = L.findIndex((l, i) => i > imp && /^  \.:\s*$/.test(l));
+                  if (k < 0) process.exit(3);
+                  from = k + 1;
+                  const e = L.findIndex((l, i) => i >= from && /^(  \S|\S)/.test(l));
+                  to = e < 0 ? L.length : e;
+                } else {
+                  const e = L.findIndex(l => /^(packages|snapshots):/.test(l));
+                  to = e < 0 ? L.length : e;
+                }
+                get = n => {
+                  const re = new RegExp("^\\s+" + n + ":\\s*$");
+                  for (let i = from; i < to; i++) {
+                    if (!re.test(L[i])) continue;
+                    for (let j = i + 1; j < Math.min(i + 4, to); j++) { const m = /^\s+version:\s*(\S+)\s*$/.exec(L[j]); if (m) return clean(m[1]); }
+                    return null;
+                  }
+                  return null;
+                };
+              }
+              const out = [];
+              const pv = get("prettier");
+              if (!pv) process.exit(3);
+              out.push("prettier@" + pv);
+              let tw = false;
+              for (const n of Object.keys(d)) {
+                if (!/^prettier-plugin-[a-z0-9-]+$/.test(n)) continue;
+                const v = get(n);
+                if (!v) process.exit(3);
+                out.push(n + "@" + v);
+                if (n === "prettier-plugin-tailwindcss") tw = true;
+              }
+              if (tw) { const v = get("tailwindcss"); if (!v) process.exit(3); out.push("tailwindcss@" + v); }
+              console.log(out.join("\n"));
+            ' "$RUNNER_TEMP/base-pkg.json" "$RUNNER_TEMP/base-lock.txt" "$KIND" > "$RUNNER_TEMP/prettier-specs.txt" 2>/dev/null || SPECS_RC=$?
+            if [ "$SPECS_RC" -ne 0 ]; then
+              echo "::warning::Prettier ($DIR) : version introuvable dans le verrouillage de la base ; saute."
+              RESUME="$RESUME Prettier ($DIR) : version introuvable dans le verrouillage, saute."; continue
+            fi
+            [ -s "$RUNNER_TEMP/prettier-specs.txt" ] || continue
+            ENVDIR="$(mktemp -d "$RUNNER_TEMP/prettier-env.XXXXXX")"
             printf '{"private":true}\n' > "$ENVDIR/package.json"
             if ! ( cd "$ENVDIR" && xargs -d '\n' npm install --ignore-scripts --no-audit --no-fund --no-package-lock --save-exact < "$RUNNER_TEMP/prettier-specs.txt" ) > "$RUNNER_TEMP/prettier-npm.log" 2>&1; then
               echo "::warning::Prettier : installation impossible (version ou plugin de la base) ; fichiers laisses tels quels."
               RESUME="$RESUME Prettier ($DIR) : installation impossible, saute."; continue
             fi
-            # node_modules du dossier a part, visible seulement pendant Prettier (les plugins de la BASE se resolvent depuis la config).
-            if [ -e "$DIR/node_modules" ]; then echo "::warning::node_modules deja present : Prettier saute."; RESUME="$RESUME Prettier ($DIR) : saute."; continue; fi
-            ln -s "$ENVDIR/node_modules" "$DIR/node_modules"
-            if xargs -d '\n' "$ENVDIR/node_modules/.bin/prettier" --write --ignore-unknown -- < "$RUNNER_TEMP/prettier-fichiers.txt" > "$RUNNER_TEMP/prettier-sortie.log" 2>&1; then
+            # Configuration de la BASE, dans le dossier d'installation (les plugins s'y resolvent, jamais depuis le correctif).
+            CFG=""; UNSUP=0; CRC=0
+            node -e '
+              const fs = require("fs");
+              const p = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+              if (!("prettier" in p)) process.exit(4);
+              if (p.prettier === null || typeof p.prettier !== "object" || Array.isArray(p.prettier)) process.exit(5);
+              fs.writeFileSync(process.argv[2], JSON.stringify(p.prettier) + "\n");
+            ' "$RUNNER_TEMP/base-pkg.json" "$ENVDIR/prettier-base.json" 2>/dev/null || CRC=$?
+            if [ "$CRC" -eq 0 ]; then
+              CFG="$ENVDIR/prettier-base.json"
+            elif [ "$CRC" -eq 4 ]; then
+              for C in .prettierrc .prettierrc.json .prettierrc.yaml .prettierrc.yml .prettierrc.json5 .prettierrc.js .prettierrc.ts .prettierrc.mjs .prettierrc.mts .prettierrc.cjs .prettierrc.cts prettier.config.js prettier.config.ts prettier.config.mjs prettier.config.mts prettier.config.cjs prettier.config.cts .prettierrc.toml; do
+                git cat-file -e "HEAD:${PFX}$C" 2>/dev/null || continue
+                case "$C" in
+                  *.ts|*.mts|*.cts|*.toml) UNSUP=1; break ;;
+                  .prettierrc|*.json|*.yaml|*.yml|*.json5) DEST="$C" ;;
+                  *.mjs) DEST="prettier-base.mjs" ;;
+                  *.cjs) DEST="prettier-base.cjs" ;;
+                  *) if git show "HEAD:${PFX}$C" | grep -Eq '^[[:space:]]*(export|import)[[:space:]]'; then DEST="prettier-base.mjs"; else DEST="prettier-base.cjs"; fi ;;
+                esac
+                git show "HEAD:${PFX}$C" > "$ENVDIR/$DEST" && CFG="$ENVDIR/$DEST"
+                break
+              done
+              if [ "$UNSUP" -eq 0 ] && [ -z "$CFG" ]; then printf '{}\n' > "$ENVDIR/prettier-base.json"; CFG="$ENVDIR/prettier-base.json"; fi
+            else
+              UNSUP=1
+            fi
+            if [ "$UNSUP" -ne 0 ] || [ -z "$CFG" ]; then
+              echo "::warning::Prettier ($DIR) : configuration de la base non prise en charge ; saute."
+              RESUME="$RESUME Prettier ($DIR) : configuration non prise en charge, saute."; continue
+            fi
+            # Aucun plugin relatif ni feuille Tailwind locale : seuls les plugins installes depuis le verrouillage de la base.
+            if ! node -e '
+              const fs = require("fs");
+              const [cfg, specs] = process.argv.slice(1);
+              const txt = fs.readFileSync(cfg, "utf8");
+              if (/["\x27]\.{1,2}\//.test(txt) || /tailwindConfig|tailwindStylesheet/.test(txt)) process.exit(1);
+              const inst = fs.readFileSync(specs, "utf8").split("\n").filter(Boolean).map(s => s.replace(/@[^@]*$/, ""));
+              let j = null;
+              try { j = JSON.parse(txt); } catch (e) { j = null; }
+              if (!j) process.exit(0);
+              const liste = [j.plugins].concat(Array.isArray(j.overrides) ? j.overrides.map(o => o && o.options && o.options.plugins) : []);
+              for (const pl of liste) {
+                if (pl === undefined || pl === null) continue;
+                if (!Array.isArray(pl)) process.exit(1);
+                for (const x of pl) if (typeof x !== "string" || !inst.includes(x)) process.exit(1);
+              }
+            ' "$CFG" "$RUNNER_TEMP/prettier-specs.txt" 2>/dev/null; then
+              echo "::warning::Prettier ($DIR) : plugin ou chemin relatif dans la configuration de la base ; saute."
+              RESUME="$RESUME Prettier ($DIR) : configuration refusee (plugin relatif), saute."; continue
+            fi
+            # .prettierignore : contenu de la BASE (les motifs sont relatifs a l'emplacement du fichier, donc remis a sa place ; le
+            # fichier est interdit dans le correctif), sinon /dev/null.
+            IGN=/dev/null
+            if git cat-file -e "HEAD:${PFX}.prettierignore" 2>/dev/null && git show "HEAD:${PFX}.prettierignore" > "${PFX}.prettierignore"; then IGN="${PFX}.prettierignore"; fi
+            if xargs -d '\n' "$ENVDIR/node_modules/.bin/prettier" --config "$CFG" --no-editorconfig --ignore-path "$IGN" --write --ignore-unknown -- < "$RUNNER_TEMP/prettier-fichiers.txt" > "$RUNNER_TEMP/prettier-sortie.log" 2>&1; then
               NB_PRET=$((NB_PRET + $(wc -l < "$RUNNER_TEMP/prettier-fichiers.txt")))
               RESUME="$RESUME Prettier ($DIR) passe sur $(wc -l < "$RUNNER_TEMP/prettier-fichiers.txt") fichier(s)."
             else
               echo "::warning::Prettier a echoue (sortie non affichee : depot public) ; fichiers laisses tels quels."
               RESUME="$RESUME Prettier ($DIR) : ECHEC, fichiers laisses tels quels (verifier le style avec la CI de la PR)."
             fi
-            rm -f "$DIR/node_modules"
           done
           [ "$NB_PRET" -gt 0 ] || RESUME="$RESUME Prettier non execute (absent de la base, echec ou rien a formater)."
           # Recalcul du correctif a partir de l'arbre mis en forme (memes options que l'etape du coder).
           if [ -s "$RUNNER_TEMP/forme-texte.txt" ]; then
             xargs -d '\n' git -c core.fsmonitor=false -c core.hooksPath=/dev/null add -- < "$RUNNER_TEMP/forme-texte.txt"
           fi
+          # RESTE.md (travail partiel) ne doit jamais figurer dans le correctif valide.
+          if ! git cat-file -e HEAD:RESTE.md 2>/dev/null; then git rm --cached -q --ignore-unmatch -- RESTE.md; fi
           git -c core.fsmonitor=false -c core.hooksPath=/dev/null diff --cached --binary --full-index --no-renames HEAD > "$PATCH.nouveau"
           [ -s "$PATCH.nouveau" ] || { echo "::error::Correctif vide apres mise en forme."; exit 1; }
           mv "$PATCH.nouveau" "$PATCH"
-          if git -c core.quotePath=false diff --cached --no-renames --name-only | grep -qx 'RESTE.md'; then
-            RESUME="$RESUME RESTE.md est dans le correctif : le lire (travail partiel), ne pas le committer."
+          if [ -f "$RUNNER_TEMP/essai/RESTE-$NOM.md" ]; then
+            RESUME="$RESUME RESTE-$NOM.md est dans l'artefact du codeur (travail partiel a lire) ; il n'est pas dans le correctif."
           fi
           echo "$RESUME"
           { echo "## Mise en forme"; echo; echo "$RESUME"; echo; } >> "$GITHUB_STEP_SUMMARY"
