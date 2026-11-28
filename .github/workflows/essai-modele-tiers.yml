@@ -20,10 +20,10 @@ on:
         description: "Fournisseur du modele"
         required: true
         type: choice
-        options: [kimi, deepseek]
-        default: kimi
+        options: [deepseek, kimi]
+        default: deepseek
       modele:
-        description: "Nom du modele (vide = defaut du fournisseur : kimi-k3[1m] / deepseek-flash)"
+        description: "Nom du modele (vide = defaut du fournisseur : deepseek-flash / kimi-k3[1m] ; tache difficile : deepseek-v4-pro)"
         required: false
         type: string
         default: ""
