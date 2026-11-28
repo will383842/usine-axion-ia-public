@@ -31,6 +31,11 @@ on:
         description: "Identifiant court de la fiche (minuscules, chiffres, tirets), sert a nommer la branche"
         required: true
         type: string
+      base:
+        description: "Branche de depart (vide = branche par defaut). Pour corriger une PR ouverte : le nom de sa branche."
+        required: false
+        type: string
+        default: ""
 
 permissions: {}
 
@@ -41,10 +46,12 @@ concurrency:
 jobs:
   coder:
     name: coder (non fiable)
-    # Proprietaire du depot, depuis main seulement.
+    # Proprietaire du depot, depuis main seulement (la branche de depart, elle, peut etre une PR : entree base).
     if: github.actor == github.repository_owner && github.triggering_actor == github.repository_owner && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    outputs:
+      base_sha: ${{ steps.base.outputs.sha }}
     permissions:
       contents: read
     steps:
@@ -70,9 +77,32 @@ jobs:
             *) echo "::error::Fournisseur inconnu : $FOURNISSEUR"; exit 1 ;;
           esac
 
+      - name: Resoudre la branche de depart en un commit fixe
+        id: base
+        env:
+          BASE: ${{ inputs.base }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -z "$BASE" ]; then printf 'sha=%s\n' "$GITHUB_SHA" >> "$GITHUB_OUTPUT"; exit 0; fi
+          if ! [[ "$BASE" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$ ]] || [[ "$BASE" == *..* || "$BASE" == */ || "$BASE" == *.lock || "$BASE" == *//* ]]; then
+            echo "::error::Entree base invalide : nom de branche attendu."; exit 1
+          fi
+          SHA=$(gh api "repos/${{ github.repository }}/git/ref/heads/$BASE" --jq .object.sha 2>/dev/null) || { echo "::error::Branche de depart introuvable."; exit 1; }
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Commit de depart invalide."; exit 1; }
+          # Une base non relue ne doit pas faire executer son code avant le modele (install, typegen, prisma, composer).
+          if [ "$SHA" != "$GITHUB_SHA" ]; then
+            gh api "repos/${{ github.repository }}/compare/$GITHUB_SHA...$SHA" --jq '.files[].filename' > "$RUNNER_TEMP/base-fichiers.txt" 2>/dev/null || { echo "::error::Comparaison de la base impossible."; exit 1; }
+            [ "$(wc -l < "$RUNNER_TEMP/base-fichiers.txt")" -lt 300 ] || { echo "::error::Base trop eloignee (300 fichiers ou plus) : refus."; exit 1; }
+            if grep -Eiq '(^|/)(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.npmrc|\.pnpmfile\.c?js|composer\.(json|lock)|(next|prisma|postcss|tailwind)\.config\.[^/]*)$|(^|/)prisma/|^src/lib/redirections/|^src/lib/i18n/|^src/i18n/|^src/content/preuves-sociales' "$RUNNER_TEMP/base-fichiers.txt"; then
+              echo "::error::La base modifie des fichiers executes a l'installation (dependances, next/prisma config, schema) : refus. Corriger cette PR avec Claude."; exit 1
+            fi
+          fi
+          printf 'sha=%s\n' "$SHA" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 1
+          ref: ${{ steps.base.outputs.sha }}
           persist-credentials: false
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -212,7 +242,7 @@ jobs:
           if git -c core.fsmonitor=false -c core.hooksPath=/dev/null diff --cached --no-renames --raw | awk '$1 ~ /^:(120000|160000)$/ || $2 ~ /^(120000|160000)$/ {f=1} END{exit !f}'; then
             echo "::error::Lien symbolique ou sous-module dans le correctif du modele."; exit 1
           fi
-          git -c core.fsmonitor=false -c core.hooksPath=/dev/null diff --cached --binary --full-index --no-renames "$GITHUB_SHA" > "$RUNNER_TEMP/essai/essai-$NOM.patch"
+          git -c core.fsmonitor=false -c core.hooksPath=/dev/null diff --cached --binary --full-index --no-renames HEAD > "$RUNNER_TEMP/essai/essai-$NOM.patch"
 
       - name: Sauver le correctif et la sortie JSON en artefact
         if: always() && steps.valider.outcome == 'success'
@@ -249,9 +279,15 @@ jobs:
           else MODELE='deepseek-flash'; fi
           printf 'MODELE=%s\n' "$MODELE" >> "$GITHUB_ENV"
 
+      - name: Verifier le commit de depart
+        env:
+          BASE_SHA: ${{ needs.coder.outputs.base_sha }}
+        run: '[[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Commit de depart absent ou invalide."; exit 1; }'
+
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 1
+          ref: ${{ needs.coder.outputs.base_sha }}
           persist-credentials: false
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -318,6 +354,8 @@ jobs:
 
       - name: Resume pour le pilote et artefact du correctif valide
         env:
+          BASE: ${{ inputs.base }}
+          BASE_SHA: ${{ needs.coder.outputs.base_sha }}
           FOURNISSEUR: ${{ inputs.fournisseur }}
           NOM: ${{ inputs.nom }}
         run: |
@@ -347,6 +385,7 @@ jobs:
             echo "## Correctif valide : branche a creer par le pilote"
             echo
             echo "Branche : essai/$FOURNISSEUR/$NOM"
+            echo "Base : ${BASE:-branche par defaut} @ $BASE_SHA (appliquer sur CE commit, git apply --3way ; refuser si la tete de la PR a change)"
             echo "Titre de PR : [essai $FOURNISSEUR] $NOM"
             echo "Artefact : correctif-valide-$FOURNISSEUR-$NOM (patch + JSON)"
             echo
