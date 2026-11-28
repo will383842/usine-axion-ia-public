@@ -81,14 +81,13 @@ jobs:
         id: base
         env:
           BASE: ${{ inputs.base }}
-          REPO: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
         run: |
           if [ -z "$BASE" ]; then printf 'sha=%s\n' "$GITHUB_SHA" >> "$GITHUB_OUTPUT"; exit 0; fi
           if ! [[ "$BASE" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$ ]] || [[ "$BASE" == *..* || "$BASE" == */ || "$BASE" == *.lock || "$BASE" == *//* ]]; then
             echo "::error::Entree base invalide : nom de branche attendu."; exit 1
           fi
-          SHA=$(gh api "repos/$REPO/git/ref/heads/$BASE" --jq .object.sha) || { echo "::error::Branche de depart introuvable."; exit 1; }
+          SHA=$(gh api "repos/${{ github.repository }}/git/ref/heads/$BASE" --jq .object.sha) || { echo "::error::Branche de depart introuvable."; exit 1; }
           [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Commit de depart invalide."; exit 1; }
           printf 'sha=%s\n' "$SHA" >> "$GITHUB_OUTPUT"
 
